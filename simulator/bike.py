@@ -1,8 +1,4 @@
-import numpy as np
-
-import station
 from simulator.station import Station
-
 
 class Bike:
 
