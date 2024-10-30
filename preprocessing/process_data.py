@@ -3,17 +3,18 @@ import pandas as pd
 import osmnx as ox
 import networkx as nx
 
-from geopy.distance import geodesic
+from geopy.distance import geodesic, great_circle
 from tqdm import tqdm
 
 from simulator.utils import plot_graph
 
 params = {
-    'place': ["Cambridge, Massachusetts, USA"],
+    'place': ["Cambridge, Massachusetts, USA",
+              "Somerville, Massachusetts, USA",],
     'network_type': 'bike',
 
     'data_path': "data/",
-    'graph_file': "cambridge_network.graphml",
+    'graph_file': "cambridge_somerville_network.graphml",
     'year': 2022,
     'month': [1],
 
@@ -21,24 +22,81 @@ params = {
 }
 
 
+def find_nearby_nodes(graph, target_node, radius_meters):
+    """Find all nodes within a specified radius around a given node in the graph."""
+    if target_node not in graph:
+        raise ValueError(f"Node {target_node} is not in the graph.")
+
+    target_coords = (graph.nodes[target_node]['y'], graph.nodes[target_node]['x'])
+    nearby_nodes = []
+
+    for node in graph.nodes:
+        if node != target_node:
+            node_coords = (graph.nodes[node]['y'], graph.nodes[node]['x'])
+            distance = great_circle(target_coords, node_coords).meters
+
+            if distance <= radius_meters:
+                nearby_nodes.append(node)
+
+    return nearby_nodes
+
+def connect_disconnected_neighbors(graph, radius_meters):
+    """
+    Iterates through all nodes in the graph and connects neighboring nodes
+    that cannot be reached by a path, based on the specified radius.
+
+    Parameters:
+        - graph: The graph containing the nodes.
+        - radius_meters: The radius in meters within which to find nearby nodes.
+    """
+
+    tbar = tqdm(total=len(graph.nodes), desc="Connecting disconnected nodes")
+
+    for node in graph.nodes:
+        if 'y' not in graph.nodes[node] or 'x' not in graph.nodes[node]:
+            print(f"Node {node} does not have valid coordinates.")
+            continue  # Skip nodes without valid coordinates
+
+        nearby_nodes = find_nearby_nodes(graph, node, radius_meters)
+
+        for neighbor in nearby_nodes:
+            if not nx.has_path(graph, node, neighbor):
+                node_coords = (graph.nodes[node]['y'], graph.nodes[node]['x'])
+                neighbor_coords = (graph.nodes[neighbor]['y'], graph.nodes[neighbor]['x'])
+
+                if 'y' not in graph.nodes[neighbor] or 'x' not in graph.nodes[neighbor]:
+                    print(f"Neighbor {neighbor} does not have valid coordinates.")
+                    continue
+                distance_meters = great_circle(node_coords, neighbor_coords).meters
+
+                speed_kph = 15.0
+                travel_time_hours = distance_meters / 1000 / speed_kph
+                weight = travel_time_hours * 3600
+                graph.add_edge(node, neighbor, length=distance_meters, speed_kph=speed_kph, weight=weight)
+
+        tbar.update(1)
+
+
 def initialize_graph(places: [str], network_type: str, graph_path: str = None, simplify_network: bool = False,
                      remove_isolated_nodes: bool = False) -> nx.MultiDiGraph:
-    if os.path.isfile(graph_path):
+    if os.path.isfile(""):
         print("Network file already exists. Loading the network data... ")
         graph = ox.load_graphml(graph_path)
         print("Network data loaded successfully.")
     else:
         print("Network file does not exist. Downloading the network data... ")
         graph = ox.graph_from_place(places[0], network_type=network_type)
-
-        if len(places) > 1:
-            for place in places:
-                grp = ox.graph_from_place(place, network_type=network_type)
-                graph = nx.compose(graph, grp)
-
-        # OSM data are sometime incomplete so we use the speed module of osmnx to add missing edge speeds and travel times
         graph = ox.add_edge_speeds(graph)
         graph = ox.add_edge_travel_times(graph)
+
+        if len(places) > 1:
+            for index in range(1, len(places)):
+                grp = ox.graph_from_place(places[index], network_type=network_type)
+                grp = ox.add_edge_speeds(grp)
+                grp = ox.add_edge_travel_times(grp)
+                graph = nx.compose(graph, grp)
+                connect_disconnected_neighbors(graph, radius_meters=100)
+
 
         # Simplify the graph by consolidating intersections
         if simplify_network:

@@ -14,13 +14,11 @@ from trip import Trip
 from utils import generate_poisson_events, truncated_gaussian_speed, plot_graph
 
 params = {
-    'place': ["Cambridge, Massachusetts, USA"],
-    'network_type': 'bike',
-
     'data_path': "../data/",
-    'graph_file': "cambridge_network.graphml",
+    'graph_file': "cambridge_somerville_network.graphml",
     'year': 2022,
     'month': 1,
+    'network_type': 'bike',
 
     'time_interval': 3600*24   # 1 hour
 }
@@ -31,37 +29,14 @@ failures = 0
 failures_from_path = 0
 
 
-def initialize_graph(places: [str], network_type: str, graph_path: str = None, simplify_network: bool = False,
-                     remove_isolated_nodes: bool = False) -> nx.MultiDiGraph:
+def initialize_graph(graph_path: str = None) -> nx.MultiDiGraph:
     if os.path.isfile(graph_path):
         print("Network file already exists. Loading the network data... ")
         graph = ox.load_graphml(graph_path)
         print("Network data loaded successfully.")
     else:
-        print("Network file does not exist. Downloading the network data... ")
-        graph = ox.graph_from_place(places[0], network_type=network_type)
-
-        if len(places) > 1:
-            for place in places:
-                grp = ox.graph_from_place(place, network_type=network_type)
-                graph = nx.compose(graph, grp)
-
-        # OSM data are sometime incomplete so we use the speed module of osmnx to add missing edge speeds and travel times
-        graph = ox.add_edge_speeds(graph)
-        graph = ox.add_edge_travel_times(graph)
-
-        # Simplify the graph by consolidating intersections
-        if simplify_network:
-            G_proj = ox.project_graph(graph)
-            G_cons = ox.consolidate_intersections(G_proj, rebuild_graph=True, tolerance=15, dead_ends=True)
-            graph = ox.project_graph(G_cons, to_crs='epsg:4326')
-
-        # Remove isolated nodes
-        if remove_isolated_nodes:
-            graph.remove_nodes_from(list(nx.isolates(graph)))
-
-        ox.save_graphml(graph, graph_path)
-        print("Network data downloaded and saved successfully.")
+        # Raise an error if the graph file does not exist
+        raise FileNotFoundError("Network file does not exist. Please check the file path.")
 
     return graph
 
@@ -176,7 +151,7 @@ def schedule_request(start_time: int, end_time: int, start_location: Station, en
         global schedule_buffer
         schedule_buffer.append(trip)
         logging.info("Trip scheduled: %s", trip)
-        print("Trip scheduled: ", trip)
+        # print("Trip scheduled: ", trip)
         return True
 
     global failures
@@ -223,17 +198,17 @@ def simulate_environment(time_interval: int, station_dict: dict, request_buffer:
         - stations (list): A list of Station objects.
         - request_simulations (pd.DataFrame): A DataFrame containing the simulated request times for each station pair.
     """
-    for t in range(0, time_interval):
+    for t in tqdm(range(0, time_interval), desc="Simulating Environment"):
         event_scheduler(t, station_dict, request_buffer[t], G)
 
 
 def main():
     ox.settings.use_cache = True
-    logging.basicConfig(filename='trip_output.log', level=logging.INFO)
+    logging.basicConfig(filename='trip_output.log', level=logging.INFO, filemode='w')
 
     # Initialize the graph
     print("Initializing the graph... ")
-    graph = initialize_graph(params['place'], params['network_type'], params['data_path'] + params['graph_file'], remove_isolated_nodes=True)
+    graph = initialize_graph(params['data_path'] + params['graph_file'])
 
     plot_graph(graph)
 
