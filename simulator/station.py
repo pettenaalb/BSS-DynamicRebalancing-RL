@@ -2,7 +2,7 @@ import simulator.bike as Bike
 
 class Station:
     def __init__(self, station_id: int, lat: float, lon: float, name: str = None, capacity: int = 1000,
-                 bikes: [Bike] = None, request_rate: float = 0.0):
+                 bikes: {Bike} = None, request_rate: float = 0.0):
         """
         Initialize a Station object.
 
@@ -20,7 +20,7 @@ class Station:
         self.lat = lat
         self.lon = lon
         self.capacity = capacity
-        self.bikes = bikes if bikes is not None else []
+        self.bikes = bikes if bikes is not None else {}
         self.request_rate = request_rate
 
     def __str__(self):
@@ -32,7 +32,7 @@ class Station:
         """
         return f"Station {self.station_id}: ({self.lat}, {self.lon})"
 
-    def set_bikes(self, bikes):
+    def set_bikes(self, bikes: {Bike}):
         """
         Set the list of bikes at the station.
 
@@ -41,7 +41,7 @@ class Station:
         """
         self.bikes = bikes
 
-    def set_request_rate(self, request_rate):
+    def set_request_rate(self, request_rate: float):
         """
         Set the request rate of the station.
 
@@ -50,7 +50,7 @@ class Station:
         """
         self.request_rate = request_rate
 
-    def set_capacity(self, capacity):
+    def set_capacity(self, capacity: int):
         """
         Set the capacity of the station.
 
@@ -59,7 +59,7 @@ class Station:
         """
         self.capacity = capacity
 
-    def unlock_bike(self):
+    def unlock_bike(self) -> Bike:
         """
         Unlock a bike from the station.
 
@@ -67,7 +67,8 @@ class Station:
         Bike: The bike unlocked from the station.
         """
         if len(self.bikes) > 0:
-            return self.bikes.pop()
+            bike_id = next(iter(self.bikes))
+            return self.bikes.pop(bike_id)
         else:
             raise ValueError("Station is empty. Cannot unlock bike.")
 
@@ -79,11 +80,11 @@ class Station:
         bike (Bike): The bike to be locked at the station.
         """
         if len(self.bikes) < self.capacity:
-            self.bikes.append(bike)
+            self.bikes[bike.get_bike_id()] = bike
         else:
             raise ValueError("Station is full. Cannot lock bike.")
 
-    def get_station_id(self):
+    def get_station_id(self) -> int:
         """
         Get the ID of the station.
 
@@ -92,7 +93,7 @@ class Station:
         """
         return self.station_id
 
-    def get_name(self):
+    def get_name(self) -> str:
         """
         Get the name of the station.
 
@@ -101,7 +102,7 @@ class Station:
         """
         return self.name
 
-    def get_coordinates(self):
+    def get_coordinates(self) -> (float, float):
         """
         Get the coordinates of the station.
 
@@ -110,7 +111,7 @@ class Station:
         """
         return self.lat, self.lon
 
-    def get_bikes(self):
+    def get_bikes(self) -> {Bike}:
         """
         Get the list of bikes at the station.
 
@@ -119,7 +120,7 @@ class Station:
         """
         return self.bikes
 
-    def get_request_rate(self):
+    def get_request_rate(self) -> float:
         """
         Get the request rate of the station.
 

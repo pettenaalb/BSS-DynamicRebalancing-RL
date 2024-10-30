@@ -1,5 +1,6 @@
 from station import Station
 from bike import Bike
+from utils import convert_seconds_to_hours_minutes
 
 class Trip:
 
@@ -30,7 +31,8 @@ class Trip:
         """
         Return a string representation of the Trip object.
         """
-        return f"Trip {self.trip_id}: {self.start_location} to {self.end_location} - Bike {self.bike.bike_id} - Time: {self.start_time} to {self.end_time}"
+        return (f"Trip {self.trip_id}: {self.start_location} to {self.end_location} - Bike {self.bike.bike_id} "
+                f"- Time: {convert_seconds_to_hours_minutes(self.start_time)} to {convert_seconds_to_hours_minutes(self.end_time)}")
 
     def get_trip_id(self):
         return self.trip_id

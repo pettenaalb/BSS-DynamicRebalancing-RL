@@ -6,10 +6,11 @@ import networkx as nx
 from geopy.distance import geodesic
 from tqdm import tqdm
 
+from simulator.utils import plot_graph
 
 params = {
     'place': ["Cambridge, Massachusetts, USA"],
-    'network_type': 'drive',
+    'network_type': 'bike',
 
     'data_path': "data/",
     'graph_file': "cambridge_network.graphml",
@@ -18,6 +19,41 @@ params = {
 
     'time_duration': [31*24*3600]
 }
+
+
+def initialize_graph(places: [str], network_type: str, graph_path: str = None, simplify_network: bool = False,
+                     remove_isolated_nodes: bool = False) -> nx.MultiDiGraph:
+    if os.path.isfile(graph_path):
+        print("Network file already exists. Loading the network data... ")
+        graph = ox.load_graphml(graph_path)
+        print("Network data loaded successfully.")
+    else:
+        print("Network file does not exist. Downloading the network data... ")
+        graph = ox.graph_from_place(places[0], network_type=network_type)
+
+        if len(places) > 1:
+            for place in places:
+                grp = ox.graph_from_place(place, network_type=network_type)
+                graph = nx.compose(graph, grp)
+
+        # OSM data are sometime incomplete so we use the speed module of osmnx to add missing edge speeds and travel times
+        graph = ox.add_edge_speeds(graph)
+        graph = ox.add_edge_travel_times(graph)
+
+        # Simplify the graph by consolidating intersections
+        if simplify_network:
+            G_proj = ox.project_graph(graph)
+            G_cons = ox.consolidate_intersections(G_proj, rebuild_graph=True, tolerance=15, dead_ends=True)
+            graph = ox.project_graph(G_cons, to_crs='epsg:4326')
+
+        # Remove isolated nodes
+        if remove_isolated_nodes:
+            graph.remove_nodes_from(list(nx.isolates(graph)))
+
+        ox.save_graphml(graph, graph_path)
+        print("Network data downloaded and saved successfully.")
+
+    return graph
 
 
 def maximum_distance_between_points(G: nx.MultiDiGraph) -> int:
@@ -168,23 +204,12 @@ def initialize_rate_matrix(G: nx.MultiDiGraph, rate_df: pd.DataFrame) -> pd.Data
 
 # Example usage
 def main():
-    if os.path.isfile(params['data_path'] + params['graph_file']):
-        print("Network file already exists. Loading the network data... ")
-        graph = ox.load_graphml(params['data_path'] + params['graph_file'])
-        print("Network data loaded successfully.")
-    else:
-        print("Network file does not exist. Downloading the network data... ")
-        graph = ox.graph_from_place(params['place'][0], network_type=params['network_type'])
-        if len(params['place']) > 1:
-            for place in params['place']:
-                grp = ox.graph_from_place(place, network_type=params['network_type'])
-                graph = nx.compose(graph, grp)
-        ox.save_graphml(graph, params['data_path'] + params['graph_file'])
-        print("Network data downloaded and saved successfully.")
+    # Initialize the graph
+    print("Initializing the graph... ")
+    graph = initialize_graph(params['place'], params['network_type'], params['data_path'] + params['graph_file'],
+                             remove_isolated_nodes=True, simplify_network=True)
 
-    # Simplify the graph by consolidating intersections
-    # G_proj = ox.project_graph(graph)
-    # graph = ox.consolidate_intersections(G_proj, rebuild_graph=True, tolerance=15, dead_ends=False)
+    plot_graph(graph)
 
     for month, time_duration in zip(params['month'], params['time_duration']):
         print('\nProcessing data for ' + str(params['year']) + '-' + str(month).zfill(2) + '...')

@@ -57,7 +57,7 @@ class Bike:
         """
         self.battery = battery
 
-    def get_station(self):
+    def get_station(self) -> Station:
         """
         Get the station where the bike is located.
 
@@ -66,7 +66,7 @@ class Bike:
         """
         return self.stn
 
-    def get_battery(self):
+    def get_battery(self) -> float:
         """
         Get the battery level of the bike.
 
@@ -75,7 +75,7 @@ class Bike:
         """
         return self.battery
 
-    def get_bike_id(self):
+    def get_bike_id(self) -> int:
         """
         Get the ID of the bike.
 
@@ -84,7 +84,7 @@ class Bike:
         """
         return self.bike_id
 
-    def get_availability(self):
+    def get_availability(self) -> bool:
         """
         Get the availability status of the bike.
 

@@ -1,35 +1,72 @@
 import os
 import random
+import logging
 
 import osmnx as ox
 import networkx as nx
 import pandas as pd
-from matplotlib import pyplot as plt
 
 from tqdm import tqdm
-from utils import poisson_simulation
+
 from station import Station
 from bike import Bike
 from trip import Trip
+from utils import generate_poisson_events, truncated_gaussian_speed, plot_graph
 
 params = {
     'place': ["Cambridge, Massachusetts, USA"],
-    'network_type': 'drive',
+    'network_type': 'bike',
 
     'data_path': "../data/",
     'graph_file': "cambridge_network.graphml",
     'year': 2022,
     'month': 1,
 
-    'time_interval': 3600   # 1 hour
+    'time_interval': 3600*24   # 1 hour
 }
 
-system_bikes = []
+system_bikes = {}
 schedule_buffer = []
 failures = 0
+failures_from_path = 0
 
 
-def initialize_bikes(stn: Station, n: int = 0) -> list:
+def initialize_graph(places: [str], network_type: str, graph_path: str = None, simplify_network: bool = False,
+                     remove_isolated_nodes: bool = False) -> nx.MultiDiGraph:
+    if os.path.isfile(graph_path):
+        print("Network file already exists. Loading the network data... ")
+        graph = ox.load_graphml(graph_path)
+        print("Network data loaded successfully.")
+    else:
+        print("Network file does not exist. Downloading the network data... ")
+        graph = ox.graph_from_place(places[0], network_type=network_type)
+
+        if len(places) > 1:
+            for place in places:
+                grp = ox.graph_from_place(place, network_type=network_type)
+                graph = nx.compose(graph, grp)
+
+        # OSM data are sometime incomplete so we use the speed module of osmnx to add missing edge speeds and travel times
+        graph = ox.add_edge_speeds(graph)
+        graph = ox.add_edge_travel_times(graph)
+
+        # Simplify the graph by consolidating intersections
+        if simplify_network:
+            G_proj = ox.project_graph(graph)
+            G_cons = ox.consolidate_intersections(G_proj, rebuild_graph=True, tolerance=15, dead_ends=True)
+            graph = ox.project_graph(G_cons, to_crs='epsg:4326')
+
+        # Remove isolated nodes
+        if remove_isolated_nodes:
+            graph.remove_nodes_from(list(nx.isolates(graph)))
+
+        ox.save_graphml(graph, graph_path)
+        print("Network data downloaded and saved successfully.")
+
+    return graph
+
+
+def initialize_bikes(stn: Station, n: int = 0) -> dict:
     """
     Initialize a list of bikes at a station.
 
@@ -38,15 +75,13 @@ def initialize_bikes(stn: Station, n: int = 0) -> list:
         - n (int): The number of bikes to initialize. Default is 0.
 
     Returns:
-        - list: A list of Bike objects at the station.
+        - dict: A dictionary containing the bikes at the station.
     """
-    bikes = []
-    for i in range(n):
-        bikes.append(Bike(stn))
+    bikes = {f"bike_{i}": Bike(stn=stn) for i in range(n)}
     return bikes
 
 
-def initialize_stations(G: nx.MultiDiGraph) -> list:
+def initialize_stations(G: nx.MultiDiGraph) -> dict:
     """
     Initialize a list of stations based on the nodes of the graph.
 
@@ -54,24 +89,25 @@ def initialize_stations(G: nx.MultiDiGraph) -> list:
         - G (nx.MultiDiGraph): The graph representing the road network.
 
     Returns:
-        - list: A list of Station objects.
+        - dict: A dictionary containing the stations in the network.
     """
 
-    gdf_nodes, gdf_edges = ox.graph_to_gdfs(G)
+    gdf_nodes = ox.graph_to_gdfs(G, edges=False)
 
-    stations = []
+    stations = {}
 
     for index, row in gdf_nodes.iterrows():
-        stations.append(Station(index, row["y"], row["x"]))
-        bikes = initialize_bikes(stations[-1], random.randint(5, 10))
+        station = Station(index, row["y"], row["x"])
+        bikes = initialize_bikes(station, random.randint(0, 5))
         global system_bikes
-        system_bikes.extend(bikes)
-        stations[-1].set_bikes(bikes)
+        system_bikes.update(bikes)
+        station.set_bikes(bikes)
+        stations[index] = station
 
     return stations
 
 
-def simulate_requests(time_interval: int, rate_matrix: pd.DataFrame) -> pd.DataFrame:
+def simulate_requests(time_interval: int, rate_matrix: pd.DataFrame) -> list[tuple[int, int]]:
     """
     Simulate bike requests between stations based on the rate matrix.
 
@@ -81,9 +117,8 @@ def simulate_requests(time_interval: int, rate_matrix: pd.DataFrame) -> pd.DataF
     Returns:
         - pd.DataFrame: A DataFrame containing the simulated request times for each station pair.
     """
+    event_buffer = [(0, 0)] * time_interval
     indices = rate_matrix.index.tolist()
-    request_simulations = pd.DataFrame([[[] for _ in range(len(indices))] for _ in range(len(indices))],
-                                       index=indices, columns=indices)
 
     tbar = tqdm(total=len(indices) ** 2, desc="Simulating Requests")
 
@@ -91,14 +126,34 @@ def simulate_requests(time_interval: int, rate_matrix: pd.DataFrame) -> pd.DataF
         for j in indices:
             rate = rate_matrix.at[i, j]
             if rate != 0:
-                _, event_times, _ = poisson_simulation(rate, time_interval)
-                request_simulations.at[i, j] = event_times
-            else:
-                request_simulations.at[i, j] = None
+                event_times = generate_poisson_events(rate, time_interval)
+                for event_time in event_times:
+                    event_buffer[event_time] = (i, j)
 
             tbar.update(1)
 
-    return request_simulations
+    return event_buffer
+
+
+def compute_bike_travel_time(G: nx.MultiDiGraph, start_node: int, end_node: int, velocity_kmh: int = 15) -> int:
+    """
+    Compute the travel time between two nodes in the graph.
+
+    Parameters:
+        - G (nx.MultiDiGraph): The graph representing the road network.
+        - start_node (int): The starting node of the trip.
+        - end_node (int): The ending node of the trip.
+        - velocity_kmh (int): The velocity of the bike in km/h. Default is 15 km/h.
+
+    Returns:
+        - int: The travel time in seconds.
+    """
+    G_undirected = G.to_undirected()
+    velocity_mps = velocity_kmh / 3.6
+    trip_distance_meters = nx.shortest_path_length(G_undirected, start_node, end_node, weight='length')
+    travel_time_seconds = int(trip_distance_meters / velocity_mps)
+
+    return travel_time_seconds
 
 
 def schedule_request(start_time: int, end_time: int, start_location: Station, end_location: Station) -> bool:
@@ -120,6 +175,7 @@ def schedule_request(start_time: int, end_time: int, start_location: Station, en
         trip = Trip(start_time, end_time, start_location, end_location, bike)
         global schedule_buffer
         schedule_buffer.append(trip)
+        logging.info("Trip scheduled: %s", trip)
         print("Trip scheduled: ", trip)
         return True
 
@@ -128,7 +184,7 @@ def schedule_request(start_time: int, end_time: int, start_location: Station, en
     return False
 
 
-def event_scheduler(time: int, stations: list, request_simulations: pd.DataFrame):
+def event_scheduler(time: int, station_dict: dict, request: tuple[int, int], G: nx.MultiDiGraph):
     """
     Schedule events based on the request simulations.
 
@@ -137,29 +193,28 @@ def event_scheduler(time: int, stations: list, request_simulations: pd.DataFrame
         - stations (list): A list of Station objects.
         - request_simulations (pd.DataFrame): A DataFrame containing the simulated request times for each station pair.
     """
-    tbar = tqdm(total=len(stations) ** 2, desc="Processing Events")
+    if request != (0,0):
+        # Schedule a trip if a request occurs
+        trip_duration = compute_bike_travel_time(G, request[0], request[1], velocity_kmh=truncated_gaussian_speed())
+        schedule_request(time, time + trip_duration, station_dict.get(request[0]), station_dict.get(request[1]))
 
-    # Check for requests
-    for i, start_station in enumerate(stations):
-        for j, end_station in enumerate(stations):
-            event_times = request_simulations.at[start_station.get_station_id(), end_station.get_station_id()]
-            if event_times is not None:
-                if time in event_times:
-                    # Schedule a trip if a request occurs, with a random trip duration between 5 and 15 minutes
-                    trip_duration = random.randint(5, 15) * 60
-                    schedule_request(time, time + trip_duration, start_station, end_station)
+    trips_to_remove = []
 
     # Drop finished trips
     global schedule_buffer
     for trip in schedule_buffer:
-        if trip.get_end_time() <= time:
+        if trip.get_end_time() < time:
             bike = trip.get_bike()
             bike.set_availability(True)
             end_location = trip.get_end_location()
             end_location.lock_bike(bike)
-            schedule_buffer.remove(trip)
+            trips_to_remove.append(trip)
 
-def simulate_environment(time_interval: int, stations: list, request_simulations: pd.DataFrame):
+    # Remove finished trips from the schedule buffer
+    for trip in trips_to_remove:
+        schedule_buffer.remove(trip)
+
+def simulate_environment(time_interval: int, station_dict: dict, request_buffer: list[tuple[int, int]], G: nx.MultiDiGraph):
     """
     Simulate the environment for a given time interval.
 
@@ -168,41 +223,19 @@ def simulate_environment(time_interval: int, stations: list, request_simulations
         - stations (list): A list of Station objects.
         - request_simulations (pd.DataFrame): A DataFrame containing the simulated request times for each station pair.
     """
-    for t in tqdm(range(0, time_interval), desc="Simulating Environment"):
-        event_scheduler(t, stations, request_simulations)
-
-
-def plot_poisson_process(data, index):
-    """Plot the Poisson process for a given list."""
-    plt.plot(data, marker='o', linestyle='-', label=f'Process {index}')
-    plt.title(f'Poisson Process {index}')
-    plt.xlabel('Time')
-    plt.ylabel('Number of Events')
-    plt.legend()
-    plt.grid()
-    plt.show()
+    for t in range(0, time_interval):
+        event_scheduler(t, station_dict, request_buffer[t], G)
 
 
 def main():
     ox.settings.use_cache = True
+    logging.basicConfig(filename='trip_output.log', level=logging.INFO)
 
-    if os.path.isfile(params['data_path'] + params['graph_file']):
-        print("Network file already exists. Loading the network data... ")
-        graph = ox.load_graphml(params['data_path'] + params['graph_file'])
-        print("Network data loaded successfully.")
-    else:
-        print("Network file does not exist. Downloading the network data... ")
-        graph = ox.graph_from_place(params['place'][0], network_type=params['network_type'])
-        if len(params['place']) > 1:
-            for place in params['place']:
-                grp = ox.graph_from_place(place, network_type=params['network_type'])
-                graph = nx.compose(graph, grp)
-        ox.save_graphml(graph, params['data_path'] + params['graph_file'])
-        print("Network data downloaded and saved successfully.")
+    # Initialize the graph
+    print("Initializing the graph... ")
+    graph = initialize_graph(params['place'], params['network_type'], params['data_path'] + params['graph_file'], remove_isolated_nodes=True)
 
-    # Simplify the graph by consolidating intersections
-    # G_proj = ox.project_graph(graph)
-    # graph = ox.consolidate_intersections(G_proj, rebuild_graph=True, tolerance=15, dead_ends=False)
+    plot_graph(graph)
 
     # Initialize stations
     print("Initializing stations... ")
@@ -218,17 +251,15 @@ def main():
 
     # Simulate requests
     print("Simulating requests... ")
-    request_simulations = simulate_requests(params['time_interval'], rate_matrix)
-
-    # rt = pd.read_csv(params['data_path'] + "rates/" + str(params['year']) + str(params['month']).zfill(2) + '-poisson-rates.csv')
-    #
-    # print(rate_matrix.at[rt['start station id'][0], rt['end station id'][0]])
-    # req_list = request_simulations.at[rt['start station id'][0], rt['end station id'][0]]
-    # print(req_list)
+    request_buffer = simulate_requests(params['time_interval'], rate_matrix)
 
     # Simulate the environment
     print("Simulating the environment... ")
-    simulate_environment(params['time_interval'], stations, request_simulations)
+    simulate_environment(params['time_interval'], stations, request_buffer, graph)
+
+    print("Total number of failures: ", failures)
+
+    print("Simulation completed.")
 
 
 if __name__ == '__main__':
