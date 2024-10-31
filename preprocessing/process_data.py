@@ -2,11 +2,13 @@ import os
 import pandas as pd
 import osmnx as ox
 import networkx as nx
+import numpy as np
+import GPy
 
 from geopy.distance import geodesic, great_circle
 from tqdm import tqdm
 
-from simulator.utils import plot_graph
+from simulator.utils import plot_graph_with_colored_nodes
 
 params = {
     'place': ["Cambridge, Massachusetts, USA",
@@ -22,14 +24,26 @@ params = {
 }
 
 
-def find_nearby_nodes(graph, target_node, radius_meters):
-    """Find all nodes within a specified radius around a given node in the graph."""
+def find_nearby_nodes(graph: nx.MultiDiGraph, target_node: int, radius_meters: float) -> list[int]:
+    """
+    Find nearby nodes within a specified radius around the target node.
+
+    Parameters:
+        - graph (nx.MultiDiGraph): The graph representing the road network.
+        - target_node (int): The target node to find nearby nodes around.
+        - radius_meters (float): The radius in meters within which to find nearby nodes.
+
+    Returns:
+        - list: A list of node IDs that are within the specified radius around the target
+    """
+    # Check if the target node is in the graph
     if target_node not in graph:
         raise ValueError(f"Node {target_node} is not in the graph.")
 
     target_coords = (graph.nodes[target_node]['y'], graph.nodes[target_node]['x'])
     nearby_nodes = []
 
+    # Find nearby nodes within the specified radius
     for node in graph.nodes:
         if node != target_node:
             node_coords = (graph.nodes[node]['y'], graph.nodes[node]['x'])
@@ -40,25 +54,28 @@ def find_nearby_nodes(graph, target_node, radius_meters):
 
     return nearby_nodes
 
-def connect_disconnected_neighbors(graph, radius_meters):
+
+def connect_disconnected_neighbors(graph: nx.MultiDiGraph, radius_meters: int):
     """
-    Iterates through all nodes in the graph and connects neighboring nodes
-    that cannot be reached by a path, based on the specified radius.
+    Connect disconnected nodes in the graph by adding edges between them.
 
     Parameters:
-        - graph: The graph containing the nodes.
-        - radius_meters: The radius in meters within which to find nearby nodes.
+        - graph (nx.MultiDiGraph): The graph representing the road network.
+        - radius_meters (int): The radius in meters within which to connect disconnected nodes.
     """
 
     tbar = tqdm(total=len(graph.nodes), desc="Connecting disconnected nodes")
 
     for node in graph.nodes:
+        # Check if the node has valid coordinates
         if 'y' not in graph.nodes[node] or 'x' not in graph.nodes[node]:
             print(f"Node {node} does not have valid coordinates.")
-            continue  # Skip nodes without valid coordinates
+            continue
 
+        # Find nearby nodes within the specified radius
         nearby_nodes = find_nearby_nodes(graph, node, radius_meters)
 
+        # Add an edge between the node and its neighbors if they are not already connected
         for neighbor in nearby_nodes:
             if not nx.has_path(graph, node, neighbor):
                 node_coords = (graph.nodes[node]['y'], graph.nodes[node]['x'])
@@ -79,16 +96,32 @@ def connect_disconnected_neighbors(graph, radius_meters):
 
 def initialize_graph(places: [str], network_type: str, graph_path: str = None, simplify_network: bool = False,
                      remove_isolated_nodes: bool = False) -> nx.MultiDiGraph:
-    if os.path.isfile(""):
+    """
+    Initialize the graph representing the road network.
+
+    Parameters:
+        - places (list): List of places to download the road network data.
+        - network_type (str): Type of network to download.
+        - graph_path (str): Path to save the downloaded graph data.
+        - simplify_network (bool): Whether to simplify the network by consolidating intersections.
+        - remove_isolated_nodes (bool): Whether to remove isolated nodes from the network.
+
+    Returns:
+        - nx.MultiDiGraph: The graph representing the road network.
+    """
+    if os.path.isfile(graph_path):
+        # Load the network data if the file already exists
         print("Network file already exists. Loading the network data... ")
         graph = ox.load_graphml(graph_path)
         print("Network data loaded successfully.")
     else:
+        # Download the network data if the file does not exist
         print("Network file does not exist. Downloading the network data... ")
         graph = ox.graph_from_place(places[0], network_type=network_type)
         graph = ox.add_edge_speeds(graph)
         graph = ox.add_edge_travel_times(graph)
 
+        # Download the network data for additional places if specified and compose the graphs
         if len(places) > 1:
             for index in range(1, len(places)):
                 grp = ox.graph_from_place(places[index], network_type=network_type)
@@ -96,7 +129,6 @@ def initialize_graph(places: [str], network_type: str, graph_path: str = None, s
                 grp = ox.add_edge_travel_times(grp)
                 graph = nx.compose(graph, grp)
                 connect_disconnected_neighbors(graph, radius_meters=100)
-
 
         # Simplify the graph by consolidating intersections
         if simplify_network:
@@ -251,6 +283,7 @@ def initialize_rate_matrix(G: nx.MultiDiGraph, rate_df: pd.DataFrame) -> pd.Data
     # Initialize values to zero
     df = df.fillna(0)
 
+    # Fill the rate matrix with the data rates
     for data_rates_index, data_rates_row in tqdm(rate_df.iterrows(), total=rate_df.shape[0], desc="Processing Rates"):
         i = data_rates_row['start station id']
         j = data_rates_row['end station id']
@@ -260,6 +293,54 @@ def initialize_rate_matrix(G: nx.MultiDiGraph, rate_df: pd.DataFrame) -> pd.Data
     return df
 
 
+def interpolate_rates_with_gaussian_process(G: nx.MultiDiGraph, rate_matrix: pd.DataFrame) -> pd.DataFrame:
+    """
+    Interpolate the rates using Gaussian Process Regression.
+
+    Parameters:
+        - rate_matrix (pd.DataFrame): The rate matrix containing the rates.
+
+    Returns:
+        - pd.DataFrame: The rate matrix with interpolated values.
+    """
+    # Extract the coordinates of the nodes
+    rate_df = rate_matrix.copy()
+    node_ids = rate_df.index.values
+    coordinates = np.array([[G.nodes[node_id]['x'], G.nodes[node_id]['y']] for node_id in node_ids])
+
+    tbar = tqdm(total=rate_df.shape[1], desc="Interpolating Rates")
+
+    # Iterate over each column (end station)
+    for end_station_idx in range(1, rate_df.shape[1]):
+        # Extract the column corresponding to the end station
+        rates_for_end_station = rate_df.iloc[:, end_station_idx].values
+        non_zero_indices = np.argwhere(rates_for_end_station > 0)
+        non_zero_rates = rates_for_end_station[non_zero_indices]
+
+        # Prepare training data
+        if len(non_zero_rates) > 0:  # Proceed only if there are non-zero rates
+            X_train = coordinates[non_zero_indices[:, 0]]
+            y_train = non_zero_rates.reshape(-1, 1)  # Reshape to be a column vector
+
+            # Create and fit the Gaussian Process model
+            # print(f"Fitting the Gaussian Process model for end station index {end_station_idx}... ")
+            kernel = GPy.kern.RBF(input_dim=2)  # Radial Basis Function (RBF) kernel
+            gp_model = GPy.models.GPRegression(X_train, y_train, kernel)
+            gp_model.optimize()
+
+            # Predict using the Gaussian process
+            predicted_rates, _ = gp_model.predict(coordinates)
+
+            # Fill the predicted rates back into the original matrix for the current column
+            rate_df.iloc[:, end_station_idx] = predicted_rates.flatten()
+
+        tbar.update(1)
+
+    rate_df.reset_index(drop=True, inplace=True)
+
+    return rate_df
+
+
 # Example usage
 def main():
     # Initialize the graph
@@ -267,40 +348,55 @@ def main():
     graph = initialize_graph(params['place'], params['network_type'], params['data_path'] + params['graph_file'],
                              remove_isolated_nodes=True, simplify_network=True)
 
-    plot_graph(graph)
+    # plot_graph(graph)
 
     for month, time_duration in zip(params['month'], params['time_duration']):
         print('\nProcessing data for ' + str(params['year']) + '-' + str(month).zfill(2) + '...')
-        # Load the trip data
-        print("Loading the trip data... ")
-        trip_df = pd.read_csv(params['data_path'] + "trips/" + str(params['year']) + str(month).zfill(2) + '-bluebikes-tripdata.csv')
+        if os.path.isfile(params['data_path'] + "matrices/" + str(params['year']) + str(month).zfill(2) + '-rate-matrix.csv'):
+            print("Poisson rates already exist. Reading the rate matrix... ")
+            rate_matrix = pd.read_csv(params['data_path'] + "matrices/" + str(params['year']) + str(month).zfill(2) + '-rate-matrix.csv')
+        else:
+            # Load the trip data
+            print("Loading the trip data... ")
+            trip_df = pd.read_csv(params['data_path'] + "trips/" + str(params['year']) + str(month).zfill(2) + '-bluebikes-tripdata.csv')
 
-        # Compute the rates for each station pair
-        print("Computing the Poisson request rates... ")
-        poisson_rates_df = compute_poisson_request_rates(trip_df, total_time_seconds=time_duration)
+            # Compute the rates for each station pair
+            print("Computing the Poisson request rates... ")
+            poisson_rates_df = compute_poisson_request_rates(trip_df, total_time_seconds=time_duration)
 
-        # Transform the trip data to match the graph
-        print("Transforming the trip data... ")
-        poisson_rates_df = map_trip_to_graph_node(graph, poisson_rates_df)
+            # Transform the trip data to match the graph
+            print("Transforming the trip data... ")
+            poisson_rates_df = map_trip_to_graph_node(graph, poisson_rates_df)
 
-        # Save the Poisson rates to a CSV file
-        print("Saving the Poisson rates to a CSV file... ")
-        poisson_rates_df.to_csv(params['data_path'] + "rates/" + str(params['year']) + str(month).zfill(2) + '-poisson-rates.csv', index=False)
+            # Save the Poisson rates to a CSV file
+            print("Saving the Poisson rates to a CSV file... ")
+            poisson_rates_df.to_csv(params['data_path'] + "rates/" + str(params['year']) + str(month).zfill(2) + '-poisson-rates.csv', index=False)
 
-        # Load the Poisson rates, uncomment the above code to generate the rates
-        # print("Loading the Poisson rates... ")
-        # poisson_rates_df = pd.read_csv(params['data_path'] + "rates/" + str(params['year']) + str(month).zfill(2) + '-poisson-rates.csv')
+            # Load the Poisson rates, uncomment the above code to generate the rates
+            # print("Loading the Poisson rates... ")
+            # poisson_rates_df = pd.read_csv(params['data_path'] + "rates/" + str(params['year']) + str(month).zfill(2) + '-poisson-rates.csv')
 
-        # Initialize the rate matrix
-        print("Initializing the rate matrix... ")
-        rate_matrix = initialize_rate_matrix(graph, poisson_rates_df)
+            # Initialize the rate matrix
+            print("Initializing the rate matrix... ")
+            rate_matrix = initialize_rate_matrix(graph, poisson_rates_df)
 
-        # Save the rate matrix to a CSV file
-        print("Saving the rate matrix to a CSV file... ")
-        rate_matrix.to_csv(params['data_path'] + "matrices/" + str(params['year']) + str(month).zfill(2) + '-rate-matrix.csv', index=True)
+            # Save the rate matrix to a CSV file
+            print("Saving the rate matrix to a CSV file... ")
+            rate_matrix.to_csv(params['data_path'] + "matrices/" + str(params['year']) + str(month).zfill(2) + '-rate-matrix.csv', index=True)
 
-        print("Poisson rates saved successfully.")
-        #print(poisson_rates_df)
+        # Interpolate missing rates using Gaussian Process
+        print("Interpolating missing rates using Gaussian Process... ")
+        interpolated_rate_matrix = interpolate_rates_with_gaussian_process(graph, rate_matrix)
+
+        # Save the interpolated rate matrix to a CSV file
+        print("Saving the interpolated rate matrix to a CSV file... ")
+        interpolated_rate_matrix.to_csv(params['data_path'] + "matrices/" + str(params['year']) + str(month).zfill(2) + '-interpolated-rate-matrix.csv', index=False)
+
+        print("Interpolated poisson rates saved successfully.")
+        # print(poisson_rates_df)
+
+        # Plot the graph with colored nodes based on the interpolated rates
+        plot_graph_with_colored_nodes(graph, interpolated_rate_matrix)
 
 if __name__ == '__main__':
     main()

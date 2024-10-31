@@ -218,7 +218,7 @@ def main():
 
     # Initialize the rate matrix
     print("Initializing the rate matrix...")
-    rate_matrix = pd.read_csv(params['data_path'] + "matrices/" + str(params['year']) + str(params['month']).zfill(2) + '-rate-matrix.csv', index_col=0)
+    rate_matrix = pd.read_csv(params['data_path'] + "matrices/" + str(params['year']) + str(params['month']).zfill(2) + '-interpolated-rate-matrix.csv', index_col=0)
 
     # Convert index and columns to integers
     rate_matrix.index = rate_matrix.index.astype(int)
