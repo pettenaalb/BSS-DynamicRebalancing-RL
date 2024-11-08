@@ -7,5 +7,6 @@ __pycache__/
 osmnx-examples/
 cache/
 data/
+graph_images/
 simulator/dummy_file.py
 simulator/trip_output.log

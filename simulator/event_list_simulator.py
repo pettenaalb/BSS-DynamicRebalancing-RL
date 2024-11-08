@@ -15,18 +15,21 @@ from utils import generate_poisson_events, truncated_gaussian_speed, plot_graph
 
 params = {
     'data_path': "../data/",
-    'graph_file': "cambridge_somerville_network.graphml",
-    'year': 2022,
-    'month': 1,
+    'graph_file': "cambridge_network.graphml",
     'network_type': 'bike',
 
-    'time_interval': 3600*24   # 1 hour
+    'year': 2022,
+    'month': [9, 10],
+    'day': "monday",
+    'time_slot': 2,
+    'time_interval': 3600*3   # 3 hour
 }
 
 system_bikes = {}
 schedule_buffer = []
 failures = 0
 failures_from_path = 0
+distance_matrix = pd.DataFrame()
 
 
 def initialize_graph(graph_path: str = None) -> nx.MultiDiGraph:
@@ -110,7 +113,7 @@ def simulate_requests(time_interval: int, rate_matrix: pd.DataFrame) -> list[tup
     return event_buffer
 
 
-def compute_bike_travel_time(G: nx.MultiDiGraph, start_node: int, end_node: int, velocity_kmh: int = 15) -> int:
+def compute_bike_travel_time(start_node: int, end_node: int, velocity_kmh: int = 15) -> int:
     """
     Compute the travel time between two nodes in the graph.
 
@@ -123,9 +126,9 @@ def compute_bike_travel_time(G: nx.MultiDiGraph, start_node: int, end_node: int,
     Returns:
         - int: The travel time in seconds.
     """
-    G_undirected = G.to_undirected()
     velocity_mps = velocity_kmh / 3.6
-    trip_distance_meters = nx.shortest_path_length(G_undirected, start_node, end_node, weight='length')
+    global distance_matrix
+    trip_distance_meters = distance_matrix.at[start_node, end_node]
     travel_time_seconds = int(trip_distance_meters / velocity_mps)
 
     return travel_time_seconds
@@ -151,7 +154,6 @@ def schedule_request(start_time: int, end_time: int, start_location: Station, en
         global schedule_buffer
         schedule_buffer.append(trip)
         logging.info("Trip scheduled: %s", trip)
-        # print("Trip scheduled: ", trip)
         return True
 
     global failures
@@ -159,7 +161,7 @@ def schedule_request(start_time: int, end_time: int, start_location: Station, en
     return False
 
 
-def event_scheduler(time: int, station_dict: dict, request: tuple[int, int], G: nx.MultiDiGraph):
+def event_scheduler(time: int, station_dict: dict, request: tuple[int, int]):
     """
     Schedule events based on the request simulations.
 
@@ -170,7 +172,7 @@ def event_scheduler(time: int, station_dict: dict, request: tuple[int, int], G: 
     """
     if request != (0,0):
         # Schedule a trip if a request occurs
-        trip_duration = compute_bike_travel_time(G, request[0], request[1], velocity_kmh=truncated_gaussian_speed())
+        trip_duration = compute_bike_travel_time(request[0], request[1], velocity_kmh=truncated_gaussian_speed())
         schedule_request(time, time + trip_duration, station_dict.get(request[0]), station_dict.get(request[1]))
 
     trips_to_remove = []
@@ -189,7 +191,8 @@ def event_scheduler(time: int, station_dict: dict, request: tuple[int, int], G: 
     for trip in trips_to_remove:
         schedule_buffer.remove(trip)
 
-def simulate_environment(time_interval: int, station_dict: dict, request_buffer: list[tuple[int, int]], G: nx.MultiDiGraph):
+
+def simulate_environment(time_interval: int, station_dict: dict, month: [int], day: str, time_slot: int):
     """
     Simulate the environment for a given time interval.
 
@@ -198,27 +201,12 @@ def simulate_environment(time_interval: int, station_dict: dict, request_buffer:
         - stations (list): A list of Station objects.
         - request_simulations (pd.DataFrame): A DataFrame containing the simulated request times for each station pair.
     """
-    for t in tqdm(range(0, time_interval), desc="Simulating Environment"):
-        event_scheduler(t, station_dict, request_buffer[t], G)
-
-
-def main():
-    ox.settings.use_cache = True
-    logging.basicConfig(filename='trip_output.log', level=logging.INFO, filemode='w')
-
-    # Initialize the graph
-    print("Initializing the graph... ")
-    graph = initialize_graph(params['data_path'] + params['graph_file'])
-
-    plot_graph(graph)
-
-    # Initialize stations
-    print("Initializing stations... ")
-    stations = initialize_stations(graph)
-
     # Initialize the rate matrix
     print("Initializing the rate matrix...")
-    rate_matrix = pd.read_csv(params['data_path'] + "matrices/" + str(params['year']) + str(params['month']).zfill(2) + '-interpolated-rate-matrix.csv', index_col=0)
+    mon_str = str(month[0]).zfill(2) + '-' + str(month[-1]).zfill(2)
+    matrix_path = params['data_path'] + 'matrices/' + mon_str + '/' + str(time_slot).zfill(2) + '/'
+    # rate_matrix = pd.read_csv(matrix_path + day.lower() + '-rate-matrix.csv', index_col=0)
+    rate_matrix = pd.read_csv('rescaled-interpolated-rate-matrix.csv', index_col='osmid')
 
     # Convert index and columns to integers
     rate_matrix.index = rate_matrix.index.astype(int)
@@ -228,11 +216,36 @@ def main():
     print("Simulating requests... ")
     request_buffer = simulate_requests(params['time_interval'], rate_matrix)
 
+    for t in tqdm(range(0, time_interval), desc="Simulating Environment"):
+        event_scheduler(t, station_dict, request_buffer[t])
+
+
+def main():
+    ox.settings.use_cache = True
+    logging.basicConfig(filename='trip_output.log', level=logging.INFO, filemode='w')
+
+    # Initialize distance matrix
+    global distance_matrix
+    distance_matrix = pd.read_csv(params['data_path'] + '/distance-matrix.csv', index_col=0)
+    distance_matrix.index = distance_matrix.index.astype(int)
+    distance_matrix.columns = distance_matrix.columns.astype(int)
+
+    # Initialize the graph
+    print("Initializing the graph... ")
+    graph = initialize_graph(params['data_path'] + params['graph_file'])
+
+    # plot_graph(graph)
+
+    # Initialize stations
+    print("Initializing stations... ")
+    stations = initialize_stations(graph)
+
     # Simulate the environment
     print("Simulating the environment... ")
-    simulate_environment(params['time_interval'], stations, request_buffer, graph)
+    simulate_environment(params['time_interval'], stations, params['month'], params['day'], params['time_slot'])
 
     print("Total number of failures: ", failures)
+    logging.info("Total number of failures: %s", failures)
 
     print("Simulation completed.")
 
