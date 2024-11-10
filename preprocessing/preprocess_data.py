@@ -2,12 +2,11 @@ import os
 import pandas as pd
 import osmnx as ox
 import networkx as nx
-import numpy as np
 import warnings
+import numpy as np
 
-from geopy.distance import geodesic
 from tqdm import tqdm
-from simulator.utils import count_specific_day, connect_disconnected_neighbors
+from utils import haversine, kahan_sum, count_specific_day, connect_disconnected_neighbors, is_within_graph_bounds, nodes_within_radius
 
 params = {
     'place': ["Cambridge, Massachusetts, USA"],
@@ -18,7 +17,7 @@ params = {
     'year': 2022,
     'month': [9, 10],
 
-    'day_of_week': ["Monday"],
+    'day_of_week': ["Friday"],
 }
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -132,54 +131,6 @@ def compute_poisson_rates(df: pd.DataFrame, year: int, months: [int], day_of_wee
     return rate_df
 
 
-def maximum_distance_between_points(G: nx.MultiDiGraph) -> int:
-    """
-    Compute the maximum distance between any two nodes in the graph.
-
-    Parameters:
-        - G (networkx.MultiDiGraph): The graph representing the road network.
-
-    Returns:
-        - float: The maximum distance between any two nodes in the graph.
-    """
-    max_distance = 0
-    for u, v, data in G.edges(data=True):
-        # Get coordinates of the nodes
-        u_coords = (G.nodes[u]['y'], G.nodes[u]['x'])
-        v_coords = (G.nodes[v]['y'], G.nodes[v]['x'])
-
-        # Calculate the distance between the nodes
-        distance = geodesic(u_coords, v_coords).meters
-
-        # Update maximum distance and edge if current distance is greater
-        if distance > max_distance:
-            max_distance = distance
-    return max_distance
-
-
-def is_within_graph_bounds(G: nx.MultiDiGraph, node_coords: tuple, nearest_node, threshold=500) -> bool:
-    """
-    Check if a point is within the bounds of the graph.
-
-    Parameters:
-        - G (networkx.MultiDiGraph): The graph representing the road network.
-        - lat (float): The latitude of the point.
-        - lon (float): The longitude of the point.
-        - threshold (int): The maximum distance allowed between the point and the nearest node in the graph.
-
-    Returns:
-        - bool: True if the point is within the bounds of the graph, False otherwise.
-    """
-    # Find the nearest node to the point in the graph
-    nearest_node_coords = (G.nodes[nearest_node]['y'], G.nodes[nearest_node]['x'])
-
-    # Compute the distance between the point and the nearest node
-    distance_to_nearest_node = geodesic((node_coords[0], node_coords[1]), nearest_node_coords).meters
-
-    # Check if this distance is within the acceptable threshold
-    return distance_to_nearest_node <= threshold
-
-
 def map_trip_to_graph_node(G: nx.MultiDiGraph, trip_df: pd.DataFrame) -> pd.DataFrame:
     """
     Map the start and end stations of the trips to the nearest nodes in the graph.
@@ -193,7 +144,7 @@ def map_trip_to_graph_node(G: nx.MultiDiGraph, trip_df: pd.DataFrame) -> pd.Data
     """
     dist_threshold = 100
 
-    tbar = tqdm(total=trip_df.shape[0], desc="Mapping Trips to Graph Nodes", leave=False, position=0)
+    tbar = tqdm(total=trip_df.shape[0], desc="Mapping Trips to Graph Nodes", leave=False, position=1)
 
     for index, row in trip_df.iterrows():
         # Find the nearest node for the start and end stations
@@ -270,13 +221,99 @@ def initialize_rate_matrix(G: nx.MultiDiGraph, rate_df: pd.DataFrame) -> pd.Data
     df = df.fillna(0.0)
 
     # Fill the rate matrix with the data rates
-    for data_rates_index, data_rates_row in tqdm(rate_df.iterrows(), total=rate_df.shape[0], desc="Processing Rates"):
+    for data_rates_index, data_rates_row in rate_df.iterrows():
         i = data_rates_row['start station id']
         j = data_rates_row['end station id']
         rate = data_rates_row['lambda']
         df.at[i, j] = rate
 
     return df
+
+# ----------------------------------------------------------------------------------------------------------------------
+
+def build_pmf_matrix(rate_matrix: pd.DataFrame, nearby_nodes_dict: dict[str, dict[str, tuple]], nodes_dict: dict[str, tuple]) -> pd.DataFrame:
+    rate_df = rate_matrix.copy(deep=True)
+
+    saved_row = rate_df.loc[10000, :].copy()
+    saved_col = rate_df.loc[:, 10000].copy()
+
+    rate_df = rate_df.drop(index=10000, columns=10000)
+
+    non_zero_rows = rate_df[rate_df.sum(axis=1) != 0].index.astype(int)
+
+    for row in non_zero_rows:
+        # Extract row rates
+        rates = rate_df.loc[row]
+        non_zero_nodes = rates[~rates.eq(0)].index.astype(int)
+        zero_nodes = rates[rates.eq(0)].index.astype(int)
+
+        for node_id in zero_nodes:
+            nearby_nodes = nearby_nodes_dict[node_id]
+            nearby_non_zero_nodes = {}
+            for nz_id in non_zero_nodes:
+                if nz_id in nearby_nodes:
+                    nearby_non_zero_nodes[nz_id] = nearby_nodes[nz_id]
+
+            if len(nearby_non_zero_nodes) != 0:
+                coords = nodes_dict[node_id]
+                distances = np.array([haversine(coords, nn_zn_coords) for nn_zn_coords in nearby_non_zero_nodes.values()])
+                rts = np.array([rates.loc[nn_zn_id] for nn_zn_id in nearby_non_zero_nodes])
+                num, den = 0, 0
+                for distance, rate in zip(distances, rts):
+                    num += rate/distance
+                    den += 1/distance
+                rate_df.loc[row, node_id] = num/den
+
+    zero_rows = rate_df[rate_df.sum(axis=1) == 0].index.astype(int)
+
+    for idx in zero_rows:
+        nearby_nodes = nearby_nodes_dict[idx]
+
+        nearby_non_zero_nodes = {}
+        for nz_id in non_zero_rows:
+            if nz_id in nearby_nodes:
+                nearby_non_zero_nodes[nz_id] = nearby_nodes[nz_id]
+
+        if len(nearby_non_zero_nodes) != 0:
+            coords = nodes_dict[idx]
+            distances = np.array([haversine(coords, nn_zn_coords) for nn_zn_coords in nearby_non_zero_nodes.values()])
+            num, den = pd.Series(0, index=rate_df.columns), 0
+            for distance, nn_zn_id in zip(distances, nearby_non_zero_nodes):
+                num += rate_df.loc[nn_zn_id]
+                den += 1/distance
+            rate_df.loc[idx] = num/den
+
+    for saved in [saved_row, saved_col]:
+        non_zero_nodes = saved[~saved.eq(0)].index.astype(int)
+        zero_nodes = saved[saved.eq(0)].index.astype(int)
+
+        if 10000 in non_zero_nodes:
+            non_zero_nodes = non_zero_nodes[non_zero_nodes != 10000]
+
+        if 10000 in zero_nodes:
+            zero_nodes = zero_nodes[zero_nodes != 10000]
+
+        for node_id in zero_nodes:
+            nearby_nodes = nearby_nodes_dict[node_id]
+            nearby_non_zero_nodes = {}
+            for nz_id in non_zero_nodes:
+                if nz_id in nearby_nodes:
+                    nearby_non_zero_nodes[nz_id] = nearby_nodes[nz_id]
+
+            if len(nearby_non_zero_nodes) != 0:
+                coords = nodes_dict[node_id]
+                distances = np.array([haversine(coords, nn_zn_coords) for nn_zn_coords in nearby_non_zero_nodes.values()])
+                rts = np.array([saved.loc[nn_zn_id] for nn_zn_id in nearby_non_zero_nodes])
+                num, den = 0, 0
+                for distance, rate in zip(distances, rts):
+                    num += rate/distance
+                    den += 1/distance
+                saved.loc[node_id] = num/den
+
+    rate_df.loc[10000, :] = saved_row
+    rate_df.loc[:, '10000'] = saved_col
+
+    return rate_df
 
 # ----------------------------------------------------------------------------------------------------------------------
 
@@ -288,6 +325,12 @@ def main():
     graph = initialize_graph(params['place'], params['network_type'], params['data_path'] + params['graph_file'],
                              remove_isolated_nodes=True, simplify_network=True)
 
+    nodes_gdf = ox.graph_to_gdfs(graph, edges=False)
+    nodes_dict = {node_id: (row['y'], row['x']) for node_id, row in nodes_gdf.iterrows()}
+
+    radius = 1000
+    nearby_nodes_dict = {node_id: nodes_within_radius(node_id, nodes_dict, radius) for node_id in nodes_dict}
+
     print(f'\nProcessing data for year {params["year"]} and month {params["month"]}...')
     trip_df = pd.DataFrame()
     for month in params['month']:
@@ -297,21 +340,21 @@ def main():
         else:
             print(f"Trip data file for month {month} does not exist. Skipping...")
 
-    # tbar = tqdm(total=len(params['day_of_week']) * 8, desc="Processing Data")
+    tbar = tqdm(total=len(params['day_of_week']) * 8, desc="Processing Data", position=0)
 
     for day in params['day_of_week']:
-        for timeslot in range(2, 3):
-            print(f"\nProcessing data for {day} - Time Slot {timeslot}...")
+        for timeslot in range(0, 8):
+            # print(f"Processing data for {day} - Time Slot {timeslot}...")
             # Compute the rates for each station pair
-            print("Computing Poisson rates... ")
+            # print("Computing Poisson rates... ")
             poisson_rates_df = compute_poisson_rates(trip_df, params['year'], params['month'], day, timeslot)
 
             # Transform the trip data to match the graph
-            print("Mapping trips to graph nodes... ")
+            # print('Mapping trips to graph nodes...')
             poisson_rates_df = map_trip_to_graph_node(graph, poisson_rates_df)
 
             # Save the Poisson rates to a CSV file
-            print("Saving the Poisson rates to a CSV file... ")
+            # print("Saving the Poisson rates to a CSV file...")
             mon_str = str(params['month'][0]).zfill(2) + '-' + str(params['month'][-1]).zfill(2)
             rates_path = params['data_path'] + 'rates/' + mon_str + '/' + str(timeslot).zfill(2) + '/'
             if not os.path.exists(rates_path):
@@ -320,18 +363,29 @@ def main():
             poisson_rates_df.to_csv(rates_path + day.lower() + '-poisson-rates.csv', index=False)
 
             # Initialize the rate matrix
-            print("Initializing the rate matrix... ")
+            # print("Initializing the rate matrix...")
             rate_matrix = initialize_rate_matrix(graph, poisson_rates_df)
 
             # Save the rate matrix to a CSV file
-            print("Saving the rate matrix to a CSV file... ")
+            # print("Saving the rate matrix to a CSV file...")
             matrix_path = params['data_path'] + 'matrices/' + mon_str + '/' + str(timeslot).zfill(2) + '/'
             if not os.path.exists(matrix_path):
                 os.makedirs(matrix_path)
-                print(f"Directory '{matrix_path}' created.")
+                # print(f"Directory '{matrix_path}' created.")
             rate_matrix.to_csv(matrix_path + day.lower() + '-rate-matrix.csv', index=True)
 
-            # tbar.update(1)
+            # Build PMF matrix
+            print(f"\nBuilding the PMF matrix... ", end=" ")
+            pmf_matrix = build_pmf_matrix(rate_matrix, nearby_nodes_dict, nodes_dict)
+
+            total_sum = kahan_sum(pmf_matrix.to_numpy().flatten())
+            pmf_matrix = pmf_matrix / total_sum
+
+            # Save the interpolated rate matrix to a CSV file
+            pmf_matrix.to_csv(matrix_path + day.lower() + '-pmf-matrix.csv', index=True)
+            print("done.\n")
+
+            tbar.update(1)
 
 
 if __name__ == '__main__':

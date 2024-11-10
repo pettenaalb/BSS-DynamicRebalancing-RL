@@ -5,13 +5,16 @@ import logging
 import osmnx as ox
 import networkx as nx
 import pandas as pd
+import numpy as np
 
 from tqdm import tqdm
 
 from station import Station
 from bike import Bike
 from trip import Trip
-from utils import generate_poisson_events, truncated_gaussian_speed, plot_graph
+from utils import generate_poisson_events, truncated_gaussian, kahan_sum
+
+# ----------------------------------------------------------------------------------------------------------------------
 
 params = {
     'data_path': "../data/",
@@ -20,17 +23,17 @@ params = {
 
     'year': 2022,
     'month': [9, 10],
-    'day': "monday",
+    'day': "wednesday",
     'time_slot': 2,
     'time_interval': 3600*3   # 3 hour
 }
 
 system_bikes = {}
-schedule_buffer = []
-failures = 0
-failures_from_path = 0
+outside_system_bikes = {}
 distance_matrix = pd.DataFrame()
+total_trips = 0
 
+# ----------------------------------------------------------------------------------------------------------------------
 
 def initialize_graph(graph_path: str = None) -> nx.MultiDiGraph:
     if os.path.isfile(graph_path):
@@ -82,59 +85,14 @@ def initialize_stations(G: nx.MultiDiGraph) -> dict:
         station.set_bikes(bikes)
         stations[index] = station
 
+    stations[10000] = Station(10000, 0, 0)
+
     return stations
 
+# ----------------------------------------------------------------------------------------------------------------------
 
-def simulate_requests(time_interval: int, rate_matrix: pd.DataFrame) -> list[tuple[int, int]]:
-    """
-    Simulate bike requests between stations based on the rate matrix.
-
-    Parameters:
-        - time_interval (int): The time interval for the simulation.
-
-    Returns:
-        - pd.DataFrame: A DataFrame containing the simulated request times for each station pair.
-    """
-    event_buffer = [(0, 0)] * time_interval
-    indices = rate_matrix.index.tolist()
-
-    tbar = tqdm(total=len(indices) ** 2, desc="Simulating Requests")
-
-    for i in indices:
-        for j in indices:
-            rate = rate_matrix.at[i, j]
-            if rate != 0:
-                event_times = generate_poisson_events(rate, time_interval)
-                for event_time in event_times:
-                    event_buffer[event_time] = (i, j)
-
-            tbar.update(1)
-
-    return event_buffer
-
-
-def compute_bike_travel_time(start_node: int, end_node: int, velocity_kmh: int = 15) -> int:
-    """
-    Compute the travel time between two nodes in the graph.
-
-    Parameters:
-        - G (nx.MultiDiGraph): The graph representing the road network.
-        - start_node (int): The starting node of the trip.
-        - end_node (int): The ending node of the trip.
-        - velocity_kmh (int): The velocity of the bike in km/h. Default is 15 km/h.
-
-    Returns:
-        - int: The travel time in seconds.
-    """
-    velocity_mps = velocity_kmh / 3.6
-    global distance_matrix
-    trip_distance_meters = distance_matrix.at[start_node, end_node]
-    travel_time_seconds = int(trip_distance_meters / velocity_mps)
-
-    return travel_time_seconds
-
-
-def schedule_request(start_time: int, end_time: int, start_location: Station, end_location: Station) -> bool:
+def schedule_request(start_time: int, distance: int, start_location: Station, end_location: Station,
+                     schedule_buffer: list) -> int:
     """
     Schedule a trip between two stations.
 
@@ -147,21 +105,73 @@ def schedule_request(start_time: int, end_time: int, start_location: Station, en
     Returns:
         - bool: True if the trip was scheduled successfully, False otherwise.
     """
+
     if len(start_location.get_bikes()) > 0:
-        bike = start_location.unlock_bike()
-        bike.set_availability(False)
-        trip = Trip(start_time, end_time, start_location, end_location, bike)
-        global schedule_buffer
-        schedule_buffer.append(trip)
+        bike = start_location.unlock_bike(distance=distance/1000)
+        if bike is not None:
+            bike.set_availability(False)
+            bike.set_battery(bike.get_battery() - distance/1000)
+
+            velocity_kmh = truncated_gaussian(5, 25, 15, 5)
+            velocity_mps = velocity_kmh / 3.6
+            travel_time_seconds = int(distance / velocity_mps)
+
+            trip = Trip(start_time, start_time + travel_time_seconds, start_location, end_location, bike)
+            schedule_buffer.append(trip)
+            global total_trips
+            total_trips += 1
+            logging.info("Trip scheduled: %s", trip)
+            return 0
+        else:
+            logging.warning(f"No charged bikes available from station {start_location.get_station_id()} to station {end_location.get_station_id()}")
+            return 1
+    else:
+        logging.warning(f"No bike available from station {start_location.get_station_id()} to station {end_location.get_station_id()}")
+        return 1
+
+
+def schedule_in_out_system_request(start_time: int, start_location: Station, end_location: Station, leaving: bool) -> int:
+    global system_bikes, outside_system_bikes, total_trips
+    if leaving:
+        if len(start_location.get_bikes()) > 0:
+            distance = truncated_gaussian(1, 7, 3, 1).to(float)
+            bike = start_location.unlock_bike(distance=distance)
+            if bike is not None:
+                bike.set_availability(True)
+                bike.set_battery(bike.get_battery() - distance)
+                bike.set_station(end_location)
+                system_bikes.pop(bike.get_bike_id())
+                outside_system_bikes[bike.get_bike_id()] = bike
+
+                trip = Trip(start_time, start_time, start_location, end_location, bike)
+                total_trips += 1
+                logging.info("Trip scheduled: %s", trip)
+                return 0
+            else:
+                logging.warning(f"No charged bikes available from station {start_location.get_station_id()} to outside area")
+                return 1
+        else:
+            logging.warning(f"No bike available from station {start_location.get_station_id()} to outside area")
+    else:
+        if len(outside_system_bikes) > 0:
+            bike_id = next(iter(outside_system_bikes))
+            bike = outside_system_bikes.pop(bike_id)
+            bike.set_availability(True)
+            bike.set_station(end_location)
+            end_location.lock_bike(bike)
+        else:
+            bike = Bike(stn=end_location)
+            bike.set_battery(35.0)
+            bike.set_availability(True)
+            end_location.lock_bike(bike)
+            system_bikes[bike.get_bike_id()] = bike
+
+        trip = Trip(start_time, start_time, start_location, end_location, bike)
+        total_trips += 1
         logging.info("Trip scheduled: %s", trip)
-        return True
-
-    global failures
-    failures += 1
-    return False
 
 
-def event_scheduler(time: int, station_dict: dict, request: tuple[int, int]):
+def event_scheduler(time: int, station_dict: dict, request: int, pmf: pd.DataFrame, schedule_buffer: list) -> int:
     """
     Schedule events based on the request simulations.
 
@@ -170,15 +180,22 @@ def event_scheduler(time: int, station_dict: dict, request: tuple[int, int]):
         - stations (list): A list of Station objects.
         - request_simulations (pd.DataFrame): A DataFrame containing the simulated request times for each station pair.
     """
-    if request != (0,0):
-        # Schedule a trip if a request occurs
-        trip_duration = compute_bike_travel_time(request[0], request[1], velocity_kmh=truncated_gaussian_speed())
-        schedule_request(time, time + trip_duration, station_dict.get(request[0]), station_dict.get(request[1]))
-
-    trips_to_remove = []
+    failure = 0
+    if request != 0:
+        stn_pair = np.random.choice(pmf['id'], p=pmf['value'])
+        if stn_pair[0] == 10000 and stn_pair[1] == 10000:
+            raise ValueError("Request simulation not implemented (id 100000).")
+        if stn_pair[0] == 10000:
+            failure = schedule_in_out_system_request(station_dict[stn_pair[0]], station_dict[stn_pair[1]], leaving=False)
+        elif stn_pair[1] == 10000:
+            failure = schedule_in_out_system_request(station_dict[stn_pair[0]], station_dict[stn_pair[1]], leaving=True)
+        else:
+            global distance_matrix
+            distance = distance_matrix.at[int(stn_pair[0]), int(stn_pair[1])]
+            failure = schedule_request(time, distance, station_dict.get(stn_pair[0]), station_dict.get(stn_pair[1]), schedule_buffer)
 
     # Drop finished trips
-    global schedule_buffer
+    trips_to_remove = []
     for trip in schedule_buffer:
         if trip.get_end_time() < time:
             bike = trip.get_bike()
@@ -191,8 +208,11 @@ def event_scheduler(time: int, station_dict: dict, request: tuple[int, int]):
     for trip in trips_to_remove:
         schedule_buffer.remove(trip)
 
+    return failure
 
-def simulate_environment(time_interval: int, station_dict: dict, month: [int], day: str, time_slot: int):
+# ----------------------------------------------------------------------------------------------------------------------
+
+def simulate_environment(time_interval: int, station_dict: dict, pmf: pd.DataFrame, rate: float, timeslot: int) -> int:
     """
     Simulate the environment for a given time interval.
 
@@ -201,24 +221,21 @@ def simulate_environment(time_interval: int, station_dict: dict, month: [int], d
         - stations (list): A list of Station objects.
         - request_simulations (pd.DataFrame): A DataFrame containing the simulated request times for each station pair.
     """
-    # Initialize the rate matrix
-    print("Initializing the rate matrix...")
-    mon_str = str(month[0]).zfill(2) + '-' + str(month[-1]).zfill(2)
-    matrix_path = params['data_path'] + 'matrices/' + mon_str + '/' + str(time_slot).zfill(2) + '/'
-    # rate_matrix = pd.read_csv(matrix_path + day.lower() + '-rate-matrix.csv', index_col=0)
-    rate_matrix = pd.read_csv('rescaled-interpolated-rate-matrix.csv', index_col='osmid')
-
-    # Convert index and columns to integers
-    rate_matrix.index = rate_matrix.index.astype(int)
-    rate_matrix.columns = rate_matrix.columns.astype(int)
-
     # Simulate requests
-    print("Simulating requests... ")
-    request_buffer = simulate_requests(params['time_interval'], rate_matrix)
+    event_times = generate_poisson_events(rate, time_interval)
+    event_buffer = [0] * time_interval
+    for event_time in event_times:
+        event_buffer[event_time] = 1
+
+    schedule_buffer = []
+    failures = 0
 
     for t in tqdm(range(0, time_interval), desc="Simulating Environment"):
-        event_scheduler(t, station_dict, request_buffer[t])
+        failures += event_scheduler(t + (timeslot*3 + 1)*3600, station_dict, event_buffer[t], pmf, schedule_buffer)
 
+    return failures
+
+# ----------------------------------------------------------------------------------------------------------------------
 
 def main():
     ox.settings.use_cache = True
@@ -234,18 +251,39 @@ def main():
     print("Initializing the graph... ")
     graph = initialize_graph(params['data_path'] + params['graph_file'])
 
-    # plot_graph(graph)
-
     # Initialize stations
     print("Initializing stations... ")
     stations = initialize_stations(graph)
 
+    # Initialize the rate matrix
+    mon_str = str(params['month'][0]).zfill(2) + '-' + str(params['month'][-1]).zfill(2)
+    matrix_path = params['data_path'] + 'matrices/' + mon_str + '/' + str(params['time_slot']).zfill(2) + '/'
+    pmf_matrix = pd.read_csv(matrix_path + params['day'].lower() + '-pmf-matrix.csv', index_col='osmid')
+    rate_matrix = pd.read_csv(matrix_path + params['day'].lower() + '-rate-matrix.csv', index_col='osmid')
+
+    # Convert index and columns to integers
+    pmf_matrix.index = pmf_matrix.index.astype(int)
+    pmf_matrix.columns = pmf_matrix.columns.astype(int)
+
+    pmf_matrix.loc[10000, 10000] = 0.0
+
+    # Convert into one vector
+    values = pmf_matrix.values.flatten()
+    ids = [(row, col) for row in pmf_matrix.index for col in pmf_matrix.columns]
+
+    # Compute flattened pmf and global rate
+    flattened_pmf = pd.DataFrame({'id': ids, 'value': values})
+    global_rate = kahan_sum(rate_matrix.to_numpy().flatten())
+
     # Simulate the environment
     print("Simulating the environment... ")
-    simulate_environment(params['time_interval'], stations, params['month'], params['day'], params['time_slot'])
+    failures = simulate_environment(params['time_interval'], stations, flattened_pmf, global_rate, params['time_slot'])
 
-    print("Total number of failures: ", failures)
-    logging.info("Total number of failures: %s", failures)
+    print(f"\nTotal number of trips: {total_trips}")
+    logging.info(f"Total number of trips: {total_trips}")
+
+    print(f"Total number of failures: {failures}")
+    logging.info(f"Total number of failures: {failures}")
 
     print("Simulation completed.")
 

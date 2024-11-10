@@ -59,7 +59,7 @@ class Station:
         """
         self.capacity = capacity
 
-    def unlock_bike(self) -> Bike:
+    def unlock_bike(self, distance: float = None) -> Bike:
         """
         Unlock a bike from the station.
 
@@ -67,8 +67,15 @@ class Station:
         Bike: The bike unlocked from the station.
         """
         if len(self.bikes) > 0:
-            bike_id = next(iter(self.bikes))
-            return self.bikes.pop(bike_id)
+            if distance is None:
+                bike_id = next(iter(self.bikes))
+                return self.bikes.pop(bike_id)
+            else:
+                for bike_id, bike in self.bikes.items():
+                    if bike.get_battery() > distance:
+                        return self.bikes.pop(bike_id)
+                    else:
+                        return None
         else:
             raise ValueError("Station is empty. Cannot unlock bike.")
 
