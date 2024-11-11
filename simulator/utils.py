@@ -5,6 +5,7 @@ from scipy.stats import truncnorm
 import pandas as pd
 import networkx as nx
 from matplotlib.colors import Normalize
+from math import radians, cos, sin, sqrt, atan2
 
 # ----------------------------------------------------------------------------------------------------------------------
 
@@ -17,6 +18,21 @@ def kahan_sum(arr):
         c = (t - total) - y
         total = t
     return total
+
+
+def haversine(coords1, coords2):
+    # Radius of Earth in meters
+    R = 6371000
+    lat1, lon1 = radians(coords1[0]), radians(coords1[1])
+    lat2, lon2 = radians(coords2[0]), radians(coords2[1])
+
+    d_lat = lat2 - lat1
+    d_lon = lon2 - lon1
+
+    a = sin(d_lat / 2)**2 + cos(lat1) * cos(lat2) * sin(d_lon / 2)**2
+    c = 2 * atan2(sqrt(a), sqrt(1 - a))
+
+    return R * c
 
 
 def generate_poisson_events(rate, time_duration) -> list[int]:
@@ -51,22 +67,19 @@ def truncated_gaussian(lower=5, upper=25, mean=15, std_dev=5):
     return speed
 
 
-def compute_bike_travel_time(trip_distance_meters: int, start_node: int, end_node: int, velocity_kmh: int = 15) -> int:
-    """
-    Compute the travel time between two nodes in the graph.
+def nodes_within_radius(target_node: str, nodes_dict: dict[str, tuple], radius: int) -> dict[str, tuple]:
+    # Get coordinates of the target node
+    target_coords = nodes_dict.get(target_node)
+    if not target_coords:
+        raise ValueError("Target node not found in nodes dictionary")
 
-    Parameters:
-        - G (nx.MultiDiGraph): The graph representing the road network.
-        - start_node (int): The starting node of the trip.
-        - end_node (int): The ending node of the trip.
-        - velocity_kmh (int): The velocity of the bike in km/h. Default is 15 km/h.
+    # Find all nodes within the radius and return as a dictionary
+    nearby_nodes = {
+        node_id: coords for node_id, coords in nodes_dict.items()
+        if node_id != target_node and haversine(target_coords, coords) <= radius
+    }
 
-    Returns:
-        - int: The travel time in seconds.
-    """
-
-
-    return travel_time_seconds
+    return nearby_nodes
 
 # ----------------------------------------------------------------------------------------------------------------------
 

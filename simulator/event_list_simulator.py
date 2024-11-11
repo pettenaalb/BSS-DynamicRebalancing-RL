@@ -12,7 +12,7 @@ from tqdm import tqdm
 from station import Station
 from bike import Bike
 from trip import Trip
-from utils import generate_poisson_events, truncated_gaussian, kahan_sum
+from utils import generate_poisson_events, truncated_gaussian, kahan_sum, nodes_within_radius
 
 # ----------------------------------------------------------------------------------------------------------------------
 
@@ -23,7 +23,7 @@ params = {
 
     'year': 2022,
     'month': [9, 10],
-    'day': "wednesday",
+    'day': "monday",
     'time_slot': 2,
     'time_interval': 3600*3   # 3 hour
 }
@@ -79,7 +79,7 @@ def initialize_stations(G: nx.MultiDiGraph) -> dict:
 
     for index, row in gdf_nodes.iterrows():
         station = Station(index, row["y"], row["x"])
-        bikes = initialize_bikes(station, random.randint(0, 5))
+        bikes = initialize_bikes(station, random.randint(0, 2))
         global system_bikes
         system_bikes.update(bikes)
         station.set_bikes(bikes)
@@ -91,7 +91,24 @@ def initialize_stations(G: nx.MultiDiGraph) -> dict:
 
 # ----------------------------------------------------------------------------------------------------------------------
 
-def schedule_request(start_time: int, distance: int, start_location: Station, end_location: Station, schedule_buffer: list) -> int:
+
+def set_trip(bike: Bike, start_time: int, distance: int, start_location: Station, end_location: Station, schedule_buffer: list):
+    bike.set_battery(bike.get_battery() - distance/1000)
+
+    velocity_kmh = truncated_gaussian(5, 25, 15, 5)
+    velocity_mps = velocity_kmh / 3.6
+    travel_time_seconds = int(distance / velocity_mps)
+
+    trip = Trip(start_time, start_time + travel_time_seconds, start_location, end_location, bike)
+    schedule_buffer.append(trip)
+    global total_trips
+    total_trips += 1
+    logging.info("Trip scheduled: %s", trip)
+
+
+
+def schedule_request(start_time: int, distance: int, start_location: Station, end_location: Station,
+                     schedule_buffer: list, nearby_nodes_dict: dict[str, tuple], station_dict: dict) -> int:
     """
     Schedule a trip between two stations.
 
@@ -105,36 +122,38 @@ def schedule_request(start_time: int, distance: int, start_location: Station, en
         - bool: True if the trip was scheduled successfully, False otherwise.
     """
 
+
     if len(start_location.get_bikes()) > 0:
         bike = start_location.unlock_bike()
         if bike.get_battery() > distance/1000:
-            bike.set_battery(bike.get_battery() - distance/1000)
-
-            velocity_kmh = truncated_gaussian(5, 25, 15, 5)
-            velocity_mps = velocity_kmh / 3.6
-            travel_time_seconds = int(distance / velocity_mps)
-
-            trip = Trip(start_time, start_time + travel_time_seconds, start_location, end_location, bike)
-            schedule_buffer.append(trip)
-            global total_trips
-            total_trips += 1
-            logging.info("Trip scheduled: %s", trip)
+            set_trip(bike, start_time, distance, start_location, end_location, schedule_buffer)
             return 0
         else:
             start_location.lock_bike(bike)
             logging.warning(f"No charged bikes available from station {start_location.get_station_id()} to station {end_location.get_station_id()}")
             return 1
     else:
+        # List of reordered nearby nodes based on distance matrix
+        nodes_dist_dict = {node_id: distance_matrix.at[start_location.get_station_id(), node_id] for node_id in nearby_nodes_dict}
+        sorted_nodes = {k: v for k, v in sorted(nodes_dist_dict.items(), key=lambda item: item[1])}
+
+        for node_id in sorted_nodes:
+            if len(station_dict[node_id].get_bikes()) > 0:
+                bike = station_dict[node_id].unlock_bike()
+                if bike.get_battery() > distance/1000:
+                    set_trip(bike, start_time, distance, start_location, end_location, schedule_buffer)
+                    return 0
+
         logging.warning(f"No bike available from station {start_location.get_station_id()} to station {end_location.get_station_id()}")
         return 1
 
 
 def schedule_in_out_system_request(start_time: int, start_location: Station, end_location: Station, leaving: bool,
-                                   schedule_buffer: list) -> int:
+                                   schedule_buffer: list, nearby_nodes_dict: dict[str, tuple], station_dict: dict) -> int:
     global system_bikes, total_trips
     if leaving:
         distance = truncated_gaussian(1, 7, 3, 1).to(float)
-        return schedule_request(start_time, distance, start_location, end_location, schedule_buffer)
+        return schedule_request(start_time, distance, start_location, end_location, schedule_buffer, nearby_nodes_dict, station_dict)
     else:
         if len(start_location.get_bikes()) > 0:
             bike = start_location.unlock_bike()
@@ -153,7 +172,8 @@ def schedule_in_out_system_request(start_time: int, start_location: Station, end
         return 0
 
 
-def event_scheduler(time: int, station_dict: dict, request: int, pmf: pd.DataFrame, schedule_buffer: list) -> int:
+def event_scheduler(time: int, station_dict: dict, request: int, pmf: pd.DataFrame, schedule_buffer: list,
+                    nearby_nodes_dict: dict[str, dict[str, tuple]]) -> int:
     """
     Schedule events based on the request simulations.
 
@@ -166,19 +186,20 @@ def event_scheduler(time: int, station_dict: dict, request: int, pmf: pd.DataFra
 
     failure = 0
     if request != 0:
-        stn_pair = np.random.choice(pmf['id'], p=pmf['value'])
+        stn_pair = tuple(np.random.choice(pmf['id'], p=pmf['value']))
         if stn_pair[0] == 10000 and stn_pair[1] == 10000:
             raise ValueError("Request simulation not implemented (id 100000).")
         if stn_pair[0] == 10000:
-            failure = schedule_in_out_system_request(time, station_dict[stn_pair[0]], station_dict[stn_pair[1]], leaving=False,
-                                                     schedule_buffer=schedule_buffer)
+            failure = schedule_in_out_system_request(time, station_dict.get(stn_pair[0]), station_dict.get(stn_pair[1]),
+                                                     False, schedule_buffer, nearby_nodes_dict[stn_pair[0]], station_dict)
         elif stn_pair[1] == 10000:
-            failure = schedule_in_out_system_request(time, station_dict[stn_pair[0]], station_dict[stn_pair[1]], leaving=True,
-                                                     schedule_buffer=schedule_buffer)
+            failure = schedule_in_out_system_request(time, station_dict.get(stn_pair[0]), station_dict.get(stn_pair[1]),
+                                                     True, schedule_buffer, nearby_nodes_dict[stn_pair[0]], station_dict)
         else:
             global distance_matrix
-            distance = distance_matrix.at[int(stn_pair[0]), int(stn_pair[1])]
-            failure = schedule_request(time, distance, station_dict.get(stn_pair[0]), station_dict.get(stn_pair[1]), schedule_buffer)
+            distance = distance_matrix.at[stn_pair[0], stn_pair[1]]
+            failure = schedule_request(time, distance, station_dict.get(stn_pair[0]), station_dict.get(stn_pair[1]),
+                                       schedule_buffer, nearby_nodes_dict[stn_pair[0]], station_dict)
 
     # Drop finished trips
     trips_to_remove = []
@@ -200,7 +221,8 @@ def event_scheduler(time: int, station_dict: dict, request: int, pmf: pd.DataFra
 
 # ----------------------------------------------------------------------------------------------------------------------
 
-def simulate_environment(time_interval: int, station_dict: dict, pmf: pd.DataFrame, rate: float, timeslot: int) -> int:
+def simulate_environment(time_interval: int, station_dict: dict, pmf: pd.DataFrame, rate: float, timeslot: int,
+                         nearby_nodes_dict: dict[str, dict[str, tuple]]) -> int:
     """
     Simulate the environment for a given time interval.
 
@@ -219,7 +241,7 @@ def simulate_environment(time_interval: int, station_dict: dict, pmf: pd.DataFra
     failures = 0
 
     for t in tqdm(range(0, time_interval), desc="Simulating Environment"):
-        failures += event_scheduler(t + (timeslot*3 + 1)*3600, station_dict, event_buffer[t], pmf, schedule_buffer)
+        failures += event_scheduler(t + (timeslot*3 + 1)*3600, station_dict, event_buffer[t], pmf, schedule_buffer, nearby_nodes_dict)
 
     return failures
 
@@ -229,15 +251,21 @@ def main():
     ox.settings.use_cache = True
     logging.basicConfig(filename='trip_output.log', level=logging.INFO, filemode='w')
 
+    # Initialize the graph
+    print("Initializing the graph... ")
+    graph = initialize_graph(params['data_path'] + params['graph_file'])
+
+    nodes_gdf = ox.graph_to_gdfs(graph, edges=False)
+    nodes_dict = {node_id: (row['y'], row['x']) for node_id, row in nodes_gdf.iterrows()}
+
+    radius = 100
+    nearby_nodes_dict = {node_id: nodes_within_radius(node_id, nodes_dict, radius) for node_id in nodes_dict}
+
     # Initialize distance matrix
     global distance_matrix
     distance_matrix = pd.read_csv(params['data_path'] + '/distance-matrix.csv', index_col=0)
     distance_matrix.index = distance_matrix.index.astype(int)
     distance_matrix.columns = distance_matrix.columns.astype(int)
-
-    # Initialize the graph
-    print("Initializing the graph... ")
-    graph = initialize_graph(params['data_path'] + params['graph_file'])
 
     # Initialize stations
     print("Initializing stations... ")
@@ -265,7 +293,7 @@ def main():
 
     # Simulate the environment
     print("Simulating the environment... ")
-    failures = simulate_environment(params['time_interval'], stations, flattened_pmf, global_rate, params['time_slot'])
+    failures = simulate_environment(params['time_interval'], stations, flattened_pmf, global_rate, params['time_slot'], nearby_nodes_dict)
 
     print(f"\nTotal number of trips: {total_trips}")
     logging.info(f"Total number of trips: {total_trips}")

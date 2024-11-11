@@ -231,15 +231,10 @@ def initialize_rate_matrix(G: nx.MultiDiGraph, rate_df: pd.DataFrame) -> pd.Data
 # ----------------------------------------------------------------------------------------------------------------------
 
 def main():
-    warnings.filterwarnings("ignore", category=RuntimeWarning, message="overflow encountered in square")
-
     # Initialize the graph
     print("Initializing the graph... ")
     graph = initialize_graph(params['place'], params['network_type'], params['data_path'] + params['graph_file'],
                              remove_isolated_nodes=True, simplify_network=True)
-
-    nodes_gdf = ox.graph_to_gdfs(graph, edges=False)
-    nodes_dict = {node_id: (row['y'], row['x']) for node_id, row in nodes_gdf.iterrows()}
 
     print(f'\nProcessing data for year {params["year"]} and month {params["month"]}...')
     trip_df = pd.DataFrame()

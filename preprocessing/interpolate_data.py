@@ -140,8 +140,6 @@ def build_pmf_matrix_external_trips(df: pd.DataFrame, nearby_nodes_dict: dict[st
 # ----------------------------------------------------------------------------------------------------------------------
 
 def main():
-    warnings.filterwarnings("ignore", category=RuntimeWarning, message="overflow encountered in square")
-
     # Initialize the graph
     print("Initializing the graph... ")
     graph = initialize_graph(params['data_path'] + params['graph_file'])
