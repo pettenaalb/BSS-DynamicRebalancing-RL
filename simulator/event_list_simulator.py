@@ -91,8 +91,7 @@ def initialize_stations(G: nx.MultiDiGraph) -> dict:
 
 # ----------------------------------------------------------------------------------------------------------------------
 
-def schedule_request(start_time: int, distance: int, start_location: Station, end_location: Station,
-                     schedule_buffer: list) -> int:
+def schedule_request(start_time: int, distance: int, start_location: Station, end_location: Station, schedule_buffer: list) -> int:
     """
     Schedule a trip between two stations.
 
@@ -107,9 +106,8 @@ def schedule_request(start_time: int, distance: int, start_location: Station, en
     """
 
     if len(start_location.get_bikes()) > 0:
-        bike = start_location.unlock_bike(distance=distance/1000)
-        if bike is not None:
-            bike.set_availability(False)
+        bike = start_location.unlock_bike()
+        if bike.get_battery() > distance/1000:
             bike.set_battery(bike.get_battery() - distance/1000)
 
             velocity_kmh = truncated_gaussian(5, 25, 15, 5)
@@ -123,6 +121,7 @@ def schedule_request(start_time: int, distance: int, start_location: Station, en
             logging.info("Trip scheduled: %s", trip)
             return 0
         else:
+            start_location.lock_bike(bike)
             logging.warning(f"No charged bikes available from station {start_location.get_station_id()} to station {end_location.get_station_id()}")
             return 1
     else:
@@ -130,45 +129,28 @@ def schedule_request(start_time: int, distance: int, start_location: Station, en
         return 1
 
 
-def schedule_in_out_system_request(start_time: int, start_location: Station, end_location: Station, leaving: bool) -> int:
-    global system_bikes, outside_system_bikes, total_trips
+def schedule_in_out_system_request(start_time: int, start_location: Station, end_location: Station, leaving: bool,
+                                   schedule_buffer: list) -> int:
+    global system_bikes, total_trips
     if leaving:
-        if len(start_location.get_bikes()) > 0:
-            distance = truncated_gaussian(1, 7, 3, 1).to(float)
-            bike = start_location.unlock_bike(distance=distance)
-            if bike is not None:
-                bike.set_availability(True)
-                bike.set_battery(bike.get_battery() - distance)
-                bike.set_station(end_location)
-                system_bikes.pop(bike.get_bike_id())
-                outside_system_bikes[bike.get_bike_id()] = bike
-
-                trip = Trip(start_time, start_time, start_location, end_location, bike)
-                total_trips += 1
-                logging.info("Trip scheduled: %s", trip)
-                return 0
-            else:
-                logging.warning(f"No charged bikes available from station {start_location.get_station_id()} to outside area")
-                return 1
-        else:
-            logging.warning(f"No bike available from station {start_location.get_station_id()} to outside area")
+        distance = truncated_gaussian(1, 7, 3, 1).to(float)
+        return schedule_request(start_time, distance, start_location, end_location, schedule_buffer)
     else:
-        if len(outside_system_bikes) > 0:
-            bike_id = next(iter(outside_system_bikes))
-            bike = outside_system_bikes.pop(bike_id)
-            bike.set_availability(True)
-            bike.set_station(end_location)
+        if len(start_location.get_bikes()) > 0:
+            bike = start_location.unlock_bike()
             end_location.lock_bike(bike)
         else:
             bike = Bike(stn=end_location)
-            bike.set_battery(35.0)
-            bike.set_availability(True)
+            battery = truncated_gaussian(0, 50, 25, 5).to(float)
+            bike.set_battery(battery)
             end_location.lock_bike(bike)
             system_bikes[bike.get_bike_id()] = bike
 
         trip = Trip(start_time, start_time, start_location, end_location, bike)
         total_trips += 1
         logging.info("Trip scheduled: %s", trip)
+
+        return 0
 
 
 def event_scheduler(time: int, station_dict: dict, request: int, pmf: pd.DataFrame, schedule_buffer: list) -> int:
@@ -180,15 +162,19 @@ def event_scheduler(time: int, station_dict: dict, request: int, pmf: pd.DataFra
         - stations (list): A list of Station objects.
         - request_simulations (pd.DataFrame): A DataFrame containing the simulated request times for each station pair.
     """
+    global system_bikes, outside_system_bikes
+
     failure = 0
     if request != 0:
         stn_pair = np.random.choice(pmf['id'], p=pmf['value'])
         if stn_pair[0] == 10000 and stn_pair[1] == 10000:
             raise ValueError("Request simulation not implemented (id 100000).")
         if stn_pair[0] == 10000:
-            failure = schedule_in_out_system_request(station_dict[stn_pair[0]], station_dict[stn_pair[1]], leaving=False)
+            failure = schedule_in_out_system_request(time, station_dict[stn_pair[0]], station_dict[stn_pair[1]], leaving=False,
+                                                     schedule_buffer=schedule_buffer)
         elif stn_pair[1] == 10000:
-            failure = schedule_in_out_system_request(station_dict[stn_pair[0]], station_dict[stn_pair[1]], leaving=True)
+            failure = schedule_in_out_system_request(time, station_dict[stn_pair[0]], station_dict[stn_pair[1]], leaving=True,
+                                                     schedule_buffer=schedule_buffer)
         else:
             global distance_matrix
             distance = distance_matrix.at[int(stn_pair[0]), int(stn_pair[1])]
@@ -199,9 +185,11 @@ def event_scheduler(time: int, station_dict: dict, request: int, pmf: pd.DataFra
     for trip in schedule_buffer:
         if trip.get_end_time() < time:
             bike = trip.get_bike()
-            bike.set_availability(True)
             end_location = trip.get_end_location()
             end_location.lock_bike(bike)
+            if end_location.get_station_id == 10000:
+                system_bikes.pop(bike.get_station_id())
+                outside_system_bikes[bike.get_station_id()] = bike
             trips_to_remove.append(trip)
 
     # Remove finished trips from the schedule buffer

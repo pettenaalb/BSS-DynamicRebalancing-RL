@@ -3,16 +3,15 @@ import pandas as pd
 import osmnx as ox
 import networkx as nx
 import warnings
-import numpy as np
 
 from tqdm import tqdm
-from utils import haversine, kahan_sum, count_specific_day, connect_disconnected_neighbors, is_within_graph_bounds, nodes_within_radius
+from utils import count_specific_day, connect_disconnected_neighbors, is_within_graph_bounds
 
 params = {
     'place': ["Cambridge, Massachusetts, USA"],
     'network_type': 'bike',
 
-    'data_path': "data/",
+    'data_path': "../data/",
     'graph_file': "cambridge_network.graphml",
     'year': 2022,
     'month': [9, 10],
@@ -231,92 +230,6 @@ def initialize_rate_matrix(G: nx.MultiDiGraph, rate_df: pd.DataFrame) -> pd.Data
 
 # ----------------------------------------------------------------------------------------------------------------------
 
-def build_pmf_matrix(rate_matrix: pd.DataFrame, nearby_nodes_dict: dict[str, dict[str, tuple]], nodes_dict: dict[str, tuple]) -> pd.DataFrame:
-    rate_df = rate_matrix.copy(deep=True)
-
-    saved_row = rate_df.loc[10000, :].copy()
-    saved_col = rate_df.loc[:, 10000].copy()
-
-    rate_df = rate_df.drop(index=10000, columns=10000)
-
-    non_zero_rows = rate_df[rate_df.sum(axis=1) != 0].index.astype(int)
-
-    for row in non_zero_rows:
-        # Extract row rates
-        rates = rate_df.loc[row]
-        non_zero_nodes = rates[~rates.eq(0)].index.astype(int)
-        zero_nodes = rates[rates.eq(0)].index.astype(int)
-
-        for node_id in zero_nodes:
-            nearby_nodes = nearby_nodes_dict[node_id]
-            nearby_non_zero_nodes = {}
-            for nz_id in non_zero_nodes:
-                if nz_id in nearby_nodes:
-                    nearby_non_zero_nodes[nz_id] = nearby_nodes[nz_id]
-
-            if len(nearby_non_zero_nodes) != 0:
-                coords = nodes_dict[node_id]
-                distances = np.array([haversine(coords, nn_zn_coords) for nn_zn_coords in nearby_non_zero_nodes.values()])
-                rts = np.array([rates.loc[nn_zn_id] for nn_zn_id in nearby_non_zero_nodes])
-                num, den = 0, 0
-                for distance, rate in zip(distances, rts):
-                    num += rate/distance
-                    den += 1/distance
-                rate_df.loc[row, node_id] = num/den
-
-    zero_rows = rate_df[rate_df.sum(axis=1) == 0].index.astype(int)
-
-    for idx in zero_rows:
-        nearby_nodes = nearby_nodes_dict[idx]
-
-        nearby_non_zero_nodes = {}
-        for nz_id in non_zero_rows:
-            if nz_id in nearby_nodes:
-                nearby_non_zero_nodes[nz_id] = nearby_nodes[nz_id]
-
-        if len(nearby_non_zero_nodes) != 0:
-            coords = nodes_dict[idx]
-            distances = np.array([haversine(coords, nn_zn_coords) for nn_zn_coords in nearby_non_zero_nodes.values()])
-            num, den = pd.Series(0, index=rate_df.columns), 0
-            for distance, nn_zn_id in zip(distances, nearby_non_zero_nodes):
-                num += rate_df.loc[nn_zn_id]
-                den += 1/distance
-            rate_df.loc[idx] = num/den
-
-    for saved in [saved_row, saved_col]:
-        non_zero_nodes = saved[~saved.eq(0)].index.astype(int)
-        zero_nodes = saved[saved.eq(0)].index.astype(int)
-
-        if 10000 in non_zero_nodes:
-            non_zero_nodes = non_zero_nodes[non_zero_nodes != 10000]
-
-        if 10000 in zero_nodes:
-            zero_nodes = zero_nodes[zero_nodes != 10000]
-
-        for node_id in zero_nodes:
-            nearby_nodes = nearby_nodes_dict[node_id]
-            nearby_non_zero_nodes = {}
-            for nz_id in non_zero_nodes:
-                if nz_id in nearby_nodes:
-                    nearby_non_zero_nodes[nz_id] = nearby_nodes[nz_id]
-
-            if len(nearby_non_zero_nodes) != 0:
-                coords = nodes_dict[node_id]
-                distances = np.array([haversine(coords, nn_zn_coords) for nn_zn_coords in nearby_non_zero_nodes.values()])
-                rts = np.array([saved.loc[nn_zn_id] for nn_zn_id in nearby_non_zero_nodes])
-                num, den = 0, 0
-                for distance, rate in zip(distances, rts):
-                    num += rate/distance
-                    den += 1/distance
-                saved.loc[node_id] = num/den
-
-    rate_df.loc[10000, :] = saved_row
-    rate_df.loc[:, '10000'] = saved_col
-
-    return rate_df
-
-# ----------------------------------------------------------------------------------------------------------------------
-
 def main():
     warnings.filterwarnings("ignore", category=RuntimeWarning, message="overflow encountered in square")
 
@@ -327,9 +240,6 @@ def main():
 
     nodes_gdf = ox.graph_to_gdfs(graph, edges=False)
     nodes_dict = {node_id: (row['y'], row['x']) for node_id, row in nodes_gdf.iterrows()}
-
-    radius = 1000
-    nearby_nodes_dict = {node_id: nodes_within_radius(node_id, nodes_dict, radius) for node_id in nodes_dict}
 
     print(f'\nProcessing data for year {params["year"]} and month {params["month"]}...')
     trip_df = pd.DataFrame()
@@ -373,17 +283,6 @@ def main():
                 os.makedirs(matrix_path)
                 # print(f"Directory '{matrix_path}' created.")
             rate_matrix.to_csv(matrix_path + day.lower() + '-rate-matrix.csv', index=True)
-
-            # Build PMF matrix
-            print(f"\nBuilding the PMF matrix... ", end=" ")
-            pmf_matrix = build_pmf_matrix(rate_matrix, nearby_nodes_dict, nodes_dict)
-
-            total_sum = kahan_sum(pmf_matrix.to_numpy().flatten())
-            pmf_matrix = pmf_matrix / total_sum
-
-            # Save the interpolated rate matrix to a CSV file
-            pmf_matrix.to_csv(matrix_path + day.lower() + '-pmf-matrix.csv', index=True)
-            print("done.\n")
 
             tbar.update(1)
 
