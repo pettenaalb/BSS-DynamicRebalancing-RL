@@ -7,6 +7,7 @@ class EventType(Enum):
     DEPARTURE = "Departure"
     ARRIVAL = "Arrival"
 
+
 @dataclass(order=True)
 class Event:
     time: int
@@ -14,7 +15,6 @@ class Event:
     trip: Trip
 
     def __post_init__(self):
-        # You can add validation or adjustments here if necessary
         if not isinstance(self.event_type, EventType):
             raise ValueError("event_type must be an instance of EventType Enum")
 

@@ -24,7 +24,7 @@ params = {
     'year': 2022,
     'month': [9, 10],
     'day': "monday",
-    'time_slot': 2,
+    'time_slot': 3,
     'time_interval': 3600*3   # 3 hour
 }
 
@@ -94,9 +94,22 @@ def initialize_stations(G: nx.MultiDiGraph) -> dict:
 
 def departure_handler(trip: Trip, station_dict: dict, nearby_nodes_dict: dict[str, dict[str, tuple]],
                       distance_matrix: pd.DataFrame) -> Trip:
+    """
+    Handle the departure of a trip from the starting station.
+
+    Parameters:
+        - trip (Trip): The trip object to be processed.
+        - station_dict (dict): A dictionary containing the stations in the network.
+        - nearby_nodes_dict (dict): A dictionary containing the nearby nodes for each station.
+        - distance_matrix (pd.DataFrame): A DataFrame containing the distance matrix between stations.
+
+    Returns:
+        - Trip: The trip object after processing.
+    """
     start_station = trip.get_start_location()
     start_station_id = start_station.get_station_id()
 
+    # Check if there are any bikes available at the starting station
     if len(start_station.get_bikes()) > 0:
         bike = start_station.unlock_bike()
         if bike.get_battery() > trip.get_distance()/1000:
@@ -106,14 +119,17 @@ def departure_handler(trip: Trip, station_dict: dict, nearby_nodes_dict: dict[st
         else:
             start_station.lock_bike(bike)
 
+    # Check if there are any bikes available at nearby stations
     nodes_dist_dict = {node_id: distance_matrix.at[start_station_id, node_id] for node_id in nearby_nodes_dict[start_station_id]}
     sorted_nodes = {k: v for k, v in sorted(nodes_dist_dict.items(), key=lambda item: item[1])}
     for node_id in sorted_nodes:
         if len(station_dict[node_id].get_bikes()) > 0:
             bike = station_dict[node_id].unlock_bike()
             if bike.get_battery() > trip.get_distance()/1000:
+                trip.set_deviated_location(station_dict[node_id])
                 trip.set_bike(bike)
                 trip.set_failed(False)
+                trip.set_deviated(True)
                 return trip
             else:
                 start_station.lock_bike(bike)
@@ -123,6 +139,12 @@ def departure_handler(trip: Trip, station_dict: dict, nearby_nodes_dict: dict[st
 
 
 def arrival_handler(trip: Trip):
+    """
+    Handle the arrival of a trip at the destination station.
+
+    Parameters:
+        - trip (Trip): The trip object to be processed.
+    """
     global system_bikes, outside_system_bikes
     if trip.is_failed():
         return
@@ -132,9 +154,11 @@ def arrival_handler(trip: Trip):
     bike = trip.get_bike()
     end_station.lock_bike(bike)
 
+    # Move the bike to the outside system if the destination station is outside the system
     if end_station.get_station_id() == 10000:
         outside_system_bikes[bike.get_bike_id()] = system_bikes.pop(bike.get_bike_id())
 
+    # Move the bike back to the system if the starting station is outside the system
     if start_station.get_station_id() == 10000:
         system_bikes[bike.get_bike_id()] = outside_system_bikes.pop(bike.get_bike_id())
 
