@@ -46,12 +46,11 @@ def generate_poisson_events(rate, time_duration) -> list[int]:
     Returns:
         - list: A list of event times occurring within the specified time duration.
     """
+    # uniform distribution of arrival times
     num_events = np.random.poisson(rate * time_duration)
-    inter_arrival_times = np.random.exponential(1.0 / rate, num_events)
-    event_times = np.cumsum(inter_arrival_times)
-    valid_event_times = event_times[event_times <= time_duration]
+    event_times = np.sort(np.random.uniform(0, time_duration, num_events)).astype(int).tolist()
 
-    return valid_event_times.astype(int).tolist()
+    return event_times
 
 
 def convert_seconds_to_hours_minutes(seconds) -> str:

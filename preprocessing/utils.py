@@ -87,7 +87,7 @@ def plot_graph_with_colored_nodes(graph: nx.MultiDiGraph, rate_matrix: pd.DataFr
         for idx in rate_matrix.columns:
             sum_array[int(idx)] = kahan_sum(rate_matrix[idx].values)
 
-    min_rate = sum_array.min()
+    min_rate = 0
     max_rate = sum_array.max()
 
     print(min_rate, max_rate)

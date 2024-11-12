@@ -6,7 +6,8 @@ class Trip:
 
     trip_id = 0
 
-    def __init__(self, start_time: int, end_time: int, start_location: Station, end_location: Station, bike: Bike):
+    def __init__(self, start_time: int, end_time: int, start_location: Station, end_location: Station, bike: Bike = None,
+                 distance: int = 0, failed = False):
         """
         Initialize a Trip object.
 
@@ -24,6 +25,8 @@ class Trip:
         self.start_location = start_location
         self.end_location = end_location
         self.bike = bike
+        self.distance = distance
+        self.failed = failed
 
         Trip.trip_id += 1
 
@@ -33,6 +36,15 @@ class Trip:
         """
         return (f"Trip {self.trip_id}: {self.start_location} to {self.end_location} - Bike {self.bike.bike_id} "
                 f"- Time: {convert_seconds_to_hours_minutes(self.start_time)} to {convert_seconds_to_hours_minutes(self.end_time)}")
+
+    def set_bike(self, bike: Bike):
+        self.bike = bike
+
+    def set_failed(self, failed: bool):
+        self.failed = failed
+
+    def is_failed(self):
+        return self.failed
 
     def get_trip_id(self):
         return self.trip_id
@@ -51,3 +63,6 @@ class Trip:
 
     def get_bike(self):
         return self.bike
+
+    def get_distance(self):
+        return self.distance

@@ -17,7 +17,7 @@ params = {
     'year': 2022,
     'month': [9, 10],
 
-    'day_of_week': ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"],
+    'day_of_week': ["Monday"],
 }
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -147,7 +147,7 @@ def main():
     nodes_gdf = ox.graph_to_gdfs(graph, edges=False)
     nodes_dict = {node_id: (row['y'], row['x']) for node_id, row in nodes_gdf.iterrows()}
 
-    radius = 1000
+    radius = 500
     nearby_nodes_dict = {node_id: nodes_within_radius(node_id, nodes_dict, radius) for node_id in nodes_dict}
 
     tbar = tqdm(total=len(params['day_of_week']) * 8, desc="Processing Data", position=0)

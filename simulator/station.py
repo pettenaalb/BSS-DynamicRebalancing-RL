@@ -67,13 +67,8 @@ class Station:
         Bike: The bike unlocked from the station.
         """
         if len(self.bikes) > 0:
-            max_b = 0
-            max_b_id = None
-            for bike_id, bike in self.bikes.items():
-                if bike.get_battery() > max_b:
-                    max_b = bike.get_battery()
-                    max_b_id = bike_id
-            bike = self.bikes.pop(max_b_id)
+            max_bike_id = max(self.bikes, key=lambda k: self.bikes[k].get_battery())
+            bike = self.bikes.pop(max_bike_id)
             bike.set_availability(False)
             return bike
         else:
