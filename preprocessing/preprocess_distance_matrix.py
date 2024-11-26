@@ -59,7 +59,7 @@ def connect_disconnected_neighbors(graph: nx.MultiDiGraph, radius_meters: int):
         - radius_meters (int): The radius in meters within which to connect disconnected nodes.
     """
 
-    tbar = tqdm(total=len(graph.nodes), desc="Connecting disconnected nodes")
+    tbar = tqdm(total=len(graph.nodes), desc="Connecting disconnected nodes", dynamic_ncols=True)
 
     for node in graph.nodes:
         # Check if the node has valid coordinates

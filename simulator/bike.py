@@ -92,3 +92,12 @@ class Bike:
         bool: True if the bike is available, False otherwise.
         """
         return self.available
+
+    def get_max_battery(self) -> float:
+        """
+        Get the maximum battery capacity of the bike.
+
+        Returns:
+        float: The maximum battery capacity of the bike.
+        """
+        return self.max_battery

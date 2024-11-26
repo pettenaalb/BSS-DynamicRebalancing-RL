@@ -2,11 +2,10 @@ import os
 import pandas as pd
 import osmnx as ox
 import networkx as nx
-import warnings
 import numpy as np
 
 from tqdm import tqdm
-from utils import haversine, kahan_sum, nodes_within_radius
+from utils import compute_distance, kahan_sum, nodes_within_radius
 
 params = {
     'place': ["Cambridge, Massachusetts, USA"],
@@ -66,7 +65,7 @@ def build_pmf_matrix(rate_matrix: pd.DataFrame, nearby_nodes_dict: dict[str, dic
 
             if len(nearby_non_zero_nodes) != 0:
                 coords = nodes_dict[node_id]
-                distances = np.array([haversine(coords, nn_zn_coords) for nn_zn_coords in nearby_non_zero_nodes.values()])
+                distances = np.array([compute_distance(coords, nn_zn_coords) for nn_zn_coords in nearby_non_zero_nodes.values()])
                 rts = np.array([rates.loc[nn_zn_id] for nn_zn_id in nearby_non_zero_nodes])
                 num, den = 0, 0
                 for distance, rate in zip(distances, rts):
@@ -86,7 +85,7 @@ def build_pmf_matrix(rate_matrix: pd.DataFrame, nearby_nodes_dict: dict[str, dic
 
         if len(nearby_non_zero_nodes) != 0:
             coords = nodes_dict[idx]
-            distances = np.array([haversine(coords, nn_zn_coords) for nn_zn_coords in nearby_non_zero_nodes.values()])
+            distances = np.array([compute_distance(coords, nn_zn_coords) for nn_zn_coords in nearby_non_zero_nodes.values()])
             num, den = pd.Series(0, index=pmf_df.columns), 0
             for distance, nn_zn_id in zip(distances, nearby_non_zero_nodes):
                 num += pmf_df.loc[nn_zn_id]
@@ -127,7 +126,7 @@ def build_pmf_matrix_external_trips(df: pd.DataFrame, nearby_nodes_dict: dict[st
 
         if len(nearby_non_zero_nodes) != 0:
             coords = nodes_dict[node_id]
-            distances = np.array([haversine(coords, nn_zn_coords) for nn_zn_coords in nearby_non_zero_nodes.values()])
+            distances = np.array([compute_distance(coords, nn_zn_coords) for nn_zn_coords in nearby_non_zero_nodes.values()])
             rts = np.array([df.loc[nn_zn_id] for nn_zn_id in nearby_non_zero_nodes])
             num, den = 0, 0
             for distance, rate in zip(distances, rts):
@@ -150,7 +149,7 @@ def main():
     radius = 500
     nearby_nodes_dict = {node_id: nodes_within_radius(node_id, nodes_dict, radius) for node_id in nodes_dict}
 
-    tbar = tqdm(total=len(params['day_of_week']) * 8, desc="Processing Data", position=0)
+    tbar = tqdm(total=len(params['day_of_week']) * 8, desc="Processing Data", position=0, dynamic_ncols=True)
 
     print(f"\nBuilding the PMF matrices... ", end=" ")
 

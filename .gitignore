@@ -7,6 +7,7 @@ __pycache__/
 osmnx-examples/
 cache/
 data/
+gym/
 graph_images/
 simulator/dummy_file.py
 preprocessing/dummy_file.py

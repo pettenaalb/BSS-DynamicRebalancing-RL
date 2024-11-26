@@ -1,11 +1,12 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import osmnx as ox
-from scipy.stats import truncnorm
 import pandas as pd
 import networkx as nx
+
+from scipy.stats import truncnorm
 from matplotlib.colors import Normalize
-from math import radians, cos, sin, sqrt, atan2
+from geopy.distance import distance
 
 # ----------------------------------------------------------------------------------------------------------------------
 
@@ -20,19 +21,20 @@ def kahan_sum(arr):
     return total
 
 
-def haversine(coords1, coords2):
-    # Radius of Earth in meters
-    R = 6371000
-    lat1, lon1 = radians(coords1[0]), radians(coords1[1])
-    lat2, lon2 = radians(coords2[0]), radians(coords2[1])
+def compute_distance(coords1, coords2):
+    """
+    Calculate the distance between two pairs of coordinates in meters.
 
-    d_lat = lat2 - lat1
-    d_lon = lon2 - lon1
+    Parameters:
+        - coords1: A tuple (lat1, lon1) for the first coordinate.
+        - coords2: A tuple (lat2, lon2) for the second coordinate.
 
-    a = sin(d_lat / 2)**2 + cos(lat1) * cos(lat2) * sin(d_lon / 2)**2
-    c = 2 * atan2(sqrt(a), sqrt(1 - a))
-
-    return R * c
+    Returns:
+        - distance_in_meters: The distance in meters between the two coordinates.
+    """
+    # Calculate the geodesic distance
+    distance_in_meters = distance(coords1, coords2).meters
+    return distance_in_meters
 
 
 def generate_poisson_events(rate, time_duration) -> list[int]:
@@ -75,7 +77,7 @@ def nodes_within_radius(target_node: str, nodes_dict: dict[str, tuple], radius: 
     # Find all nodes within the radius and return as a dictionary
     nearby_nodes = {
         node_id: coords for node_id, coords in nodes_dict.items()
-        if node_id != target_node and haversine(target_coords, coords) <= radius
+        if node_id != target_node and compute_distance(target_coords, coords) <= radius
     }
 
     return nearby_nodes

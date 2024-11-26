@@ -2,10 +2,9 @@ import os
 import pandas as pd
 import osmnx as ox
 import networkx as nx
-import warnings
 
 from tqdm import tqdm
-from utils import count_specific_day, connect_disconnected_neighbors, is_within_graph_bounds
+from utils import count_specific_day, connect_disconnected_neighbors
 
 params = {
     'place': ["Cambridge, Massachusetts, USA"],
@@ -15,14 +14,15 @@ params = {
     'graph_file': "cambridge_network.graphml",
     'year': 2022,
     'month': [9, 10],
+    'nodes_to_remove': [(42.365455, -71.14254)],
 
-    'day_of_week': ["Friday"],
+    'day_of_week': ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"],
 }
 
 # ----------------------------------------------------------------------------------------------------------------------
 
 def initialize_graph(places: [str], network_type: str, graph_path: str = None, simplify_network: bool = False,
-                     remove_isolated_nodes: bool = False) -> nx.MultiDiGraph:
+                     remove_isolated_nodes: bool = False, nodes_to_remove: list[tuple] = None) -> nx.MultiDiGraph:
     """
     Initialize the graph representing the road network.
 
@@ -66,6 +66,12 @@ def initialize_graph(places: [str], network_type: str, graph_path: str = None, s
         # Remove isolated nodes
         if remove_isolated_nodes:
             graph.remove_nodes_from(list(nx.isolates(graph)))
+
+        # Remove specified nodes
+        if nodes_to_remove is not None:
+            for node in nodes_to_remove:
+                nearest_node = ox.distance.nearest_nodes(graph, X=node[1], Y=node[0])
+                graph.remove_node(nearest_node)
 
         ox.save_graphml(graph, graph_path)
         print("Network data downloaded and saved successfully.")
@@ -130,7 +136,7 @@ def compute_poisson_rates(df: pd.DataFrame, year: int, months: [int], day_of_wee
     return rate_df
 
 
-def map_trip_to_graph_node(G: nx.MultiDiGraph, trip_df: pd.DataFrame) -> pd.DataFrame:
+def map_trip_to_graph_node(G: nx.MultiDiGraph, trip_df: pd.DataFrame, filtered_stations: pd.DataFrame) -> pd.DataFrame:
     """
     Map the start and end stations of the trips to the nearest nodes in the graph.
 
@@ -141,41 +147,50 @@ def map_trip_to_graph_node(G: nx.MultiDiGraph, trip_df: pd.DataFrame) -> pd.Data
     Returns:
         - DataFrame: The DataFrame with the start and end stations mapped to the nearest nodes.
     """
-    dist_threshold = 100
+    valid_station_ids = set(filtered_stations['start station id'])
 
-    tbar = tqdm(total=trip_df.shape[0], desc="Mapping Trips to Graph Nodes", leave=False, position=1)
+    tbar = tqdm(total=trip_df.shape[0], desc="Mapping Trips to Graph Nodes", leave=False, position=1, dynamic_ncols=True)
 
     for index, row in trip_df.iterrows():
-        # Find the nearest node for the start and end stations
-        start_node = ox.distance.nearest_nodes(G, Y=row['start station latitude'], X=row['start station longitude'])
-        end_node = ox.distance.nearest_nodes(G, Y=row['end station latitude'], X=row['end station longitude'])
+        start_station_id = row['start station id']
+        end_station_id = row['end station id']
+
+        # Check if the start and end station IDs are inside the filtered stations
+        start_inside = start_station_id in valid_station_ids
+        end_inside = end_station_id in valid_station_ids
 
         # Check if the start and end stations are within the bounds of the graph
-        if is_within_graph_bounds(G, (row['start station latitude'], row['start station longitude']), start_node, threshold=dist_threshold):
-            if is_within_graph_bounds(G, (row['end station latitude'], row['end station longitude']), end_node, threshold=dist_threshold):
-                # Update the start and end station IDs
-                trip_df.at[index, 'start station id'] = start_node
-                trip_df.at[index, 'end station id'] = end_node
+        if start_inside and end_inside:
+            start_node = ox.distance.nearest_nodes(G, Y=row['start station latitude'], X=row['start station longitude'])
+            end_node = ox.distance.nearest_nodes(G, Y=row['end station latitude'], X=row['end station longitude'])
 
-                # Update the start and end station coordinates
-                trip_df.at[index, 'start station latitude'] = G.nodes[start_node]['y']
-                trip_df.at[index, 'start station longitude'] = G.nodes[start_node]['x']
-                trip_df.at[index, 'end station latitude'] = G.nodes[end_node]['y']
-                trip_df.at[index, 'end station longitude'] = G.nodes[end_node]['x']
+            # Update the start and end station IDs
+            trip_df.at[index, 'start station id'] = start_node
+            trip_df.at[index, 'end station id'] = end_node
 
-                # Remove the start and end station names
-                # trip_df.drop(columns=['start station name', 'end station name'], inplace=True)
-            else:
-                # Update the start station ID (end station ID becomes -1 if not within bounds)
-                trip_df.at[index, 'start station id'] = start_node
-                trip_df.at[index, 'end station id'] = 10000
+            # Update the start and end station coordinates
+            trip_df.at[index, 'start station latitude'] = G.nodes[start_node]['y']
+            trip_df.at[index, 'start station longitude'] = G.nodes[start_node]['x']
+            trip_df.at[index, 'end station latitude'] = G.nodes[end_node]['y']
+            trip_df.at[index, 'end station longitude'] = G.nodes[end_node]['x']
 
-                trip_df.at[index, 'start station latitude'] = G.nodes[start_node]['y']
-                trip_df.at[index, 'start station longitude'] = G.nodes[start_node]['x']
-                trip_df.at[index, 'end station latitude'] = 0.0
-                trip_df.at[index, 'end station longitude'] = 0.0
+            # Remove the start and end station names
+            # trip_df.drop(columns=['start station name', 'end station name'], inplace=True)
+        elif start_inside:
+            start_node = ox.distance.nearest_nodes(G, Y=row['start station latitude'], X=row['start station longitude'])
 
-        elif is_within_graph_bounds(G, (row['end station latitude'], row['end station longitude']), end_node, threshold=dist_threshold):
+            # Update the start station ID (end station ID becomes -1 if not within bounds)
+            trip_df.at[index, 'start station id'] = start_node
+            trip_df.at[index, 'end station id'] = 10000
+
+            trip_df.at[index, 'start station latitude'] = G.nodes[start_node]['y']
+            trip_df.at[index, 'start station longitude'] = G.nodes[start_node]['x']
+            trip_df.at[index, 'end station latitude'] = 0.0
+            trip_df.at[index, 'end station longitude'] = 0.0
+
+        elif end_inside:
+            end_node = ox.distance.nearest_nodes(G, Y=row['end station latitude'], X=row['end station longitude'])
+
             # Update the end station ID (start station ID becomes -1 if not within bounds)
             trip_df.at[index, 'start station id'] = 10000
             trip_df.at[index, 'end station id'] = end_node
@@ -188,7 +203,6 @@ def map_trip_to_graph_node(G: nx.MultiDiGraph, trip_df: pd.DataFrame) -> pd.Data
             trip_df.drop(index, inplace=True)
 
         tbar.update(1)
-
 
     # Reset index to handle any dropped rows properly
     trip_df.reset_index(drop=True, inplace=True)
@@ -234,7 +248,7 @@ def main():
     # Initialize the graph
     print("Initializing the graph... ")
     graph = initialize_graph(params['place'], params['network_type'], params['data_path'] + params['graph_file'],
-                             remove_isolated_nodes=True, simplify_network=True)
+                             remove_isolated_nodes=True, simplify_network=True, nodes_to_remove=params['nodes_to_remove'])
 
     print(f'\nProcessing data for year {params["year"]} and month {params["month"]}...')
     trip_df = pd.DataFrame()
@@ -245,7 +259,7 @@ def main():
         else:
             print(f"Trip data file for month {month} does not exist. Skipping...")
 
-    tbar = tqdm(total=len(params['day_of_week']) * 8, desc="Processing Data", position=0)
+    tbar = tqdm(total=len(params['day_of_week']) * 8, desc="Processing Data", position=0, dynamic_ncols=True)
 
     for day in params['day_of_week']:
         for timeslot in range(0, 8):

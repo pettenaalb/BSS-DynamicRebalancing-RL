@@ -59,7 +59,7 @@ class Station:
         """
         self.capacity = capacity
 
-    def unlock_bike(self) -> Bike:
+    def unlock_bike(self, bike_id: int = None) -> Bike:
         """
         Unlock a bike from the station.
 
@@ -67,9 +67,13 @@ class Station:
         Bike: The bike unlocked from the station.
         """
         if len(self.bikes) > 0:
-            max_bike_id = max(self.bikes, key=lambda k: self.bikes[k].get_battery())
-            bike = self.bikes.pop(max_bike_id)
-            bike.set_availability(False)
+            if bike_id is not None:
+                max_bike_id = max(self.bikes, key=lambda k: self.bikes[k].get_battery())
+                bike = self.bikes.pop(max_bike_id)
+                bike.set_availability(False)
+            else:
+                bike = self.bikes.pop(bike_id)
+                bike.set_availability(False)
             return bike
         else:
             raise ValueError("Station is empty. Cannot unlock bike.")

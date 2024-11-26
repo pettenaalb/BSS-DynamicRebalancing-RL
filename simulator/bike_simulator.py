@@ -23,7 +23,7 @@ params = {
 
     'year': 2022,
     'month': [9, 10],
-    'day': "monday",
+    'day': "wednesday",
     'time_slot': 3,
     'time_interval': 3600*3   # 3 hour
 }
@@ -63,7 +63,7 @@ def initialize_bikes(stn: Station, n: int = 0) -> dict:
     return bikes
 
 
-def initialize_stations(G: nx.MultiDiGraph) -> dict:
+def initialize_stations(G: nx.MultiDiGraph) -> tuple[dict, dict]:
     """
     Initialize a list of stations based on the nodes of the graph.
 
@@ -77,18 +77,18 @@ def initialize_stations(G: nx.MultiDiGraph) -> dict:
     gdf_nodes = ox.graph_to_gdfs(G, edges=False)
 
     stations = {}
+    sys_bikes = {}
 
     for index, row in gdf_nodes.iterrows():
         station = Station(index, row["y"], row["x"])
         bikes = initialize_bikes(station, random.randint(0, 2))
-        global system_bikes
-        system_bikes.update(bikes)
+        sys_bikes.update(bikes)
         station.set_bikes(bikes)
         stations[index] = station
 
     stations[10000] = Station(10000, 0, 0)
 
-    return stations
+    return stations, sys_bikes
 
 # ----------------------------------------------------------------------------------------------------------------------
 
@@ -249,7 +249,8 @@ def main():
 
     # Initialize stations
     print("Initializing stations... ")
-    stations = initialize_stations(graph)
+    global system_bikes
+    stations, system_bikes = initialize_stations(graph)
 
     # Initialize the rate matrix
     mon_str = str(params['month'][0]).zfill(2) + '-' + str(params['month'][-1]).zfill(2)
@@ -260,7 +261,6 @@ def main():
     # Convert index and columns to integers
     pmf_matrix.index = pmf_matrix.index.astype(int)
     pmf_matrix.columns = pmf_matrix.columns.astype(int)
-
     pmf_matrix.loc[10000, 10000] = 0.0
 
     # Convert into one vector

@@ -2,13 +2,13 @@ import numpy as np
 import matplotlib.pyplot as plt
 import osmnx as ox
 import pandas as pd
+import geopandas as gpd
 import networkx as nx
 import calendar
 
 from matplotlib.colors import Normalize
-from geopy.distance import great_circle, geodesic
+from geopy.distance import great_circle, geodesic, distance
 from tqdm import tqdm
-from math import radians, cos, sin, sqrt, atan2
 
 # ----------------------------------------------------------------------------------------------------------------------
 
@@ -23,19 +23,38 @@ def kahan_sum(arr):
     return total
 
 
-def haversine(coords1, coords2):
-    # Radius of Earth in meters
-    R = 6371000
-    lat1, lon1 = radians(coords1[0]), radians(coords1[1])
-    lat2, lon2 = radians(coords2[0]), radians(coords2[1])
+def compute_distance(coords1, coords2):
+    """
+    Calculate the distance between two pairs of coordinates in meters.
 
-    d_lat = lat2 - lat1
-    d_lon = lon2 - lon1
+    Parameters:
+        - coords1: A tuple (lat1, lon1) for the first coordinate.
+        - coords2: A tuple (lat2, lon2) for the second coordinate.
 
-    a = sin(d_lat / 2)**2 + cos(lat1) * cos(lat2) * sin(d_lon / 2)**2
-    c = 2 * atan2(sqrt(a), sqrt(1 - a))
+    Returns:
+        - distance_in_meters: The distance in meters between the two coordinates.
+    """
+    # Calculate the geodesic distance
+    distance_in_meters = distance(coords1, coords2).meters
+    return distance_in_meters
 
-    return R * c
+
+def haversine_distance(coords1, coords2):
+    # Convert degrees to radians
+    lat1, lon1 = np.radians(coords1)
+    lat2, lon2 = np.radians(coords2)
+
+    # Haversine formula
+    dlat = lat2 - lat1
+    dlon = lon2 - lon1
+    a = np.sin(dlat / 2)**2 + np.cos(lat1) * np.cos(lat2) * np.sin(dlon / 2)**2
+    c = 2 * np.arctan2(np.sqrt(a), np.sqrt(1 - a))
+
+    # Earth's radius in meters
+    earth_radius = 6371000
+    distance_in_meters = earth_radius * c
+
+    return distance_in_meters
 
 
 def count_specific_day(year: int, month: int, day_name: str) -> int:
@@ -93,11 +112,11 @@ def plot_graph_with_colored_nodes(graph: nx.MultiDiGraph, rate_matrix: pd.DataFr
     print(min_rate, max_rate)
 
     # Normalize total rates to [0, 1] for colormap
+    norm = Normalize(vmin=min_rate, vmax=max_rate)
     if colormap is not None:
-        norm = Normalize(vmin=min_rate, vmax=max_rate)
         colormap = plt.get_cmap(colormap)
         node_colors = {
-            node: (colormap(norm(rate_matrix.loc[node].sum()))) if rate_matrix.loc[node].sum() > 0 else (0.3,0.3,0.3,1)  # White color in RGBA
+            node: (colormap(norm(rate_matrix.loc[node].sum())))
             for node in graph.nodes
         }
     else:
@@ -113,11 +132,67 @@ def plot_graph_with_colored_nodes(graph: nx.MultiDiGraph, rate_matrix: pd.DataFr
             }
 
     # Plot the graph using OSMnx
-    fig, ax = ox.plot_graph(graph, node_color=list(node_colors.values()), node_size=15, edge_color='darkgrey', bgcolor='black', edge_linewidth=0.5, figsize=(15, 15))
+    nodes, edges = ox.graph_to_gdfs(graph, nodes=True, edges=True)
+    fig, ax = plt.subplots(figsize=(15, 12), facecolor='black')
+    plt.subplots_adjust(left=0, top=1.02, right=1.2, bottom=0, wspace=0, hspace=0)
 
-    # Title
-    ax.set_title('OSMnx Graph with Node Colors Based on Total Request Rates')
+    # Plot the graph edges in geographic coordinates
+    edges.plot(ax=ax, linewidth=0.5, edgecolor="darkgrey", alpha=1, zorder=1)
+    # Plot the graph nodes
+    nodes['color'] = nodes.index.map(lambda node_id: node_colors.get(node_id))
+    nodes.plot(ax=ax, markersize=15, color=nodes['color'], alpha=1, zorder=2)
 
+    if colormap is not None:
+        sm = plt.cm.ScalarMappable(cmap=colormap, norm=norm)
+        sm.set_array([])  # Empty array because we don't need data
+        cbar = fig.colorbar(sm, ax=ax, orientation='vertical', shrink=0.1, pad=0.01)
+        cbar.set_label('Request', fontsize=10, color='white')
+        cbar.set_ticks([min_rate, max_rate / 2, max_rate])  # Min, 50%, and Max values
+        cbar.set_ticklabels([f'Min: {min_rate}', f'50%: {max_rate / 2}', f'Max: {max_rate}'])
+
+        cbar.ax.tick_params(axis='y', colors='white')  # Ticks color
+        cbar.ax.yaxis.set_tick_params(labelcolor='white')  # Tick labels color
+        # Positioning the colorbar in the upper right corner
+        cbar.ax.yaxis.set_label_position('right')  # Position the label on the left of the colorbar
+        cbar.ax.yaxis.set_ticks_position('right')  # Position the ticks on the left side
+        cbar.ax.set_position([1.0-0.2, 1-0.12, 0.07, 0.1])  # Adjust position (x, y, width, height)
+
+    plt.axis('off')
+    plt.show()
+
+
+def plot_graph_with_grid(graph, cell_dict, plot_center_nodes=False, plot_number_cells=False):
+    # Extract nodes and edges in WGS84 coordinates (lon, lat)
+    nodes, edges = ox.graph_to_gdfs(graph, nodes=True, edges=True)
+
+    # Convert cell_dict into a GeoDataFrame in WGS84 for easy plotting
+    grid_geoms = [cell.boundary for cell in cell_dict.values()]
+    cell_gdf = gpd.GeoDataFrame(geometry=grid_geoms, crs="EPSG:4326")  # WGS84 CRS
+
+    # Plot setup
+    fig, ax = plt.subplots(figsize=(10, 10))
+
+    # Plot the graph edges in geographic coordinates
+    edges.plot(ax=ax, linewidth=0.5, edgecolor="black", alpha=0.7)
+    # Plot the graph nodes
+    nodes.plot(ax=ax, markersize=2, color="blue", alpha=0.7)
+
+    # Overlay the grid cells
+    cell_gdf.plot(ax=ax, linewidth=0.8, edgecolor="red", facecolor="blue", alpha=0.5)
+
+    for cell in cell_dict.values():
+        if plot_center_nodes:
+            center_node = cell.center_node
+            if center_node != 0:
+                node_coords = graph.nodes[center_node]['x'], graph.nodes[center_node]['y']
+                ax.plot(node_coords[0], node_coords[1], marker='o', color='yellow', markersize=4, label=f"Center Node {cell.id}")
+
+        if plot_number_cells:
+            center_coords = cell.boundary.centroid.coords[0]
+            ax.text(center_coords[0], center_coords[1], str(cell.id), fontsize=8, color='yellow', ha='center', va='center', weight='bold')
+
+    # Configure plot appearance
+    plt.axis('off')
     plt.show()
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -249,7 +324,7 @@ def nodes_within_radius(target_node: str, nodes_dict: dict[str, tuple], radius: 
     # Find all nodes within the radius and return as a dictionary
     nearby_nodes = {
         node_id: coords for node_id, coords in nodes_dict.items()
-        if node_id != target_node and haversine(target_coords, coords) <= radius
+        if node_id != target_node and haversine_distance(target_coords, coords) <= radius
     }
 
     return nearby_nodes
