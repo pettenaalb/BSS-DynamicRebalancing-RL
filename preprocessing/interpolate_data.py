@@ -16,7 +16,7 @@ params = {
     'year': 2022,
     'month': [9, 10],
 
-    'day_of_week': ["Monday"],
+    'day_of_week': ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"],
 }
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -147,7 +147,7 @@ def main():
     nodes_dict = {node_id: (row['y'], row['x']) for node_id, row in nodes_gdf.iterrows()}
 
     radius = 500
-    nearby_nodes_dict = {node_id: nodes_within_radius(node_id, nodes_dict, radius) for node_id in nodes_dict}
+    nearby_nodes_dict = {node_id: nodes_within_radius(node_id, nodes_dict, radius) for node_id in tqdm(nodes_dict, desc="Building Nearby Nodes", dynamic_ncols=True)}
 
     tbar = tqdm(total=len(params['day_of_week']) * 8, desc="Processing Data", position=0, dynamic_ncols=True)
 

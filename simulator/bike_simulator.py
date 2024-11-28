@@ -45,7 +45,7 @@ def initialize_graph(graph_path: str = None) -> nx.MultiDiGraph:
     return graph
 
 
-def initialize_bikes(stn: Station, n: int = 0) -> dict:
+def initialize_bikes(stn: Station, n: int = 0) -> dict[int, Bike]:
     """
     Initialize a list of bikes at a station.
 
@@ -63,7 +63,7 @@ def initialize_bikes(stn: Station, n: int = 0) -> dict:
     return bikes
 
 
-def initialize_stations(G: nx.MultiDiGraph) -> tuple[dict, dict]:
+def initialize_stations(G: nx.MultiDiGraph, bikes_station_map: dict[int, int] = None, pmf_matrix: pd.DataFrame = None) -> tuple[dict[int, Station], dict[int, Bike]]:
     """
     Initialize a list of stations based on the nodes of the graph.
 
@@ -80,8 +80,11 @@ def initialize_stations(G: nx.MultiDiGraph) -> tuple[dict, dict]:
     sys_bikes = {}
 
     for index, row in gdf_nodes.iterrows():
-        station = Station(index, row["y"], row["x"])
-        bikes = initialize_bikes(station, random.randint(0, 2))
+        station = Station(index, row["y"], row["x"], request_rate=0.0)
+        if bikes_station_map is not None:
+            bikes = initialize_bikes(station, bikes_station_map.get(index))
+        else:
+            bikes = initialize_bikes(station, random.randint(0, 2))
         sys_bikes.update(bikes)
         station.set_bikes(bikes)
         stations[index] = station

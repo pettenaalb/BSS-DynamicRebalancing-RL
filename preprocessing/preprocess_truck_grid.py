@@ -157,11 +157,6 @@ def main():
     print("Assigning nodes to cells... ")
     assign_nodes_to_cells(graph, cell_dict)
 
-    nodes = ox.graph_to_gdfs(graph, edges=False)
-    node_dict = {}
-    for node_id, coords in nodes.iterrows():
-        node_dict[node_id] = coords
-
     cell_to_remove = []
     for cell in cell_dict.values():
         if len(cell.nodes) == 0:

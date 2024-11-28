@@ -7,6 +7,7 @@ import networkx as nx
 from scipy.stats import truncnorm
 from matplotlib.colors import Normalize
 from geopy.distance import distance
+from simulator.cell import Cell
 
 # ----------------------------------------------------------------------------------------------------------------------
 
@@ -81,6 +82,13 @@ def nodes_within_radius(target_node: str, nodes_dict: dict[str, tuple], radius: 
     }
 
     return nearby_nodes
+
+# ----------------------------------------------------------------------------------------------------------------------
+
+def load_cells_from_csv(filename) -> dict[int, Cell]:
+    df = pd.read_csv(filename)
+    cells = {row['id']: Cell.from_dict(row) for _, row in df.iterrows()}
+    return cells
 
 # ----------------------------------------------------------------------------------------------------------------------
 

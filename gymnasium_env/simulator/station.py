@@ -1,9 +1,12 @@
-import simulator.bike as Bike
-import simulator.cell as Cell
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from gymnasium_env.simulator.bike import Bike
+    from gymnasium_env.simulator.cell import Cell
 
 class Station:
     def __init__(self, station_id: int, lat: float, lon: float, name: str = None, capacity: int = 1000,
-                 bikes: {Bike} = None, request_rate: float = 0.0, cell: Cell = None):
+                 bikes: {"Bike"} = None, request_rate: float = 0.0, cell: "Cell" = None):
         """
         Initialize a Station object.
 
@@ -35,7 +38,7 @@ class Station:
         """
         return f"Station {self.station_id}: ({self.lat}, {self.lon})"
 
-    def set_bikes(self, bikes: {Bike}):
+    def set_bikes(self, bikes: {"Bike"}):
         """
         Set the list of bikes at the station.
 
@@ -62,7 +65,7 @@ class Station:
         """
         self.capacity = capacity
 
-    def set_cell(self, cell: Cell):
+    def set_cell(self, cell: "Cell"):
         """
         Set the cell of the station.
 
@@ -71,7 +74,7 @@ class Station:
         """
         self.cell = cell
 
-    def unlock_bike(self, bike_id: int = None) -> Bike:
+    def unlock_bike(self, bike_id: int = None) -> "Bike":
         """
         Unlock a bike from the station.
 
@@ -86,12 +89,12 @@ class Station:
             else:
                 bike = self.bikes.pop(bike_id)
                 bike.set_availability(False)
-            self.number_of_bikes -= 1
+            self.cell.set_total_bikes(self.cell.get_total_bikes() - 1)
             return bike
         else:
             raise ValueError("Station is empty. Cannot unlock bike.")
 
-    def lock_bike(self, bike: Bike):
+    def lock_bike(self, bike: "Bike"):
         """
         Lock a bike at the station.
 
@@ -102,7 +105,7 @@ class Station:
             bike.set_availability(True)
             bike.set_station(self)
             self.bikes[bike.get_bike_id()] = bike
-            self.number_of_bikes += 1
+            self.cell.set_total_bikes(self.cell.get_total_bikes() + 1)
         else:
             raise ValueError("Station is full. Cannot lock bike.")
 
@@ -133,7 +136,7 @@ class Station:
         """
         return self.lat, self.lon
 
-    def get_bikes(self) -> {Bike}:
+    def get_bikes(self) -> {"Bike"}:
         """
         Get the list of bikes at the station.
 
@@ -151,7 +154,7 @@ class Station:
         """
         return self.request_rate
 
-    def get_cell(self) -> Cell:
+    def get_cell(self) -> "Cell":
         """
         Get the cell of the station.
 
@@ -176,4 +179,4 @@ class Station:
         Returns:
         int: The number of bikes at the station.
         """
-        return self.number_of_bikes
+        return len(self.bikes)

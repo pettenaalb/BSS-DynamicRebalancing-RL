@@ -1,43 +1,9 @@
-import os
 import pandas as pd
-import osmnx as ox
-import networkx as nx
-import logging
 
-from simulator.cell import Cell
-from simulator.utils import truncated_gaussian, load_cells_from_csv
-from simulator.truck import Truck
-from simulator.station import Station
-from simulator.bike_simulator import initialize_stations
-from simulator.bike import Bike
-
-params = {
-    'data_path': "../data/",
-    'graph_file': "cambridge_network.graphml",
-    'network_type': 'drive',
-
-    'year': 2022,
-    'month': [9, 10],
-    'day': "monday",
-    'time_slot': 3,
-    'time_interval': 3600*3   # 3 hour
-}
-
-system_bikes = {}
-outside_system_bikes = {}
-
-# ----------------------------------------------------------------------------------------------------------------------
-
-def initialize_graph(graph_path: str = None) -> nx.MultiDiGraph:
-    if os.path.isfile(graph_path):
-        print("Network file already exists. Loading the network data... ")
-        graph = ox.load_graphml(graph_path)
-        print("Network data loaded successfully.")
-    else:
-        # Raise an error if the graph file does not exist
-        raise FileNotFoundError("Network file does not exist. Please check the file path.")
-
-    return graph
+from gymnasium_env.simulator.cell import Cell
+from gymnasium_env.simulator.utils import truncated_gaussian
+from gymnasium_env.simulator.truck import Truck
+from gymnasium_env.simulator.station import Station
 
 # ----------------------------------------------------------------------------------------------------------------------
 
@@ -182,73 +148,3 @@ def charge_bike(truck: Truck, station_dict: dict[int, Station], distance_matrix:
     station.lock_bike(bike)
 
     return t1
-
-# ----------------------------------------------------------------------------------------------------------------------
-
-def main():
-    ox.settings.use_cache = True
-    logging.basicConfig(filename='trip_output.log', level=logging.INFO, filemode='w')
-
-    # graph = initialize_graph(params['data_path'] + params['graph_file'])
-
-    cells_dict = load_cells_from_csv(params['data_path'] + 'cell-data.csv')
-
-    # Initialize the graph
-    print("Initializing the graph... ")
-    graph = initialize_graph(params['data_path'] + params['graph_file'])
-
-    # Initialize distance matrix
-    distance_matrix = pd.read_csv(params['data_path'] + '/distance-matrix.csv', index_col=0)
-    distance_matrix.index = distance_matrix.index.astype(int)
-    distance_matrix.columns = distance_matrix.columns.astype(int)
-
-    # Initialize stations
-    print("Initializing stations... ")
-    global system_bikes
-    stations, system_bikes = initialize_stations(graph)
-
-    # Initialize truck
-    cell = cells_dict[185]
-    bikes = {}
-    for i in range(30):
-        bikes[i] = Bike()
-    truck = Truck(cell.center_node, cell, max_range=300, max_load=30, bikes=bikes)
-
-    print(f"\nMoving up from cell {truck.get_cell().get_id()}")
-    time = move_up(truck, distance_matrix, cells_dict)
-    print(f"Truck moved up in {time} seconds to cell {truck.get_cell().get_id()}")
-    print(f"Truck info: {truck}")
-
-    print(f"\nMoving left from cell {truck.get_cell().get_id()}")
-    time = move_left(truck, distance_matrix, cells_dict)
-    print(f"Truck moved up in {time} seconds to cell {truck.get_cell().get_id()}")
-    print(f"Truck info: {truck}")
-
-    print(f"\nMoving down from cell {truck.get_cell().get_id()}")
-    time = move_down(truck, distance_matrix, cells_dict)
-    print(f"Truck moved up in {time} seconds to cell {truck.get_cell().get_id()}")
-    print(f"Truck info: {truck}")
-
-    print(f"\nMoving right from cell {truck.get_cell().get_id()}")
-    time = move_right(truck, distance_matrix, cells_dict)
-    print(f"Truck moved up in {time} seconds to cell {truck.get_cell().get_id()}")
-    print(f"Truck info: {truck}")
-
-    print(f"\nDropping bike from cell {truck.get_cell().get_id()}")
-    time = drop_bike(truck, stations, distance_matrix)
-    print(f"Truck moved up in {time} seconds to cell {truck.get_cell().get_id()}")
-    print(f"Truck info: {truck}")
-
-    print(f"\nPicking up bike from cell {truck.get_cell().get_id()}")
-    time = pick_up_bike(truck, stations, distance_matrix)
-    print(f"Truck moved up in {time} seconds to cell {truck.get_cell().get_id()}")
-    print(f"Truck info: {truck}")
-
-    print(f"\nStaying at cell {truck.get_cell().get_id()}")
-    time = stay()
-    print(f"Truck moved up in {time} seconds to cell {truck.get_cell().get_id()}")
-
-
-
-if __name__ == '__main__':
-    main()

@@ -16,7 +16,7 @@ params = {
     'month': [9, 10],
     'nodes_to_remove': [(42.365455, -71.14254)],
 
-    'day_of_week': ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"],
+    'day_of_week': ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"],
 }
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -259,6 +259,9 @@ def main():
         else:
             print(f"Trip data file for month {month} does not exist. Skipping...")
 
+    # Load the filtered stations
+    filtered_stations = pd.read_csv(params['data_path'] + 'filtered_stations.csv')
+
     tbar = tqdm(total=len(params['day_of_week']) * 8, desc="Processing Data", position=0, dynamic_ncols=True)
 
     for day in params['day_of_week']:
@@ -270,7 +273,7 @@ def main():
 
             # Transform the trip data to match the graph
             # print('Mapping trips to graph nodes...')
-            poisson_rates_df = map_trip_to_graph_node(graph, poisson_rates_df)
+            poisson_rates_df = map_trip_to_graph_node(graph, poisson_rates_df, filtered_stations)
 
             # Save the Poisson rates to a CSV file
             # print("Saving the Poisson rates to a CSV file...")
