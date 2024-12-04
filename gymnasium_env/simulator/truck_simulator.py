@@ -4,6 +4,7 @@ from gymnasium_env.simulator.cell import Cell
 from gymnasium_env.simulator.utils import truncated_gaussian
 from gymnasium_env.simulator.truck import Truck
 from gymnasium_env.simulator.station import Station
+from gymnasium_env.simulator.bike import Bike
 
 # ----------------------------------------------------------------------------------------------------------------------
 
@@ -19,9 +20,7 @@ def move_up(truck: Truck, distance_matrix: pd.DataFrame, cell_dict: dict[int, Ce
     time = int(distance * 3.6 / velocity_kmh)
 
     truck.set_position(up_cell.get_center_node())
-    truck.set_range(truck.get_range() - distance)
     truck.set_cell(up_cell)
-    truck.set_range(truck.max_range - distance/1000)
 
     return time
 
@@ -38,9 +37,7 @@ def move_down(truck: Truck, distance_matrix: pd.DataFrame, cell_dict: dict[int, 
     time = int(distance * 3.6 / velocity_kmh)
 
     truck.set_position(down_cell.get_center_node())
-    truck.set_range(truck.get_range() - distance)
     truck.set_cell(down_cell)
-    truck.set_range(truck.max_range - distance/1000)
 
     return time
 
@@ -57,9 +54,7 @@ def move_left(truck: Truck, distance_matrix: pd.DataFrame, cell_dict: dict[int, 
     time = int(distance * 3.6 / velocity_kmh)
 
     truck.set_position(left_cell.get_center_node())
-    truck.set_range(truck.get_range() - distance)
     truck.set_cell(left_cell)
-    truck.set_range(truck.max_range - distance/1000)
 
     return time
 
@@ -76,14 +71,12 @@ def move_right(truck: Truck, distance_matrix: pd.DataFrame, cell_dict: dict[int,
     time = int(distance * 3.6 / velocity_kmh)
 
     truck.set_position(right_cell.get_center_node())
-    truck.set_range(truck.get_range() - distance)
     truck.set_cell(right_cell)
-    truck.set_range(truck.max_range - distance/1000)
 
     return time
 
 
-def drop_bike(truck: Truck, station_dict: dict[int, Station], distance_matrix: pd.DataFrame) -> int:
+def drop_bike(truck: Truck, distance_matrix: pd.DataFrame) -> int:
     position = truck.get_position()
     center_cell_position = truck.get_cell().get_center_node()
 
@@ -94,9 +87,6 @@ def drop_bike(truck: Truck, station_dict: dict[int, Station], distance_matrix: p
         time = int(distance * 3.6 / velocity_kmh)
         truck.set_position(center_cell_position)
 
-    station = station_dict.get(truck.get_position())
-    station.lock_bike(truck.unload_bike())
-
     return time
 
 
@@ -106,6 +96,9 @@ def pick_up_bike(truck: Truck, station_dict: dict[int, Station], distance_matrix
     bike_dict = {}
     for station in nearby_stations.values():
         bike_dict.update(station.get_bikes())
+
+    if len(bike_dict) == 0:
+        return 0
 
     # Find max distance between truck and nearby station
     max_distance = cell.get_diagonal()
@@ -140,11 +133,4 @@ def stay() -> int: return 0
 
 
 def charge_bike(truck: Truck, station_dict: dict[int, Station], distance_matrix: pd.DataFrame) -> int:
-    t1 = pick_up_bike(truck, station_dict, distance_matrix)
-
-    station = station_dict.get(truck.get_position())
-
-    bike = truck.unload_bike()
-    station.lock_bike(bike)
-
-    return t1
+    return pick_up_bike(truck, station_dict, distance_matrix)

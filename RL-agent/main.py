@@ -4,8 +4,6 @@ import matplotlib
 import matplotlib.pyplot as plt
 import gymnasium as gym
 
-import gymnasium_env
-
 import torch
 import torch.optim as optim
 
@@ -108,6 +106,12 @@ def main():
 
     for i_episode in range(num_episodes):
         # Initialize the environment and get its state
+        options = {
+            'day': 'monday',
+            'time_slot': 0,
+            'initial_cell': 0,
+            'max_truck_load': 30
+        }
         state, info = env.reset()
         state = torch.tensor(state, dtype=torch.float32, device=device).unsqueeze(0)
         for t in count():

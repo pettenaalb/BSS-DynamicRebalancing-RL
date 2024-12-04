@@ -39,13 +39,13 @@ class Trip:
         Return a string representation of the Trip object.
         """
         from gymnasium_env.simulator.utils import convert_seconds_to_hours_minutes
+        log = (f"\nTRIP {self.trip_id}:"
+               f"\n {self.start_location} to {self.end_location}"
+               f"\n - Time: {convert_seconds_to_hours_minutes(self.start_time)} to {convert_seconds_to_hours_minutes(self.end_time)}")
         if self.deviated:
-            return (f"Trip {self.trip_id}: {self.start_location} to {self.end_location} - Bike {self.bike.bike_id} "
-                    f"- Time: {convert_seconds_to_hours_minutes(self.start_time)} to {convert_seconds_to_hours_minutes(self.end_time)} "
-                    f"- Starting station deviated to {self.deviated_location}")
+            return log + f"\n - Starting station deviated to {self.deviated_location}"
 
-        return (f"Trip {self.trip_id}: {self.start_location} to {self.end_location} - Bike {self.bike.bike_id} "
-                f"- Time: {convert_seconds_to_hours_minutes(self.start_time)} to {convert_seconds_to_hours_minutes(self.end_time)}")
+        return log
 
     def set_bike(self, bike: "Bike"):
         self.bike = bike

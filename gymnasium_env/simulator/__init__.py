@@ -6,7 +6,7 @@ from .station import Station
 from .trip import Trip
 from .truck import Truck
 from .utils import *
-from .bike_simulator import simulate_environment
+from .bike_simulator import simulate_environment, event_handler
 from .truck_simulator import move_up, move_down, move_left, move_right, drop_bike, pick_up_bike, charge_bike, stay
 
 # Package metadata

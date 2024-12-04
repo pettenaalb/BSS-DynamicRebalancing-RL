@@ -1,14 +1,11 @@
-import logging
-
 import pandas as pd
 import numpy as np
 
-from tqdm import tqdm
-
+from gymnasium_env.simulator.station import Station
 from gymnasium_env.simulator.bike import Bike
 from gymnasium_env.simulator.trip import Trip
 from gymnasium_env.simulator.event import EventType, Event
-from gymnasium_env.simulator.utils import generate_poisson_events, truncated_gaussian
+from gymnasium_env.simulator.utils import generate_poisson_events, truncated_gaussian, Logger
 
 # ----------------------------------------------------------------------------------------------------------------------
 
@@ -85,30 +82,36 @@ def arrival_handler(trip: Trip, system_bikes: dict[int, Bike], outside_system_bi
 
 # ----------------------------------------------------------------------------------------------------------------------
 
-def simulate_environment(time_interval: int, time_slot: int, rate: float, pmf: pd.DataFrame, station_dict: dict,
-                         nearby_nodes_dict: dict[str, dict[str, tuple]], distance_matrix: pd.DataFrame,
-                         system_bikes: dict[int, Bike], outside_system_bikes: dict[int, Bike]) -> tuple[int, int, dict[int, Bike], dict[int, Bike]]:
+def simulate_environment(duration: int, time_slot: int, global_rate: float, pmf: pd.DataFrame, stations: dict,
+                         distance_matrix: pd.DataFrame) -> list[Event]:
     """
     Simulate the environment for a given time interval.
 
     Parameters:
-        - time_interval (int): The time interval for the simulation.
-        - stations (list): A list of Station objects.
-        - request_simulations (pd.DataFrame): A DataFrame containing the simulated request times for each station pair.
+        - time_interval (int): The time interval to simulate.
+        - time_slot (int): The time slot to simulate.
+        - rate (float): The rate of requests.
+        - pmf (pd.DataFrame): The PMF matrix.
+        - station_dict (dict): A dictionary containing the stations in the network.
+        - distance_matrix (pd.DataFrame): A DataFrame containing the distance matrix between stations.
+
+    Returns:
+        - list[Event]: A list of events generated during the simulation.
     """
     # Simulate requests
-    event_times = generate_poisson_events(rate, time_interval)
+    event_times = generate_poisson_events(global_rate, duration)
     event_buffer = []
-    tbar = tqdm(total=len(event_times), desc="Setting events", position=0, leave=True)
+
     for event_time in event_times:
         random_value = np.random.rand()
         stn_pair = tuple(pmf.iloc[np.searchsorted(pmf['cumsum'].values, random_value)]['id'])
         if stn_pair[0] == 10000:
             ev_t = event_time + 3600*(time_slot + 1)
-            trip = Trip(ev_t, ev_t, station_dict[stn_pair[0]], station_dict[stn_pair[1]])
+            trip = Trip(ev_t, ev_t, stations[stn_pair[0]], stations[stn_pair[1]])
             arr_event = Event(time=event_time, event_type=EventType.ARRIVAL, trip=trip)
             event_buffer.append(arr_event)
         else:
+            # TODO: Implement a more realistic velocity model
             velocity_kmh = truncated_gaussian(5, 25, 15, 5)
             if stn_pair[1] == 10000:
                 distance = truncated_gaussian(2, 7, 4.5, 1)
@@ -116,34 +119,47 @@ def simulate_environment(time_interval: int, time_slot: int, rate: float, pmf: p
                 distance = distance_matrix.at[stn_pair[0], stn_pair[1]]
             travel_time_seconds = int(distance * 3.6 / velocity_kmh)
             ev_t = event_time + 3600*(3*time_slot + 1)
-            trip = Trip(ev_t, ev_t + travel_time_seconds, station_dict[stn_pair[0]],
-                        station_dict[stn_pair[1]], distance=distance)
+            trip = Trip(ev_t, ev_t + travel_time_seconds, stations[stn_pair[0]],
+                        stations[stn_pair[1]], distance=distance)
             dep_event = Event(time=event_time, event_type=EventType.DEPARTURE, trip=trip)
             arr_event = Event(time=event_time + travel_time_seconds, event_type=EventType.ARRIVAL, trip=trip)
             event_buffer.append(dep_event)
             event_buffer.append(arr_event)
 
-        tbar.update(1)
-
     # Sort the event buffer based on time
     event_buffer.sort(key=lambda x: x.time)
-    failures = 0
-    total_trips = 0
 
-    tbar = tqdm(total=len(event_buffer), desc="Processing events", position=0, leave=True)
+    return event_buffer
 
-    for event in event_buffer:
-        if event.is_departure():
-            trip = departure_handler(event.get_trip(), station_dict, nearby_nodes_dict, distance_matrix)
-            if trip.is_failed():
-                failures += 1
-                logging.warning(f"No bike available from station {trip.get_start_location().get_station_id()} to station {trip.get_end_location().get_station_id()}")
-            else:
-                total_trips += 1
-                logging.info("Trip scheduled: %s", trip)
+
+def event_handler(event: Event, station_dict: dict[int, Station], nearby_nodes_dict: dict[str, dict[str, tuple]],
+                  distance_matrix: pd.DataFrame, system_bikes: dict[int, Bike], outside_system_bikes: dict[int, Bike],
+                  logger: Logger) -> tuple[bool, dict[int, Bike], dict[int, Bike]]:
+    """
+    Handle the event based on its type.
+
+    Parameters:
+        - event (Event): The event object to be processed.
+        - station_dict (dict): A dictionary containing the stations in the network.
+        - nearby_nodes_dict (dict): A dictionary containing the nearby nodes for each station.
+        - distance_matrix (pd.DataFrame): A DataFrame containing the distance matrix between stations.
+        - system_bikes (dict): A dictionary containing the bikes in the system.
+        - outside_system_bikes (dict): A dictionary containing the bikes outside the system.
+
+    Returns:
+        - bool: A boolean indicating whether the event failed or not.
+        - dict: A dictionary containing the bikes in the system.
+        - dict: A dictionary containing the bikes outside the system.
+    """
+    failure = False
+    if event.is_departure():
+        trip = departure_handler(event.get_trip(), station_dict, nearby_nodes_dict, distance_matrix)
+        if trip.is_failed():
+            failure = True
+            logger.log_no_available_bikes(trip.get_start_location().get_station_id(), trip.get_end_location().get_station_id())
         else:
-            system_bikes, outside_system_bikes = arrival_handler(event.get_trip(), system_bikes, outside_system_bikes)
+            logger.log_trip(trip)
+    else:
+        system_bikes, outside_system_bikes = arrival_handler(event.get_trip(), system_bikes, outside_system_bikes)
 
-        tbar.update(1)
-
-    return total_trips, failures, system_bikes, outside_system_bikes
+    return failure, system_bikes, outside_system_bikes

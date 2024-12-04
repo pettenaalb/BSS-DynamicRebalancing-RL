@@ -1,17 +1,79 @@
 import os
+import logging
+import math
 import numpy as np
 import osmnx as ox
 import pandas as pd
 import networkx as nx
+import matplotlib.pyplot as plt
+import geopandas as gpd
 
 from scipy.stats import truncnorm
 from geopy.distance import distance
 from typing import TYPE_CHECKING
+from enum import Enum
 
 if TYPE_CHECKING:
     from gymnasium_env.simulator.cell import Cell
     from gymnasium_env.simulator.station import Station
     from gymnasium_env.simulator.bike import Bike
+    from gymnasium_env.simulator.truck import Truck
+    from gymnasium_env.simulator.trip import Trip
+
+# ----------------------------------------------------------------------------------------------------------------------
+
+class Actions(Enum):
+    STAY = 0
+    RIGHT = 1
+    UP = 2
+    LEFT = 3
+    DOWN = 4
+    DROP_BIKE = 5
+    PICK_UP_BIKE = 6
+    CHARGE_BIKE = 7
+
+class Logger:
+    def __init__(self, log_file: str, is_logging: bool = False):
+        logging.basicConfig(filename=log_file, level=logging.INFO, filemode='w')
+        self.logger = logging.getLogger('env_logger')
+        self.is_logging = is_logging
+
+    def new_log_line(self):
+        if self.is_logging:
+            self.logger.info("--------------------------------------------------------")
+
+    def log_starting_action(self, action: str, t: int):
+        if self.is_logging:
+            self.logger.info(f'START ACTION: '
+                             f'\n - {action}'
+                             f'\n - Time: {t}'
+                             f'\n - Steps needed: {int(math.ceil(t / 30))}')
+
+    def log_ending_action(self, time: str):
+        if self.is_logging:
+            self.logger.info(f'Action completed successfully - Time: {time}')
+
+    def log_state(self, step: int, time: str):
+        if self.is_logging:
+            self.logger.info(f'State S_{step} - Time: {time}')
+
+    def log_truck(self, truck: "Truck"):
+        if self.is_logging:
+            self.logger.info(f"\nTRUCK:"
+                             f"\n - CELL: {truck.cell.get_id()} - {truck.cell.get_center_node()}"
+                             f"\n - NODE: {truck.position}"
+                             f"\n - LOAD: {truck.current_load} bikes")
+
+    def log_no_available_bikes(self, start_station: int, end_station: int):
+        if self.is_logging:
+            self.logger.warning(f"No bike available from station {start_station} to station {end_station}")
+
+    def log_trip(self, trip: "Trip"):
+        if self.is_logging:
+            self.logger.info("Trip scheduled %s", trip)
+
+    def set_logging(self, is_logging: bool):
+        self.is_logging = is_logging
 
 # ----------------------------------------------------------------------------------------------------------------------
 
@@ -62,8 +124,8 @@ def generate_poisson_events(rate, time_duration) -> list[int]:
 
 def convert_seconds_to_hours_minutes(seconds) -> str:
     hours, remainder = divmod(seconds, 3600)
-    minutes, _ = divmod(remainder, 60)
-    return f"{hours:02}:{minutes:02}"
+    minutes, seconds = divmod(remainder, 60)
+    return f"{hours:02}:{minutes:02}:{seconds:02}"
 
 
 def truncated_gaussian(lower=5, upper=25, mean=15, std_dev=5):
@@ -71,6 +133,21 @@ def truncated_gaussian(lower=5, upper=25, mean=15, std_dev=5):
     truncated_normal = truncnorm(a, b, loc=mean, scale=std_dev)
     speed = truncated_normal.rvs()
     return speed
+
+
+def nodes_within_radius(target_node: str, nodes_dict: dict[str, tuple], radius: int) -> dict[str, tuple]:
+    # Get coordinates of the target node
+    target_coords = nodes_dict.get(target_node)
+    if not target_coords:
+        raise ValueError("Target node not found in nodes dictionary")
+
+    # Find all nodes within the radius and return as a dictionary
+    nearby_nodes = {
+        node_id: coords for node_id, coords in nodes_dict.items()
+        if node_id != target_node and compute_distance(target_coords, coords) <= radius
+    }
+
+    return nearby_nodes
 
 # ----------------------------------------------------------------------------------------------------------------------
 
@@ -80,13 +157,38 @@ def load_cells_from_csv(filename) -> dict[int, "Cell"]:
     cells = {row['id']: Cell.from_dict(row) for _, row in df.iterrows()}
     return cells
 
+
+def load_nearby_nodes_dict_from_csv(filename) -> dict:
+    # Extract nearby nodes
+    nearby_nodes_df = pd.read_csv(filename)
+
+    # Ensure integer conversion
+    nearby_nodes_df['central_node'] = nearby_nodes_df['central_node'].astype(int)
+    nearby_nodes_df['nearby_node'] = nearby_nodes_df['nearby_node'].astype(int)
+
+    # Reconstruct the dictionary with integer keys and list values
+    from collections import defaultdict
+
+    nearby_nodes_dict = defaultdict(list)
+    for _, row in nearby_nodes_df.iterrows():
+        central_node = row['central_node']
+        nearby_node = row['nearby_node']
+        nearby_nodes_dict[central_node].append(nearby_node)
+
+    # Reconstruct as a regular dictionary
+    nearby_nodes_dict = {}
+    for central_node, group in nearby_nodes_df.groupby('central_node'):
+        nearby_nodes_dict[central_node] = group['nearby_node'].tolist()
+
+    return nearby_nodes_dict
+
 # ----------------------------------------------------------------------------------------------------------------------
 
-def initialize_graph(graph_path: str = None) -> nx.MultiDiGraph:
+def initialize_graph(graph_path: str = None, logger: Logger = None) -> nx.MultiDiGraph:
     if os.path.isfile(graph_path):
-        print("Network file already exists. Loading the network data... ")
+        print("Network file already exists. Loading the network data: ", end="")
         graph = ox.load_graphml(graph_path)
-        print("Network data loaded successfully.")
+        print("network data loaded successfully.")
     else:
         # Raise an error if the graph file does not exist
         raise FileNotFoundError("Network file does not exist. Please check the file path.")
@@ -147,3 +249,39 @@ def initialize_stations(G: nx.MultiDiGraph, bikes_per_station: dict[int, int] = 
     stations[10000] = Station(10000, 0, 0)
 
     return stations, sys_bikes
+
+# ----------------------------------------------------------------------------------------------------------------------
+
+def plot_graph_with_grid(graph, cell_dict, plot_center_nodes=False, plot_number_cells=False):
+    # Extract nodes and edges in WGS84 coordinates (lon, lat)
+    nodes, edges = ox.graph_to_gdfs(graph, nodes=True, edges=True)
+
+    # Convert cell_dict into a GeoDataFrame in WGS84 for easy plotting
+    grid_geoms = [cell.boundary for cell in cell_dict.values()]
+    cell_gdf = gpd.GeoDataFrame(geometry=grid_geoms, crs="EPSG:4326")  # WGS84 CRS
+
+    # Plot setup
+    fig, ax = plt.subplots(figsize=(10, 10))
+
+    # Plot the graph edges in geographic coordinates
+    edges.plot(ax=ax, linewidth=0.5, edgecolor="black", alpha=0.7)
+    # Plot the graph nodes
+    nodes.plot(ax=ax, markersize=2, color="blue", alpha=0.7)
+
+    # Overlay the grid cells
+    cell_gdf.plot(ax=ax, linewidth=0.8, edgecolor="red", facecolor="blue", alpha=0.5)
+
+    for cell in cell_dict.values():
+        if plot_center_nodes:
+            center_node = cell.center_node
+            if center_node != 0:
+                node_coords = graph.nodes[center_node]['x'], graph.nodes[center_node]['y']
+                ax.plot(node_coords[0], node_coords[1], marker='o', color='yellow', markersize=4, label=f"Center Node {cell.id}")
+
+        if plot_number_cells:
+            center_coords = cell.boundary.centroid.coords[0]
+            ax.text(center_coords[0], center_coords[1], str(cell.id), fontsize=8, color='yellow', ha='center', va='center', weight='bold')
+
+    # Configure plot appearance
+    plt.axis('off')
+    plt.show()
