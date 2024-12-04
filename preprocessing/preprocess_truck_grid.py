@@ -175,7 +175,7 @@ def main():
 
     plot_graph_with_grid(graph, cell_dict, plot_center_nodes=True)
 
-    save_cells_to_csv(cell_dict.values(), params['data_path'] + "cell-data.csv")
+    save_cells_to_csv(cell_dict.values(), params['data_path'] + "utils/cell_data.csv")
 
 
 if __name__ == '__main__':

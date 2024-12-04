@@ -25,13 +25,15 @@ matplotlib.use('Qt5Agg')
 
 params = {
     'graph_file': 'utils/cambridge_network.graphml',
-    'cell_file': 'utils/cell-data.csv',
-    'distance_matrix_file': 'utils/distance-matrix.csv',
+    'cell_file': 'utils/cell_data.csv',
+    'distance_matrix_file': 'utils/distance_matrix.csv',
     'filtered_stations_file': 'utils/filtered_stations.csv',
     'matrices_folder': 'matrices/09-10',
     'rates_folder': 'rates/09-10',
     'trips_folder': 'trips/',
-    'nearby_nodes': 'utils/nearby_nodes.pkl'
+    'nearby_nodes': 'utils/nearby_nodes.pkl',
+    'velocity_matrix': 'utils/ev_velocity_matrix.csv',
+    'consumption_matrix': 'utils/ev_consumption_matrix.csv'
 }
 
 days = {'monday': 0, 'tuesday': 1, 'wednesday': 2, 'thursday': 3, 'friday': 4, 'saturday': 5, 'sunday': 6}
@@ -72,6 +74,15 @@ class BostonCity(gym.Env):
         self.distance_matrix = pd.read_csv(data_path + params['distance_matrix_file'], index_col='osmid')
         self.distance_matrix.index = self.distance_matrix.index.astype(int)
         self.distance_matrix.columns = self.distance_matrix.columns.astype(int)
+
+        # Initialize the velocity matrix
+        self.velocity_matrix = pd.read_csv(data_path + params['velocity_matrix'], index_col='hour')
+
+        # Initialize the consumption matrix
+        self.consumption_matrix = pd.read_csv(data_path + params['consumption_matrix'], index_col='hour')
+
+        print(self.velocity_matrix)
+        print(self.consumption_matrix)
 
         # Define action space
         self.action_space = spaces.Discrete(len(Actions))
@@ -205,29 +216,32 @@ class BostonCity(gym.Env):
 
         # Perform the action and log it
         t = 0
+        distance = 0
+        hours, _ = divmod((self.time_slot * 3 + 1) * 3600 + self.env_time, 3600)
+        mean_velocity = self.velocity_matrix.loc[hours, self.day]
         if action == Actions.STAY.value:
             t = stay()
             self.logger.log_starting_action('STAY', t)
         elif action == Actions.RIGHT.value:
-            t = move_right(self.truck, self.distance_matrix, self.cells)
+            t, distance = move_right(self.truck, self.distance_matrix, self.cells, mean_velocity)
             self.logger.log_starting_action('RIGHT', t)
         elif action == Actions.UP.value:
-            t = move_up(self.truck, self.distance_matrix, self.cells)
+            t, distance = move_up(self.truck, self.distance_matrix, self.cells, mean_velocity)
             self.logger.log_starting_action('UP', t)
         elif action == Actions.LEFT.value:
-            t = move_left(self.truck, self.distance_matrix, self.cells)
+            t, distance = move_left(self.truck, self.distance_matrix, self.cells, mean_velocity)
             self.logger.log_starting_action('LEFT', t)
         elif action == Actions.DOWN.value:
-            t = move_down(self.truck, self.distance_matrix, self.cells)
+            t, distance = move_down(self.truck, self.distance_matrix, self.cells, mean_velocity)
             self.logger.log_starting_action('DOWN', t)
         elif action == Actions.DROP_BIKE.value:
-            t = drop_bike(self.truck, self.distance_matrix)
+            t, distance = drop_bike(self.truck, self.distance_matrix, mean_velocity)
             self.logger.log_starting_action('DROP_BIKE', t)
         elif action == Actions.PICK_UP_BIKE.value:
-            t = pick_up_bike(self.truck, self.stations, self.distance_matrix)
+            t, distance = pick_up_bike(self.truck, self.stations, self.distance_matrix, mean_velocity)
             self.logger.log_starting_action('PICK_UP_BIKE', t)
         elif action == Actions.CHARGE_BIKE.value:
-            t = charge_bike(self.truck, self.stations, self.distance_matrix)
+            t, distance = charge_bike(self.truck, self.stations, self.distance_matrix, mean_velocity)
             self.logger.log_starting_action('CHARGE_BIKE', t)
 
         # Calculate steps and log the state
@@ -256,11 +270,8 @@ class BostonCity(gym.Env):
 
         # Compute the outputs
         observation = self._get_obs()
-        reward = self._get_reward(steps, failures)
+        reward = self._get_reward(steps, failures, distance)
         terminated = self.env_time >= 3600 * 3
-
-        # Log truck state
-        self.logger.log_truck(self.truck)
 
         # Prepare additional info
         info = {
@@ -268,13 +279,12 @@ class BostonCity(gym.Env):
             'failures': failures
         }
 
+        # Log truck state
+        self.logger.log_truck(self.truck)
+
         # Return the step results
         return observation, reward, terminated, False, info
 
-
-    # Close: Clean up any resources used by the environment.
-    def close(self):
-        pass
 
     def _jump_to_next_state(self, steps: int = 0) -> int:
         total_failures = 0
@@ -287,7 +297,7 @@ class BostonCity(gym.Env):
             # Process all events that occurred before the updated environment time
             while self.event_buffer and self.event_buffer[0].time < self.env_time:
                 event = self.event_buffer.pop(0)
-                failures, self.system_bikes, self.outside_system_bikes = event_handler(
+                failure, self.system_bikes, self.outside_system_bikes = event_handler(
                     event,
                     self.stations,
                     self.nearby_nodes_dict,
@@ -296,7 +306,7 @@ class BostonCity(gym.Env):
                     self.outside_system_bikes,
                     self.logger
                 )
-                total_failures += failures
+                total_failures += failure
 
             # Log the updated state after processing events
             self.logger.log_state(
@@ -374,10 +384,14 @@ class BostonCity(gym.Env):
 
         return observation.astype(np.float32)
 
-    def _get_reward(self, steps: int, failures: int) -> float:
+
+    def _get_reward(self, steps: int, failures: int, distance: int) -> float:
         # FIXME: Fix the reward function
-        # TODO: Implement a energy cost function
-        return - steps - failures*steps - self.energy_cost_per_time*steps
+        # TODO: Implement an energy cost function
+        hours, _ = divmod((self.time_slot * 3 + 1) * 3600 + self.env_time, 3600)
+        mean_consumption = self.consumption_matrix.loc[hours, self.day]
+        return - steps - failures*steps - (distance/1000)*mean_consumption
+
 
     def render(self):
         # Initialize the figure and axes if not already done
@@ -425,3 +439,7 @@ class BostonCity(gym.Env):
 
         # Optional: Pause for a short time to ensure updates are visible (not necessary with plt.show())
         plt.pause(0.1)
+
+
+    def get_system_data(self) -> tuple[dict, dict, dict]:
+        return self.stations, self.system_bikes, self.outside_system_bikes

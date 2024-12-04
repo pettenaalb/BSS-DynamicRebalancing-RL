@@ -70,7 +70,7 @@ def main():
 
     # Save the distance matrix to a CSV file
     print("Saving the distance matrix to a CSV file... ")
-    distance_matrix.to_csv(params['data_path'] + 'distance-matrix.csv', index=True)
+    distance_matrix.to_csv(params['data_path'] + 'distance_matrix.csv', index=True)
 
 
 if __name__ == '__main__':

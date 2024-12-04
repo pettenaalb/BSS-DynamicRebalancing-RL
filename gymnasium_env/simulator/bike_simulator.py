@@ -111,9 +111,9 @@ def simulate_environment(duration: int, time_slot: int, global_rate: float, pmf:
             arr_event = Event(time=event_time, event_type=EventType.ARRIVAL, trip=trip)
             event_buffer.append(arr_event)
         else:
-            # TODO: Implement a more realistic velocity model
             velocity_kmh = truncated_gaussian(5, 25, 15, 5)
             if stn_pair[1] == 10000:
+                # TODO: Implement a more realistic distance model for trips outside the system
                 distance = truncated_gaussian(2, 7, 4.5, 1)
             else:
                 distance = distance_matrix.at[stn_pair[0], stn_pair[1]]
@@ -134,7 +134,7 @@ def simulate_environment(duration: int, time_slot: int, global_rate: float, pmf:
 
 def event_handler(event: Event, station_dict: dict[int, Station], nearby_nodes_dict: dict[str, dict[str, tuple]],
                   distance_matrix: pd.DataFrame, system_bikes: dict[int, Bike], outside_system_bikes: dict[int, Bike],
-                  logger: Logger) -> tuple[bool, dict[int, Bike], dict[int, Bike]]:
+                  logger: Logger) -> tuple[int, dict[int, Bike], dict[int, Bike]]:
     """
     Handle the event based on its type.
 
@@ -151,11 +151,11 @@ def event_handler(event: Event, station_dict: dict[int, Station], nearby_nodes_d
         - dict: A dictionary containing the bikes in the system.
         - dict: A dictionary containing the bikes outside the system.
     """
-    failure = False
+    failure = 0
     if event.is_departure():
         trip = departure_handler(event.get_trip(), station_dict, nearby_nodes_dict, distance_matrix)
         if trip.is_failed():
-            failure = True
+            failure = 1
             logger.log_no_available_bikes(trip.get_start_location().get_station_id(), trip.get_end_location().get_station_id())
         else:
             logger.log_trip(trip)

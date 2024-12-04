@@ -40,7 +40,7 @@ class Truck:
         if self.current_load < self.max_load:
             self.bikes[bike.bike_id] = bike
             self.current_load += 1
-            bike.set_battery(bike.max_battery)
+            bike.set_battery(bike.get_max_battery())
         else:
             raise ValueError("Truck is full")
 
