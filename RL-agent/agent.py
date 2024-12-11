@@ -1,0 +1,76 @@
+import torch
+import numpy as np
+import random
+
+from torch.nn import functional as F
+
+from DuelingDQN import DuelingDQN
+from torch_geometric.loader import DataLoader
+
+class DQNAgent:
+    def __init__(self, replay_buffer, num_actions, gamma=0.99, epsilon_start=1.0, epsilon_end=0.01, epsilon_decay=500, lr=0.1, device='cpu'):
+        self.train_model = DuelingDQN(num_actions).to(device)
+        self.target_model = DuelingDQN(num_actions).to(device)
+        self.target_model.load_state_dict(self.train_model.state_dict())
+        self.optimizer = torch.optim.Adam(self.train_model.parameters(), lr=lr)
+        self.replay_buffer = replay_buffer
+        self.num_actions = num_actions
+        self.gamma = gamma
+        self.epsilon = epsilon_start
+        self.epsilon_min = epsilon_end
+        self.epsilon_decay = epsilon_decay
+        self.steps_done = 0
+        self.device = device
+
+    def select_action(self, state, greedy=False):
+        # Epsilon-greedy exploration
+        if not greedy and random.random() < self.epsilon:
+            return random.randint(0, self.num_actions - 1)
+        with torch.no_grad():
+            q_values = self.train_model(state)
+            return q_values.argmax(dim=-1).item()
+
+    def update_epsilon(self):
+        # Decay epsilon
+        self.epsilon = self.epsilon_min + (1 - self.epsilon_min) * np.exp(-1.0 * self.steps_done / self.epsilon_decay)
+
+    def update_target_network(self):
+        # Hard update: Copy weights from the main model to the target model
+        self.target_model.load_state_dict(self.train_model.state_dict())
+
+    def train_step(self, batch_size):
+        if len(self.replay_buffer) < batch_size:
+            return
+
+        # Sample a batch
+        b = self.replay_buffer.sample(batch_size)
+        loader = DataLoader(b, batch_size=batch_size, follow_batch=['x_s', 'x_t'])
+        batch = next(iter(loader))
+
+        # Compute Q-values for the current states and selected actions, Q(s, a)
+        train_q_values = self.train_model(batch, 's').gather(1, batch.actions)
+
+        # Compute target Q-values
+        with torch.no_grad():
+            next_q_values = self.target_model(batch, 't').max(dim=1, keepdim=True)[0]
+
+            # Compute cumulative gamma (sum of discount factors for each step)
+            cumulative_discount = self.gamma * (1 - self.gamma ** batch.steps) / (1 - self.gamma)
+            discount = self.gamma ** (batch.steps + 1)
+
+            # Final target Q-value equation
+            target_q_values = batch.reward + cumulative_discount + discount * next_q_values * (1 - batch.done.float())
+
+        # Compute loss
+        loss = F.smooth_l1_loss(train_q_values, target_q_values)
+
+        # Optimize the model
+        self.optimizer.zero_grad()
+        loss.backward()
+        for param in self.train_model.parameters():
+            param.grad.data.clamp_(-1, 1)  # Gradient clipping for stability
+        self.optimizer.step()
+
+        # Update epsilon
+        self.steps_done += 1
+        self.update_epsilon()

@@ -124,6 +124,7 @@ def generate_poisson_events(rate, time_duration) -> list[int]:
 
 def convert_seconds_to_hours_minutes(seconds) -> str:
     hours, remainder = divmod(seconds, 3600)
+    hours = hours % 24
     minutes, seconds = divmod(remainder, 60)
     return f"{hours:02}:{minutes:02}:{seconds:02}"
 
@@ -196,7 +197,7 @@ def initialize_graph(graph_path: str = None, logger: Logger = None) -> nx.MultiD
     return graph
 
 
-def initialize_bikes(stn: "Station", n: int = 0) -> dict[int, "Bike"]:
+def initialize_bikes(stn: "Station" = None, n: int = 0, next_bike_id: int = 0) -> tuple[dict[int, "Bike"], int]:
     """
     Initialize a list of bikes at a station.
 
@@ -208,15 +209,16 @@ def initialize_bikes(stn: "Station", n: int = 0) -> dict[int, "Bike"]:
         - dict: A dictionary containing the bikes at the station.
     """
     from gymnasium_env.simulator.bike import Bike
+    next_id = next_bike_id
     bikes = {}
     for i in range(n):
-        bike = Bike(stn=stn)
+        bike = Bike(stn=stn, bike_id=next_id)
+        next_id += 1
         bikes[bike.get_bike_id()] = bike
-    return bikes
+    return bikes, next_id
 
 
-def initialize_stations(G: nx.MultiDiGraph, bikes_per_station: dict[int, int] = None, pmf_matrix: pd.DataFrame = None,
-                        global_rate: float = None) -> tuple[dict[int, "Station"], dict[int, "Bike"]]:
+def initialize_stations(G: nx.MultiDiGraph, next_bike_id: int, bikes_per_station: dict[int, int] = None) -> tuple[dict, dict, dict, int]:
     """
     Initialize a list of stations based on the nodes of the graph.
 
@@ -232,27 +234,121 @@ def initialize_stations(G: nx.MultiDiGraph, bikes_per_station: dict[int, int] = 
     stations = {}
     sys_bikes = {}
 
+    next_id = next_bike_id
+
     for index, row in gdf_nodes.iterrows():
-        if pmf_matrix is not None and global_rate is not None:
-            request_rate =  kahan_sum(pmf_matrix.loc[index].values) * global_rate
-        else:
-            request_rate = 0.0
-        station = Station(index, row["y"], row["x"], request_rate=request_rate)
+        station = Station(index, row["y"], row["x"])
         if bikes_per_station is not None:
-            bikes = initialize_bikes(station, bikes_per_station.get(index))
+            bikes = initialize_bikes(station, bikes_per_station.get(index), next_id)
         else:
-            bikes = initialize_bikes(station, np.random.randint(0, 2))
+            bikes, next_id = initialize_bikes(station, np.random.randint(0, 2), next_id)
         sys_bikes.update(bikes)
         station.set_bikes(bikes)
         stations[index] = station
 
     stations[10000] = Station(10000, 0, 0)
 
-    return stations, sys_bikes
+    out_sys_bikes, next_id = initialize_bikes(stations[10000], 50, next_id)
+
+    return stations, sys_bikes, out_sys_bikes, next_id
+
+
+def initialize_cells_subgraph(cells: dict[int, "Cell"], nodes_dict: dict[int, tuple[float, float]],
+                              distance_matrix: pd.DataFrame) -> nx.MultiDiGraph:
+    """
+    Initialize a subgraph of the road network based on the cells.
+
+    Parameters:
+        - graph (nx.MultiDiGraph): The road network graph.
+        - cells (dict): A dictionary of cells in the network.
+        - nodes_dict (dict): A dictionary of nodes and their coordinates.
+
+    Returns:
+        - nx.Graph: A subgraph of the road network containing the center nodes of the cells.
+    """
+    # Initialize the subgraph
+    subgraph = nx.MultiDiGraph()
+
+    subgraph.graph['crs'] = "EPSG:4326"
+
+    # Add center nodes to the subgraph
+    for cell_id, cell in cells.items():
+        center_node = cell.get_center_node()
+        center_coords = nodes_dict.get(center_node)
+        subgraph.add_node(
+            center_node,
+            cell_id=cell.get_id(),
+            total_bikes=cell.get_total_bikes(),
+            x=center_coords[1],  # Longitude
+            y=center_coords[0],  # Latitude
+            # Initialize internal parameters
+            average_battery_level_per_region=0.0,
+            variance_battery_level_per_region=0.0,
+            low_battery_ratio_per_region=0.0,
+            demand_rate_per_region=0.0,
+        )
+
+    max_length = 0
+    # Connect center nodes of adjacent cells
+    for cell_id, cell in cells.items():
+        current_center = cell.get_center_node()
+        for direction, adjacent_cell_id in cell.get_adjacent_cells().items():
+            if adjacent_cell_id is not None and adjacent_cell_id in cells:
+                adjacent_cell = cells[adjacent_cell_id]
+                adjacent_center = adjacent_cell.get_center_node()
+                if distance_matrix.loc[current_center, adjacent_center] > max_length:
+                    max_length = distance_matrix.loc[current_center, adjacent_center]
+
+    # Connect center nodes of adjacent cells
+    for cell_id, cell in cells.items():
+        current_center = cell.get_center_node()
+        for direction, adjacent_cell_id in cell.get_adjacent_cells().items():
+            if adjacent_cell_id is not None and adjacent_cell_id in cells:
+                adjacent_cell = cells[adjacent_cell_id]
+                adjacent_center = adjacent_cell.get_center_node()
+
+                # Compute the shortest path between the current center and the adjacent center
+                try:
+                    path_length = distance_matrix.loc[current_center, adjacent_center]
+                    # Add the edge to the subgraph
+                    subgraph.add_edge(
+                        current_center,
+                        adjacent_center,
+                        distance=path_length/max_length,
+                    )
+                except nx.NetworkXNoPath:
+                    print(f"No path found between {current_center} and {adjacent_center}.")
+
+    return subgraph
 
 # ----------------------------------------------------------------------------------------------------------------------
 
-def plot_graph_with_grid(graph, cell_dict, plot_center_nodes=False, plot_number_cells=False):
+def plot_graph(graph: nx.MultiDiGraph, cell_dict: dict[int, "Cell"] = None):
+    # Extract nodes and edges in WGS84 coordinates (lon, lat)
+    nodes, edges = ox.graph_to_gdfs(graph, nodes=True, edges=True)
+
+    # Plot setup
+    fig, ax = plt.subplots(figsize=(10, 10))
+
+    # Plot the graph edges in geographic coordinates
+    edges.plot(ax=ax, linewidth=0.5, edgecolor="black", alpha=0.7)
+    # Plot the graph nodes
+    nodes.plot(ax=ax, markersize=2, color="blue", alpha=0.7)
+
+    if cell_dict is not None:
+        # Convert cell_dict into a GeoDataFrame in WGS84 for easy plotting
+        grid_geoms = [cell.boundary for cell in cell_dict.values()]
+        cell_gdf = gpd.GeoDataFrame(geometry=grid_geoms, crs="EPSG:4326")  # WGS84 CRS
+        # Overlay the grid cells
+        cell_gdf.plot(ax=ax, linewidth=0.8, edgecolor="red", facecolor="blue", alpha=0.2)
+
+    # Configure plot appearance
+    plt.axis('off')
+    plt.show()
+
+
+def plot_graph_with_grid(graph, cell_dict, plot_center_nodes=False, plot_number_cells=False, truck_coords=None,
+                         xlim=None, ylim=None):
     # Extract nodes and edges in WGS84 coordinates (lon, lat)
     nodes, edges = ox.graph_to_gdfs(graph, nodes=True, edges=True)
 
@@ -264,12 +360,12 @@ def plot_graph_with_grid(graph, cell_dict, plot_center_nodes=False, plot_number_
     fig, ax = plt.subplots(figsize=(10, 10))
 
     # Plot the graph edges in geographic coordinates
-    edges.plot(ax=ax, linewidth=0.5, edgecolor="black", alpha=0.7)
+    edges.plot(ax=ax, linewidth=0.5, edgecolor="black", alpha=0.5)
     # Plot the graph nodes
-    nodes.plot(ax=ax, markersize=2, color="blue", alpha=0.7)
+    nodes.plot(ax=ax, markersize=2, color="blue", alpha=0.5)
 
     # Overlay the grid cells
-    cell_gdf.plot(ax=ax, linewidth=0.8, edgecolor="red", facecolor="blue", alpha=0.5)
+    cell_gdf.plot(ax=ax, linewidth=0.8, edgecolor="red", facecolor="blue", alpha=0.2)
 
     for cell in cell_dict.values():
         if plot_center_nodes:
@@ -281,6 +377,13 @@ def plot_graph_with_grid(graph, cell_dict, plot_center_nodes=False, plot_number_
         if plot_number_cells:
             center_coords = cell.boundary.centroid.coords[0]
             ax.text(center_coords[0], center_coords[1], str(cell.id), fontsize=8, color='yellow', ha='center', va='center', weight='bold')
+
+    if truck_coords is not None:
+        ax.plot(truck_coords[1], truck_coords[0], marker='o', color='red', markersize=10, label="Truck position")
+
+    if xlim is not None and ylim is not None:
+        plt.xlim(xlim)
+        plt.ylim(ylim)
 
     # Configure plot appearance
     plt.axis('off')

@@ -1,50 +1,93 @@
+import networkx as nx
 import torch
-import torch.nn as nn
 
-from replay_memory import Transition
+from torch_geometric.utils import from_networkx
+from torch_geometric.data import Batch, Data
 
-def optimize_model(memory, policy_net, target_net, optimizer, BATCH_SIZE, GAMMA, device):
-    if len(memory) < BATCH_SIZE:
-        return
-    transitions = memory.sample(BATCH_SIZE)
-    # Transpose the batch (see https://stackoverflow.com/a/19343/3343043 for
-    # detailed explanation). This converts batch-array of Transitions
-    # to Transition of batch-arrays.
-    batch = Transition(*zip(*transitions))
+def convert_graph_to_data(graph: nx.MultiDiGraph):
+    data = from_networkx(graph)
 
-    # Compute a mask of non-final states and concatenate the batch elements
-    # (a final state would've been the one after which simulation ended)
-    non_final_mask = torch.tensor(tuple(map(lambda s: s is not None,
-                                            batch.next_state)), device=device, dtype=torch.bool)
-    non_final_next_states = torch.cat([s for s in batch.next_state
-                                       if s is not None])
-    state_batch = torch.cat(batch.state)
-    action_batch = torch.cat(batch.action)
-    reward_batch = torch.cat(batch.reward)
+    # Extract node attributes
+    node_attrs = [
+        'demand_rate_per_region',
+        'average_battery_level_per_region',
+        'low_battery_ratio_per_region',
+        'variance_battery_level_per_region',
+        'total_bikes_per_region'
+    ]
+    data.x = torch.cat([
+        torch.tensor([graph.nodes[n].get(attr, 0) for n in graph.nodes()], dtype=torch.float).unsqueeze(-1) for attr in node_attrs
+    ], dim=-1)
 
-    # Compute Q(s_t, a) - the model computes Q(s_t), then we select the
-    # columns of actions taken. These are the actions which would've been taken
-    # for each batch state according to policy_net
-    state_action_values = policy_net(state_batch).gather(1, action_batch)
+    # Extract edge types
+    edge_types = []
+    edge_attrs = ['distance']
+    edge_attr_list = {attr: [] for attr in edge_attrs}
+    for u, v, k, attr in graph.edges(data=True, keys=True):
+        edge_types.append(k)
+        for edge_attr in edge_attrs:
+            edge_attr_list[edge_attr].append(attr[edge_attr])
 
-    # Compute V(s_{t+1}) for all next states.
-    # Expected values of actions for non_final_next_states are computed based
-    # on the "older" target_net; selecting their best reward with max(1).values
-    # This is merged based on the mask, such that we'll have either the expected
-    # state value or 0 in case the state was final.
-    next_state_values = torch.zeros(BATCH_SIZE, device=device)
-    with torch.no_grad():
-        next_state_values[non_final_mask] = target_net(non_final_next_states).max(1).values
-    # Compute the expected Q values
-    expected_state_action_values = (next_state_values * GAMMA) + reward_batch
+    # Map edge types to integers
+    edge_type_mapping = {etype: i for i, etype in enumerate(set(edge_types))}
+    edge_type_indices = torch.tensor([edge_type_mapping[etype] for etype in edge_types],
+                                     dtype=torch.long)
 
-    # Compute Huber loss
-    criterion = nn.SmoothL1Loss()
-    loss = criterion(state_action_values, expected_state_action_values.unsqueeze(1))
+    # Add edge types and attributes to the data object
+    data.edge_type = edge_type_indices
+    data.edge_attr = torch.cat([torch.tensor(edge_attr_list[attr],
+                                             dtype=torch.float).view(-1, 1) for attr in edge_attrs],
+                               dim=-1)
+    data.edge_index = data.edge_index
 
-    # Optimize the model
-    optimizer.zero_grad()
-    loss.backward()
-    # In-place gradient clipping
-    torch.nn.utils.clip_grad_value_(policy_net.parameters(), 100)
-    optimizer.step()
+    return data
+
+
+def move_to_device(data, device):
+    """
+    Recursively moves data (tensors, lists, dictionaries) to the specified device.
+
+    Parameters:
+        - data: Data to move (tensor, dict, list, Batch, etc.).
+        - device: Target device (e.g., 'cuda' or 'cpu').
+
+    Returns:
+        - Data moved to the specified device.
+    """
+    if isinstance(data, torch.Tensor):
+        return data.to(device)
+    elif isinstance(data, Batch):  # Handle PyTorch Geometric Batch
+        return data.to(device)
+    elif isinstance(data, dict):  # Recursively move dictionary contents
+        return {key: move_to_device(value, device) for key, value in data.items()}
+    elif isinstance(data, list):  # Recursively move list elements
+        return [move_to_device(item, device) for item in data]
+    else:
+        raise TypeError(f"Unsupported data type: {type(data)}")
+
+
+def cast_to_float32(data):
+    # Convert PyTorch Geometric Data object
+    if isinstance(data, Data):
+        for key, value in data.items():
+            if isinstance(value, torch.Tensor) and value.dtype in [torch.float64, torch.float16]:
+                data[key] = value.float()
+        return data
+
+    # Convert standard PyTorch tensor
+    elif isinstance(data, torch.Tensor) and data.dtype in [torch.float64, torch.float16]:
+        return data.float()
+
+    # Recursively process dicts
+    elif isinstance(data, dict):
+        return {k: cast_to_float32(v) for k, v in data.items()}
+
+    # Return as is for other types
+    return data
+
+
+def convert_seconds_to_hours_minutes(seconds) -> str:
+    hours, remainder = divmod(seconds, 3600)
+    hours = hours % 24
+    minutes, seconds = divmod(remainder, 60)
+    return f"{hours:02}:{minutes:02}:{seconds:02}"

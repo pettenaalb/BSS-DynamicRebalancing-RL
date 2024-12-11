@@ -5,9 +5,7 @@ if TYPE_CHECKING:
 
 class Bike:
 
-    next_id = 0
-
-    def __init__(self, stn: "Station" = None, max_battery: float = 50.0):
+    def __init__(self, bike_id: int, stn: "Station" = None, max_battery: float = 50.0):
         """
         Initialize a Bike object.
 
@@ -16,13 +14,11 @@ class Bike:
         stn (Station): The station where the bike is located.
         max_battery (int): Maximum battery capacity of the bike. Default is 100 (in km).
         """
-        self.bike_id = Bike.next_id
+        self.bike_id = bike_id
         self.stn = stn
         self.max_battery = max_battery
         self.battery = max_battery
         self.available = True
-
-        Bike.next_id += 1
 
     def __str__(self):
         """

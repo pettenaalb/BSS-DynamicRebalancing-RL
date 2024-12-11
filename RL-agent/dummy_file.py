@@ -1,9 +1,12 @@
 import gymnasium as gym
+import networkx as nx
+
 import gymnasium_env
 import time
 
 from enum import Enum
 from tqdm import tqdm
+from gymnasium_env.simulator.utils import plot_graph, convert_seconds_to_hours_minutes
 
 import numpy as np
 
@@ -27,16 +30,42 @@ def main():
         'max_truck_load': 30
     }
 
-    env.reset(options=options)
+    env.reset()
 
     is_not_done = True
+    time = 0
     while is_not_done:
         action = np.random.randint(0, 8)
-        observation, reward, terminated, _, info = env.step(action)
-        is_not_done = not terminated
+        observation, reward, done, _, info = env.step(action)
+        is_not_done = not done
         # env.render()
-        # # pause for 2 seconds
-        # time.sleep(2)
+        # Check if edges and nodes are correctly initialized
+        graph = info['cells_subgraph']
+        truck_position = info['agent_position']
+        time = info['time']
+        day = info['day']
+        week = info['week']
+        print(f"\rProcessing... Week {week}, {day.capitalize()}, {convert_seconds_to_hours_minutes(time)}", end="", flush=True)
+
+        # edge_attrs = ['distance']
+        # for u, v, k, attr in graph.edges(data=True, keys=True):
+        #     for edge_attr in edge_attrs:
+        #         if u == truck_position or v == truck_position:
+        #             print(f'Edge {u} -> {v} ({k}): {attr[edge_attr]}')
+        #
+        # node_attrs = [
+        #     'demand_rate_per_region',
+        #     'average_battery_level_per_region',
+        #     'low_battery_ratio_per_region',
+        #     'variance_battery_level_per_region',
+        #     'total_bikes_per_region'
+        # ]
+        # for attr in node_attrs:
+        #     print(f'{attr}: {graph.nodes[truck_position][attr]}')
+
+        # input("Press Enter to continue...")
+
+    print(f'Time: {convert_seconds_to_hours_minutes(time)}')
 
 
 if __name__ == '__main__':

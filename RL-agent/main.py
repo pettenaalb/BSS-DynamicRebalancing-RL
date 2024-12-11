@@ -1,18 +1,21 @@
-import math
-import random
-import matplotlib
-import matplotlib.pyplot as plt
-import gymnasium as gym
-
 import torch
-import torch.optim as optim
+import matplotlib
 
-from DQN_agent import DQN
-from replay_memory import ReplayMemory
-from utils import optimize_model
-from itertools import count
+import gymnasium as gym
+import gymnasium_env.register_env
+import numpy as np
+
+from tqdm import tqdm
+from agent import DQNAgent
+from utils import convert_graph_to_data, convert_seconds_to_hours_minutes
+from replay_memory import ReplayBuffer
+from torch_geometric.data import Data
+from matplotlib import pyplot as plt
+
+# ----------------------------------------------------------------------------------------------------------------------
 
 env = gym.make('gymnasium_env/BostonCity-v0', data_path='../data/')
+action_size = env.action_space.n
 
 # set up matplotlib
 is_ipython = 'inline' in matplotlib.get_backend()
@@ -24,56 +27,102 @@ plt.ion()
 # if GPU is to be used
 device = torch.device(
     "cuda" if torch.cuda.is_available() else
-    "mps" if torch.backends.mps.is_available() else
+    # "mps" if torch.backends.mps.is_available() else
     "cpu"
 )
 
+# set seed
+seed = 31
+env.unwrapped.seed(seed)
+np.random.seed(seed)
+torch.manual_seed(seed)
+
 params = {
-    'BATCH_SIZE': 128,
-    'GAMMA': 0.99,
-    'EPS_START': 0.9,
-    'EPS_END': 0.05,
-    'EPS_DECAY': 1000,
-    'TAU': 0.005,
-    'LR': 1e-4,
+    "num_episodes": 1,  # Total number of training episodes
+    "batch_size": 32,     # Batch size for replay buffer sampling
+    "replay_buffer_capacity": 10000,  # Capacity of replay buffer
+    "gamma": 0.99,  # Discount factor
+    "epsilon_start": 1.0,  # Starting exploration rate
+    "epsilon_end": 0.01,  # Minimum exploration rate
+    "epsilon_decay": 500,  # Epsilon decay rate
+    "lr": 1e-3  # Learning rate
 }
 
-steps_done = 0
+days2num = {'monday': 0, 'tuesday': 1, 'wednesday': 2, 'thursday': 3, 'friday': 4, 'saturday': 5, 'sunday': 6}
 
+# ----------------------------------------------------------------------------------------------------------------------
 
-def select_action(state, policy_net):
-    global steps_done
-    sample = random.random()
-    eps_threshold = params['EPS_END'] + (params['EPS_START'] - params['EPS_END']) * \
-                    math.exp(-1. * steps_done / params['EPS_DECAY'])
-    steps_done += 1
-    if sample > eps_threshold:
-        with torch.no_grad():
-            # t.max(1) will return the largest column value of each row.
-            # second column on max result is index of where max element was
-            # found, so we pick action with the larger expected reward.
-            return policy_net(state).max(1).indices.view(1, 1)
-    else:
-        return torch.tensor([[env.action_space.sample()]], device=device, dtype=torch.long)
+def train_dueling_dqn(agent: DQNAgent, num_episodes: int, batch_size: int):
+    rewards_per_time_slot = []
 
+    for episode in range(num_episodes):
+        agent_state, info = env.reset()
+        network_state = convert_graph_to_data(info['cells_subgraph'])
+        state = network_state
+        state.agent_state = np.concatenate([info['agent_position'], agent_state])
+        state.steps = info['steps']
+        total_reward = 0
 
-episode_durations = []
+        not_done = True
+        total_hours = 4*7*8
+        tbar = tqdm(range(total_hours), desc=f"Episode {episode + 1}/{num_episodes}", position=0, leave=True, dynamic_ncols=True)
+        while not_done:
+            # Select an action and step in the environment
+            batched_state = Data(
+                x=state.x,
+                edge_index=state.edge_index,
+                edge_attr=state.edge_attr,
+                agent_state=torch.tensor(state.agent_state, dtype=torch.float32, device=device),
+                batch=torch.zeros(state.x.size(0), dtype=torch.long, device=device)
+            )
+            action = agent.select_action(batched_state)
+            agent_state, reward, done, time_slot_terminated, info = env.step(action)
+            network_state = convert_graph_to_data(info['cells_subgraph'])
+            next_state = network_state
+            next_state.agent_state = np.concatenate([info['agent_position'], agent_state])
+            next_state.steps = info['steps']
 
+            # Store experience in replay buffer
+            agent.replay_buffer.push(state, action, reward, next_state, done)
 
-def plot_durations(show_result=False):
+            # Train the agent
+            agent.train_step(batch_size)
+
+            # Update state and accumulate reward
+            state = next_state
+            total_reward += reward
+
+            # Check if episode terminated
+            not_done = not done
+
+            if time_slot_terminated:
+                agent.update_target_network()
+                rewards_per_time_slot.append(total_reward)
+                total_reward = 0
+                time = info['time']
+                day = info['day']
+                week = info['week']
+                print(f"\rProcessing... Week {week}, {day.capitalize()}, {convert_seconds_to_hours_minutes(time)}", end="", flush=True)
+                tbar.update(1)
+
+    return rewards_per_time_slot
+
+# ----------------------------------------------------------------------------------------------------------------------
+
+def plot_rewards(rewards, show_result=False):
     plt.figure(1)
-    durations_t = torch.tensor(episode_durations, dtype=torch.float)
+    rewards_t = torch.tensor(rewards, dtype=torch.float)
     if show_result:
         plt.title('Result')
     else:
         plt.clf()
         plt.title('Training...')
-    plt.xlabel('Episode')
-    plt.ylabel('Duration')
-    plt.plot(durations_t.numpy())
+    plt.xlabel('Step')
+    plt.ylabel('Reward')
+    plt.plot(rewards_t.numpy())
     # Take 100 episode averages and plot them too
-    if len(durations_t) >= 100:
-        means = durations_t.unfold(0, 100, 1).mean(1).view(-1)
+    if len(rewards_t) >= 100:
+        means = rewards_t.unfold(0, 100, 1).mean(1).view(-1)
         means = torch.cat((torch.zeros(99), means))
         plt.plot(means.numpy())
 
@@ -85,72 +134,34 @@ def plot_durations(show_result=False):
         else:
             display.display(plt.gcf())
 
+# ----------------------------------------------------------------------------------------------------------------------
+
 def main():
-    # Get number of actions from gym action space
-    n_actions = env.action_space.n
-    # Get the number of state observations
-    state, info = env.reset()
-    n_observations = len(state)
+    # Set up replay buffer
+    replay_buffer = ReplayBuffer(params["replay_buffer_capacity"], device)
 
-    policy_net = DQN(n_observations, n_actions).to(device)
-    target_net = DQN(n_observations, n_actions).to(device)
-    target_net.load_state_dict(policy_net.state_dict())
+    # Initialize the DQN agent
+    agent = DQNAgent(
+        replay_buffer=replay_buffer,
+        num_actions=env.action_space.n,
+        gamma=params["gamma"],
+        epsilon_start=params["epsilon_start"],
+        epsilon_end=params["epsilon_end"],
+        epsilon_decay=params["epsilon_decay"],
+        lr=params["lr"],
+        device=device,
+    )
 
-    optimizer = optim.AdamW(policy_net.parameters(), lr=params['LR'], amsgrad=True)
-    memory = ReplayMemory(10000)
+    # Train the agent using the training loop
+    rewards_per_episode = train_dueling_dqn(
+        agent,
+        num_episodes=params["num_episodes"],
+        batch_size=params["batch_size"]
+    )
 
-    if torch.cuda.is_available() or torch.backends.mps.is_available():
-        num_episodes = 600
-    else:
-        num_episodes = 50
-
-    for i_episode in range(num_episodes):
-        # Initialize the environment and get its state
-        options = {
-            'day': 'monday',
-            'time_slot': 0,
-            'initial_cell': 0,
-            'max_truck_load': 30
-        }
-        state, info = env.reset()
-        state = torch.tensor(state, dtype=torch.float32, device=device).unsqueeze(0)
-        for t in count():
-            action = select_action(state, policy_net)
-            observation, reward, terminated, truncated, info = env.step(action.item())
-            reward = torch.tensor([reward], device=device)
-            done = terminated or truncated
-
-            if terminated:
-                next_state = None
-            else:
-                next_state = torch.tensor(observation, dtype=torch.float32, device=device).unsqueeze(0)
-
-            # Store the transition in memory
-            memory.push(state, action, next_state, reward, info['steps'])
-
-            # Move to the next state
-            state = next_state
-
-            # Perform one step of the optimization (on the policy network)
-            optimize_model(memory, policy_net, target_net, optimizer, params['BATCH_SIZE'], params['GAMMA'], device)
-
-            # Soft update of the target network's weights
-            # θ′ ← τ θ + (1 −τ )θ′
-            target_net_state_dict = target_net.state_dict()
-            policy_net_state_dict = policy_net.state_dict()
-            for key in policy_net_state_dict:
-                target_net_state_dict[key] = policy_net_state_dict[key]*params['TAU'] + target_net_state_dict[key]*(1-params['TAU'])
-            target_net.load_state_dict(target_net_state_dict)
-
-            if done:
-                episode_durations.append(t + 1)
-                plot_durations()
-                break
-
-    print('Complete')
-    plot_durations(show_result=True)
-    plt.ioff()
-    plt.show()
+    # Print the rewards after training
+    print("Training completed.")
+    print(f"Rewards per episode: {rewards_per_episode}")
 
 
 if __name__ == '__main__':

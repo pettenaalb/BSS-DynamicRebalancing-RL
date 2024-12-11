@@ -83,7 +83,7 @@ def arrival_handler(trip: Trip, system_bikes: dict[int, Bike], outside_system_bi
 # ----------------------------------------------------------------------------------------------------------------------
 
 def simulate_environment(duration: int, time_slot: int, global_rate: float, pmf: pd.DataFrame, stations: dict,
-                         distance_matrix: pd.DataFrame) -> list[Event]:
+                         distance_matrix: pd.DataFrame, residual_event_buffer: list = None) -> list[Event]:
     """
     Simulate the environment for a given time interval.
 
@@ -106,7 +106,7 @@ def simulate_environment(duration: int, time_slot: int, global_rate: float, pmf:
         random_value = np.random.rand()
         stn_pair = tuple(pmf.iloc[np.searchsorted(pmf['cumsum'].values, random_value)]['id'])
         if stn_pair[0] == 10000:
-            ev_t = event_time + 3600*(time_slot + 1)
+            ev_t = event_time + 3600*(3*time_slot + 1)
             trip = Trip(ev_t, ev_t, stations[stn_pair[0]], stations[stn_pair[1]])
             arr_event = Event(time=event_time, event_type=EventType.ARRIVAL, trip=trip)
             event_buffer.append(arr_event)
@@ -125,6 +125,9 @@ def simulate_environment(duration: int, time_slot: int, global_rate: float, pmf:
             arr_event = Event(time=event_time + travel_time_seconds, event_type=EventType.ARRIVAL, trip=trip)
             event_buffer.append(dep_event)
             event_buffer.append(arr_event)
+
+    if residual_event_buffer:
+        event_buffer.extend(residual_event_buffer)
 
     # Sort the event buffer based on time
     event_buffer.sort(key=lambda x: x.time)

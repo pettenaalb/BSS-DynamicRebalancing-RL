@@ -6,7 +6,7 @@ if TYPE_CHECKING:
 
 class Truck:
     truck_id = 0
-    def __init__(self, position: int, cell: "Cell", max_range: float = 300, max_load: int = 30, bikes: dict[int, "Bike"] = None):
+    def __init__(self, position: int, cell: "Cell", bikes: dict[int, "Bike"], max_range: float = 300, max_load: int = 30):
         from gymnasium_env.simulator.bike import Bike
         self.id = Truck.truck_id
         self.position = position
@@ -14,12 +14,7 @@ class Truck:
         self.max_range = max_range
         self.range = max_range
         self.max_load = max_load
-        if bikes is not None:
-            self.bikes = bikes
-        else:
-            self.bikes = {}
-            for i in range(max_load):
-                self.bikes[i] = Bike().set_availability(False)
+        self.bikes = bikes.copy()
         self.current_load = len(bikes) if bikes is not None else 0
 
         Truck.truck_id += 1
@@ -36,6 +31,10 @@ class Truck:
     def set_range(self, range: float):
         self.range = range
 
+    def set_load(self, bikes: dict[int, "Bike"]):
+        self.current_load = len(bikes)
+        self.bikes = bikes.copy()
+
     def load_bike(self, bike: "Bike"):
         if self.current_load < self.max_load:
             self.bikes[bike.bike_id] = bike
@@ -46,7 +45,7 @@ class Truck:
 
     def unload_bike(self) -> "Bike":
         if self.current_load > 0:
-            bike = self.bikes.popitem()[1]
+            bike = self.bikes.pop(next(iter(self.bikes)))
             self.current_load -= 1
             return bike
         else:
