@@ -83,14 +83,10 @@ class Station:
         """
         if len(self.bikes) > 0:
             if bike_id is None:
-                max_bike_id = max(self.bikes, key=lambda k: self.bikes[k].get_battery())
-                bike = self.bikes.pop(max_bike_id)
-                bike.set_availability(False)
-                bike.set_station(None)
-            else:
-                bike = self.bikes.pop(bike_id)
-                bike.set_availability(False)
-                bike.set_station(None)
+                bike_id = max(self.bikes, key=lambda k: self.bikes[k].get_battery())
+            bike = self.bikes.pop(bike_id)
+            bike.set_availability(False)
+            bike.set_station(None)
             self.cell.set_total_bikes(self.cell.get_total_bikes() - 1)
             return bike
         else:

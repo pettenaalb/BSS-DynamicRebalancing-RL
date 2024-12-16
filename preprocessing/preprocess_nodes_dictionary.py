@@ -24,7 +24,7 @@ def main():
     nodes_gdf = ox.graph_to_gdfs(graph, edges=False)
     nodes_dict = {node_id: (row['y'], row['x']) for node_id, row in nodes_gdf.iterrows()}
 
-    radius = 100
+    radius = 200
     print("Creating nearby nodes dictionary...")
     nearby_nodes_dict = {node_id: nodes_within_radius(node_id, nodes_dict, radius) for node_id in tqdm(nodes_dict, desc="Nodes")}
 

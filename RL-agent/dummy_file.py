@@ -1,5 +1,6 @@
 import gymnasium as gym
 import networkx as nx
+from twisted.mail.scripts.mailmail import failure
 
 import gymnasium_env
 import time
@@ -34,6 +35,7 @@ def main():
 
     is_not_done = True
     time = 0
+    failures = 0
     while is_not_done:
         action = np.random.randint(0, 8)
         observation, reward, done, _, info = env.step(action)
@@ -45,7 +47,8 @@ def main():
         time = info['time']
         day = info['day']
         week = info['week']
-        print(f"\rProcessing... Week {week}, {day.capitalize()}, {convert_seconds_to_hours_minutes(time)}", end="", flush=True)
+        print(f"\rProcessing... Week {week}, {day.capitalize()}, {convert_seconds_to_hours_minutes(time)}, {failures}", end="", flush=True)
+        failures += info['failures']
 
         # edge_attrs = ['distance']
         # for u, v, k, attr in graph.edges(data=True, keys=True):

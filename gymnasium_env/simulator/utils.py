@@ -185,7 +185,7 @@ def load_nearby_nodes_dict_from_csv(filename) -> dict:
 
 # ----------------------------------------------------------------------------------------------------------------------
 
-def initialize_graph(graph_path: str = None, logger: Logger = None) -> nx.MultiDiGraph:
+def initialize_graph(graph_path: str = None) -> nx.MultiDiGraph:
     if os.path.isfile(graph_path):
         print("Network file already exists. Loading the network data: ", end="")
         graph = ox.load_graphml(graph_path)
@@ -241,7 +241,7 @@ def initialize_stations(G: nx.MultiDiGraph, next_bike_id: int, bikes_per_station
         if bikes_per_station is not None:
             bikes = initialize_bikes(station, bikes_per_station.get(index), next_id)
         else:
-            bikes, next_id = initialize_bikes(station, np.random.randint(0, 2), next_id)
+            bikes, next_id = initialize_bikes(station, np.random.randint(0, 3), next_id)
         sys_bikes.update(bikes)
         station.set_bikes(bikes)
         stations[index] = station
@@ -348,7 +348,7 @@ def plot_graph(graph: nx.MultiDiGraph, cell_dict: dict[int, "Cell"] = None):
 
 
 def plot_graph_with_grid(graph, cell_dict, plot_center_nodes=False, plot_number_cells=False, truck_coords=None,
-                         xlim=None, ylim=None):
+                         x_lim=None, y_lim=None):
     # Extract nodes and edges in WGS84 coordinates (lon, lat)
     nodes, edges = ox.graph_to_gdfs(graph, nodes=True, edges=True)
 
@@ -381,9 +381,9 @@ def plot_graph_with_grid(graph, cell_dict, plot_center_nodes=False, plot_number_
     if truck_coords is not None:
         ax.plot(truck_coords[1], truck_coords[0], marker='o', color='red', markersize=10, label="Truck position")
 
-    if xlim is not None and ylim is not None:
-        plt.xlim(xlim)
-        plt.ylim(ylim)
+    if x_lim is not None and y_lim is not None:
+        plt.xlim(x_lim)
+        plt.ylim(y_lim)
 
     # Configure plot appearance
     plt.axis('off')

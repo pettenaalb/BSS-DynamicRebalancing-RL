@@ -18,15 +18,15 @@ from gymnasium_env.simulator.bike_simulator import simulate_environment, event_h
 from gymnasium_env.simulator.truck_simulator import move_up, move_down, move_left, move_right, drop_bike, pick_up_bike, charge_bike, stay
 
 from gymnasium_env.simulator.truck import Truck
-from gymnasium_env.simulator.utils import (initialize_graph, initialize_stations, load_cells_from_csv, kahan_sum,
-                                           convert_seconds_to_hours_minutes, Logger, Actions, initialize_cells_subgraph,
+from gymnasium_env.simulator.utils import (initialize_graph, initialize_stations, kahan_sum, Logger, Actions,
+                                           convert_seconds_to_hours_minutes, initialize_cells_subgraph,
                                             plot_graph_with_grid, truncated_gaussian, initialize_bikes)
 
-matplotlib.use('Qt5Agg')
+# matplotlib.use('Qt5Agg')
 
 params = {
     'graph_file': 'utils/cambridge_network.graphml',
-    'cell_file': 'utils/cell_data.csv',
+    'cell_file': 'utils/cell_data.pkl',
     'distance_matrix_file': 'utils/distance_matrix.csv',
     'filtered_stations_file': 'utils/filtered_stations.csv',
     'matrices_folder': 'matrices/09-10',
@@ -70,7 +70,8 @@ class BostonCity(gym.Env):
             self.nearby_nodes_dict = pickle.load(file)
 
         # Initialize the cells
-        self.cells = load_cells_from_csv(data_path + params['cell_file'])
+        with open(data_path + params['cell_file'], 'rb') as file:
+            self.cells = pickle.load(file)
         self.depot_node = self.cells.get(491).get_center_node()
 
         # Initialize the distance matrix
@@ -166,6 +167,9 @@ class BostonCity(gym.Env):
         observation = self._get_obs()
         info = {
             'cells_subgraph': self.cell_subgraph,
+            'network_graph': self.graph,
+            'cell_dict': self.cells,
+            'nodes_dict': self.nodes_dict,
             'agent_position': self._get_truck_position(),
             'steps': 0
         }
@@ -181,6 +185,7 @@ class BostonCity(gym.Env):
         # Perform the action and log it
         t = 0
         distance = 0
+        prev_position = self.truck.get_position()
         hours, _ = divmod((self.time_slot * 3 + 1) * 3600 + self.env_time, 3600)
         hours = hours % 24
         mean_velocity = self.velocity_matrix.loc[hours, self.day]
@@ -271,13 +276,16 @@ class BostonCity(gym.Env):
         observation = self._get_obs()
         reward = self._get_reward(steps, failures, distance)
         self._update_graph()
+        path = (prev_position, self.truck.get_position())
         info = {
             'cells_subgraph': self.cell_subgraph,
             'agent_position': self._get_truck_position(),
             'steps': steps,
             'time': self.env_time + (self.time_slot * 3 + 1) * 3600,
             'day': self.day,
-            'week': int(self.days_completed // 7)
+            'week': int(self.days_completed // 7),
+            'failures': failures,
+            'path': path,
         }
 
         if self.time_slots_completed == 224:
@@ -291,11 +299,11 @@ class BostonCity(gym.Env):
 
     def render(self):
         truck_coords = self.nodes_dict.get(self.truck.get_position())
-        xlim = [truck_coords[1]-0.015, truck_coords[1]+0.015]
-        ylim = [truck_coords[0]-0.015, truck_coords[0]+0.015]
+        x_lim = [truck_coords[1]-0.015, truck_coords[1]+0.015]
+        y_lim = [truck_coords[0]-0.015, truck_coords[0]+0.015]
         total_graph = nx.compose(self.graph, self.cell_subgraph)
         plot_graph_with_grid(total_graph, self.cells, plot_center_nodes=True, plot_number_cells=False,
-                             truck_coords=truck_coords, xlim=xlim, ylim=ylim)
+                             truck_coords=truck_coords, xlim=x_lim, ylim=y_lim)
 
 
     def _initialize_day_timeslot(self, residual_event_buffer: list = None):

@@ -1,4 +1,5 @@
 import os
+import pickle
 import osmnx as ox
 import pandas as pd
 import numpy as np
@@ -7,7 +8,7 @@ import networkx as nx
 from shapely.geometry import Polygon, Point
 from tqdm import tqdm
 from utils import compute_distance, plot_graph_with_grid
-from simulator.cell import Cell
+from gymnasium_env.simulator.cell import Cell
 
 params = {
     'place': ["Cambridge, Massachusetts, USA"],
@@ -175,7 +176,9 @@ def main():
 
     plot_graph_with_grid(graph, cell_dict, plot_center_nodes=True)
 
-    save_cells_to_csv(cell_dict.values(), params['data_path'] + "utils/cell_data.csv")
+    # Save dictionary to a file
+    with open('../data/utils/cell_data.pkl', 'wb') as file:
+        pickle.dump(cell_dict, file)
 
 
 if __name__ == '__main__':

@@ -49,7 +49,7 @@ def departure_handler(trip: Trip, station_dict: dict, nearby_nodes_dict: dict[st
                 trip.set_deviated(True)
                 return trip
             else:
-                start_station.lock_bike(bike)
+                station_dict[node_id].lock_bike(bike)
 
     trip.set_failed(True)
     return trip
