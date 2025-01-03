@@ -116,8 +116,12 @@ def generate_poisson_events(rate, time_duration) -> list[int]:
         - list: A list of event times occurring within the specified time duration.
     """
     # uniform distribution of arrival times
-    num_events = np.random.poisson(rate * time_duration)
-    event_times = np.sort(np.random.uniform(0, time_duration, num_events)).astype(int).tolist()
+    # num_events = np.random.poisson(rate * time_duration)
+    # event_times = np.sort(np.random.uniform(0, time_duration, num_events)).astype(int).tolist()
+    num_events = 100000
+    events = np.random.exponential(1 / rate, num_events)
+    event_times = np.cumsum(events)
+    event_times = event_times[event_times < time_duration]
 
     return event_times
 

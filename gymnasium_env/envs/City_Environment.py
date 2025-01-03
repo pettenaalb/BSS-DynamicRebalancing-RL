@@ -415,7 +415,8 @@ class BostonCity(gym.Env):
 
     def _get_reward(self, steps: int, failures: int, distance: int) -> float:
         # FIXME: Fix the reward function
-        # TODO: positive reward, bike limit per region * cost
+        # TODO: bike limit per region * cost
+        # TODO: normalize reward + positive reward (not necessary)
         hours, _ = divmod((self.time_slot * 3 + 1) * 3600 + self.env_time, 3600)
         hours = hours % 24
         mean_consumption = self.consumption_matrix.loc[hours, self.day]

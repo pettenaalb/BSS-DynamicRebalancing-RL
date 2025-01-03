@@ -38,6 +38,7 @@ np.random.seed(seed)
 torch.manual_seed(seed)
 
 params = {
+    # TODO: try with 2 years
     "num_episodes": 1,                  # Total number of training episodes
     "batch_size": 32,                   # Batch size for replay buffer sampling
     "replay_buffer_capacity": 10000,    # Capacity of replay buffer
@@ -158,6 +159,7 @@ def train_dueling_dqn(agent: DQNAgent, num_episodes: int, batch_size: int) -> tu
                       end="", flush=True)
 
                 # Online plot updates
+                # TODO: Plot q-values and remove plots
                 append_path = '_' + str(week) + '_' + day + '_' + str(time_slot)
                 plot_data_online(rewards_per_time_slot, idx=1, xlabel='Time Slot', ylabel='Reward',
                                  save_path='../results/rewards/rewards' + append_path + '.png')
