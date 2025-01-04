@@ -11,7 +11,7 @@ params = {
     'network_type': 'bike',
 
     'data_path': "../data/",
-    'graph_file': "cambridge_network.graphml",
+    'graph_file': "utils/cambridge_network.graphml",
     'year': 2022,
     'month': [9, 10],
     'nodes_to_remove': [(42.365455, -71.14254)],
@@ -260,9 +260,9 @@ def main():
             print(f"Trip data file for month {month} does not exist. Skipping...")
 
     # Load the filtered stations
-    filtered_stations = pd.read_csv(params['data_path'] + 'filtered_stations.csv')
+    filtered_stations = pd.read_csv(params['data_path'] + 'utils/filtered_stations.csv')
 
-    tbar = tqdm(total=len(params['day_of_week']) * 8, desc="Processing Data", position=0, dynamic_ncols=True)
+    tbar = tqdm(total=len(params['day_of_week']) * 8, desc="Processing Data", position=0, dynamic_ncols=True, leave=True)
 
     for day in params['day_of_week']:
         for timeslot in range(0, 8):

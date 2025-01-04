@@ -112,6 +112,7 @@ class BostonCity(gym.Env):
         self.time_slots_completed = 0
         self.days_completed = 0
         self.next_bike_id = 0
+        self.total_time_slots = 0
 
         # Set logging options
         self.logging = True
@@ -133,9 +134,10 @@ class BostonCity(gym.Env):
         super().reset(seed=seed)
 
         # Update day and time slot if provided in options
-        if options is not None:
-            self.day = options['day']
-            self.time_slot = options['time_slot']
+        self.day = options.get('day', 'monday') if options else 'monday'
+        self.time_slot = options.get('time_slot', 0) if options else 0
+
+        self.total_time_slots = options.get('total_time_slots', 2*365*8) if options else 2*365*8
 
         # TODO: Implement initialization of the environment state with noise
         # Initialize stations and system bikes
@@ -148,10 +150,10 @@ class BostonCity(gym.Env):
                 cell.set_total_bikes(cell.get_total_bikes() + self.stations[node].get_number_of_bikes())
 
         # Initialize the truck
-        self.current_cell_id = options['initial_cell'] if options else 185
+        self.current_cell_id = options.get('initial_cell', 185) if options else 185
         cell = self.cells[self.current_cell_id]
         bikes, self.next_bike_id = initialize_bikes(n=15, next_bike_id=self.next_bike_id)
-        max_truck_load = options['max_truck_load'] if options else 30
+        max_truck_load = options.get('max_truck_load', 30) if options else 30
         self.truck = Truck(cell.center_node, cell, bikes=bikes, max_load=max_truck_load)
 
         # Initialize the day and time slot
@@ -284,11 +286,12 @@ class BostonCity(gym.Env):
             'time': self.env_time + (self.time_slot * 3 + 1) * 3600,
             'day': self.day,
             'week': int(self.days_completed // 7),
+            'year': int(self.days_completed // 365),
             'failures': failures,
             'path': path,
         }
 
-        if self.time_slots_completed == 224:
+        if self.time_slots_completed == self.total_time_slots:   # 2 years
             done = True
         else:
             done = False

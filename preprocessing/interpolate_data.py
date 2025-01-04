@@ -12,7 +12,7 @@ params = {
     'network_type': 'bike',
 
     'data_path': "../data/",
-    'graph_file': "cambridge_network.graphml",
+    'graph_file': "utils/cambridge_network.graphml",
     'year': 2022,
     'month': [9, 10],
 

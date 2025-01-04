@@ -68,6 +68,21 @@ class DQNAgent:
             q_values = self.train_model(state)
             return q_values.argmax(dim=-1).item()
 
+
+    def get_q_values(self, state):
+        """
+        Returns the Q-values for the given state.
+
+        Parameters:
+            - state: The current state of the environment.
+
+        Returns:
+            - A tensor of Q-values for each action in the state.
+        """
+        with torch.no_grad():
+            return self.train_model(state)
+
+
     def update_epsilon(self):
         """
         Updates epsilon for the epsilon-greedy strategy using exponential decay.
