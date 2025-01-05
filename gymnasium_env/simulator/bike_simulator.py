@@ -5,12 +5,12 @@ from gymnasium_env.simulator.station import Station
 from gymnasium_env.simulator.bike import Bike
 from gymnasium_env.simulator.trip import Trip
 from gymnasium_env.simulator.event import EventType, Event
-from gymnasium_env.simulator.utils import generate_poisson_events, truncated_gaussian, Logger
+from gymnasium_env.simulator.utils import generate_poisson_events, truncated_gaussian, Logger, initialize_bikes
 
 # ----------------------------------------------------------------------------------------------------------------------
 
 def departure_handler(trip: Trip, station_dict: dict, nearby_nodes_dict: dict[str, dict[str, tuple]],
-                      distance_matrix: pd.DataFrame) -> Trip:
+                      distance_matrix: pd.DataFrame, outside_system_bikes: dict[int, Bike], next_bike_id: int) -> tuple[Trip, int]:
     """
     Handle the departure of a trip from the starting station.
 
@@ -32,9 +32,20 @@ def departure_handler(trip: Trip, station_dict: dict, nearby_nodes_dict: dict[st
         if bike.get_battery() > trip.get_distance()/1000:
             trip.set_bike(bike)
             trip.set_failed(False)
-            return trip
+            return trip, next_bike_id
         else:
             start_station.lock_bike(bike)
+
+    # Check if the starting station is outside the system
+    if start_station_id == 10000:
+        bikes, next_bike_id = initialize_bikes(start_station, n=100, next_bike_id=next_bike_id)
+        outside_system_bikes.update(bikes)
+        for bike in bikes.values():
+            start_station.lock_bike(bike)
+        bike = start_station.unlock_bike()
+        trip.set_bike(bike)
+        trip.set_failed(False)
+        return trip, next_bike_id
 
     # Check if there are any bikes available at nearby stations
     nodes_dist_dict = {node_id: distance_matrix.at[start_station_id, node_id] for node_id in nearby_nodes_dict[start_station_id]}
@@ -47,12 +58,12 @@ def departure_handler(trip: Trip, station_dict: dict, nearby_nodes_dict: dict[st
                 trip.set_bike(bike)
                 trip.set_failed(False)
                 trip.set_deviated(True)
-                return trip
+                return trip, next_bike_id
             else:
                 station_dict[node_id].lock_bike(bike)
 
     trip.set_failed(True)
-    return trip
+    return trip, next_bike_id
 
 
 def arrival_handler(trip: Trip, system_bikes: dict[int, Bike], outside_system_bikes: dict[int, Bike]) -> tuple[dict[int, Bike], dict[int, Bike]]:
@@ -105,26 +116,23 @@ def simulate_environment(duration: int, time_slot: int, global_rate: float, pmf:
     for event_time in event_times:
         random_value = np.random.rand()
         stn_pair = tuple(pmf.iloc[np.searchsorted(pmf['cumsum'].values, random_value)]['id'])
-        if stn_pair[0] == 10000:
-            ev_t = event_time + 3600*(3*time_slot + 1)
-            trip = Trip(ev_t, ev_t, stations[stn_pair[0]], stations[stn_pair[1]])
-            arr_event = Event(time=event_time, event_type=EventType.ARRIVAL, trip=trip)
-            event_buffer.append(arr_event)
+        if stn_pair[0] == 10000 or stn_pair[1] == 10000:
+            distance = 0
+            travel_time_seconds = 1
         else:
             velocity_kmh = truncated_gaussian(5, 25, 15, 5)
-            if stn_pair[1] == 10000:
-                # TODO: Implement a more realistic distance model for trips outside the system
-                distance = truncated_gaussian(2, 7, 4.5, 1)
-            else:
-                distance = distance_matrix.at[stn_pair[0], stn_pair[1]]
+            distance = distance_matrix.at[stn_pair[0], stn_pair[1]]
             travel_time_seconds = int(distance * 3.6 / velocity_kmh)
-            ev_t = event_time + 3600*(3*time_slot + 1)
-            trip = Trip(ev_t, ev_t + travel_time_seconds, stations[stn_pair[0]],
-                        stations[stn_pair[1]], distance=distance)
-            dep_event = Event(time=event_time, event_type=EventType.DEPARTURE, trip=trip)
-            arr_event = Event(time=event_time + travel_time_seconds, event_type=EventType.ARRIVAL, trip=trip)
-            event_buffer.append(dep_event)
-            event_buffer.append(arr_event)
+
+        ev_t = event_time + 3600*(3*time_slot + 1)
+        trip = Trip(ev_t, ev_t + travel_time_seconds, stations[stn_pair[0]],
+                    stations[stn_pair[1]], distance=distance)
+
+        dep_event = Event(time=event_time, event_type=EventType.DEPARTURE, trip=trip)
+        arr_event = Event(time=event_time + travel_time_seconds, event_type=EventType.ARRIVAL, trip=trip)
+
+        event_buffer.append(dep_event)
+        event_buffer.append(arr_event)
 
     if residual_event_buffer:
         event_buffer.extend(residual_event_buffer)
@@ -137,7 +145,7 @@ def simulate_environment(duration: int, time_slot: int, global_rate: float, pmf:
 
 def event_handler(event: Event, station_dict: dict[int, Station], nearby_nodes_dict: dict[str, dict[str, tuple]],
                   distance_matrix: pd.DataFrame, system_bikes: dict[int, Bike], outside_system_bikes: dict[int, Bike],
-                  logger: Logger) -> tuple[int, dict[int, Bike], dict[int, Bike]]:
+                  next_bike_id: int, logger: Logger) -> tuple[int, dict[int, Bike], dict[int, Bike], int]:
     """
     Handle the event based on its type.
 
@@ -156,7 +164,8 @@ def event_handler(event: Event, station_dict: dict[int, Station], nearby_nodes_d
     """
     failure = 0
     if event.is_departure():
-        trip = departure_handler(event.get_trip(), station_dict, nearby_nodes_dict, distance_matrix)
+        trip, next_bike_id = departure_handler(event.get_trip(), station_dict, nearby_nodes_dict, distance_matrix,
+                                 outside_system_bikes, next_bike_id)
         if trip.is_failed():
             failure = 1
             logger.log_no_available_bikes(trip.get_start_location().get_station_id(), trip.get_end_location().get_station_id())
@@ -165,4 +174,4 @@ def event_handler(event: Event, station_dict: dict[int, Station], nearby_nodes_d
     else:
         system_bikes, outside_system_bikes = arrival_handler(event.get_trip(), system_bikes, outside_system_bikes)
 
-    return failure, system_bikes, outside_system_bikes
+    return failure, system_bikes, outside_system_bikes, next_bike_id

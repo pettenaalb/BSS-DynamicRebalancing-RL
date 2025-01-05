@@ -2,7 +2,7 @@ import os
 import pickle
 import torch
 import matplotlib
-from sympy.physics.units import years
+import time
 
 import gymnasium_env.register_env
 
@@ -31,7 +31,7 @@ action_size = env.action_space.n
 # if GPU is to be used
 device = torch.device(
     "cuda" if torch.cuda.is_available() else
-    "mps" if torch.backends.mps.is_available() else
+    # "mps" if torch.backends.mps.is_available() else
     "cpu"
 )
 
@@ -58,7 +58,7 @@ days2num = {'monday': 0, 'tuesday': 1, 'wednesday': 2, 'thursday': 3, 'friday': 
 
 # ----------------------------------------------------------------------------------------------------------------------
 
-def train_dueling_dqn(agent: DQNAgent, num_episodes: int, batch_size: int) -> tuple[list, list]:
+def train_dueling_dqn(agent: DQNAgent, batch_size: int) -> tuple[list, list]:
     """
     Trains a Dueling Deep Q-Network agent using experience replay.
 
@@ -108,7 +108,16 @@ def train_dueling_dqn(agent: DQNAgent, num_episodes: int, batch_size: int) -> tu
         dynamic_ncols=True
     )
 
+    single_state_time = []
+    agent_action_time = []
+    step_time = []
+    replay_buffer_time = []
+    train_step_time = []
+
+
     while not_done:
+        # start_time = time.time()
+
         # Prepare the state for the agent
         single_state = Data(
             x=state.x.to(device),
@@ -118,13 +127,22 @@ def train_dueling_dqn(agent: DQNAgent, num_episodes: int, batch_size: int) -> tu
             batch=torch.zeros(state.x.size(0), dtype=torch.long).to(device),
         )
 
+        # single_state_time.append(time.time() - start_time)
+        # start_time = time.time()
+
         # Select an action using the agent
         action = agent.select_action(single_state)
         action_bins[action] += 1
 
+        # agent_action_time.append(time.time() - start_time)
+        # start_time = time.time()
+
         # Step the environment with the chosen action
         agent_state, reward, done, time_slot_terminated, info = env.step(action)
         network_state = convert_graph_to_data(info['cells_subgraph'])
+
+        # step_time.append(time.time() - start_time)
+        # start_time = time.time()
 
         # Update state with new information
         next_state = network_state
@@ -133,6 +151,9 @@ def train_dueling_dqn(agent: DQNAgent, num_episodes: int, batch_size: int) -> tu
 
         # Store the transition in the replay buffer
         agent.replay_buffer.push(state, action, reward, next_state, done)
+
+        # replay_buffer_time.append(time.time() - start_time)
+        # start_time = time.time()
 
         # Train the agent with a batch from the replay buffer
         agent.train_step(batch_size)
@@ -145,6 +166,9 @@ def train_dueling_dqn(agent: DQNAgent, num_episodes: int, batch_size: int) -> tu
 
         # Check if the episode is complete
         not_done = not done
+
+        # train_step_time.append(time.time() - start_time)
+        # start_time = time.time()
 
         if time_slot_terminated:
             # Update target network periodically
@@ -163,11 +187,11 @@ def train_dueling_dqn(agent: DQNAgent, num_episodes: int, batch_size: int) -> tu
             total_reward = 0
 
             # Log progress
-            time = info['time']
+            time_elapsed = info['time']
             day = info['day']
             week = info['week']
             year = info['year']
-            print(f"\rProcessing... Year {year + 1}, Week {week}, {day.capitalize()}, {convert_seconds_to_hours_minutes(time)}",
+            print(f"\rProcessing... Year {year + 1}, Week {week}, {day.capitalize()}, {convert_seconds_to_hours_minutes(time_elapsed)}",
                   end="", flush=True)
 
             # Online plot updates
@@ -189,6 +213,13 @@ def train_dueling_dqn(agent: DQNAgent, num_episodes: int, batch_size: int) -> tu
 
             # Update progress bar
             tbar.update(1)
+
+            # print(f"\n\nSingle state time: {np.mean(single_state_time)}")
+            # print(f"Agent action time: {np.mean(agent_action_time)}")
+            # print(f"Step time: {np.mean(step_time)}")
+            # print(f"Replay buffer time: {np.mean(replay_buffer_time)}")
+            # print(f"Train step time: {np.mean(train_step_time)}")
+            # print(f"Time slot time: {time.time() - start_time}\n")
 
     results_path = '../results/'
     if not os.path.exists(results_path):
@@ -229,7 +260,6 @@ def main():
     # Train the agent using the training loop
     rewards_per_time_slot, failures_per_time_slot = train_dueling_dqn(
         agent,
-        num_episodes=params["num_episodes"],
         batch_size=params["batch_size"]
     )
 

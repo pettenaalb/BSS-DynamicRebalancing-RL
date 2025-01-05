@@ -252,7 +252,7 @@ def initialize_stations(G: nx.MultiDiGraph, next_bike_id: int, bikes_per_station
 
     stations[10000] = Station(10000, 0, 0)
 
-    out_sys_bikes, next_id = initialize_bikes(stations[10000], 50, next_id)
+    out_sys_bikes, next_id = initialize_bikes(stations.get(10000), 1000, next_id)
 
     return stations, sys_bikes, out_sys_bikes, next_id
 

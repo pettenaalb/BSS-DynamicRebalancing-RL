@@ -269,10 +269,9 @@ class BostonCity(gym.Env):
                 self.days_completed += 1
             else:
                 self.time_slot += 1
-            self._initialize_day_timeslot(residual_event_buffer)
+            failures += self._initialize_day_timeslot(residual_event_buffer)
             self.time_slots_completed += 1
             terminated = True
-
 
         # Compute the outputs
         observation = self._get_obs()
@@ -309,7 +308,7 @@ class BostonCity(gym.Env):
                              truck_coords=truck_coords, xlim=x_lim, ylim=y_lim)
 
 
-    def _initialize_day_timeslot(self, residual_event_buffer: list = None):
+    def _initialize_day_timeslot(self, residual_event_buffer: list = None) -> int:
         # Load PMF matrix and global rate for the current day and time slot
         self.pmf_matrix, self.global_rate = self._load_pmf_matrix(self.day, self.time_slot)
 
@@ -337,17 +336,21 @@ class BostonCity(gym.Env):
         self.env_time = 0
 
         # Handle the first event if it occurs at the start of the simulation
+        failure = 0
         if self.event_buffer and self.event_buffer[0].time == self.env_time:
             event = self.event_buffer.pop(0)
-            event_handler(
-                event,
-                self.stations,
-                self.nearby_nodes_dict,
-                self.distance_matrix,
-                self.system_bikes,
-                self.outside_system_bikes,
-                logger=self.logger
+            failure, self.system_bikes, self.outside_system_bikes, self.next_bike_id = event_handler(
+                event=event,
+                station_dict=self.stations,
+                nearby_nodes_dict=self.nearby_nodes_dict,
+                distance_matrix=self.distance_matrix,
+                system_bikes=self.system_bikes,
+                outside_system_bikes=self.outside_system_bikes,
+                logger=self.logger,
+                next_bike_id=self.next_bike_id
             )
+
+        return failure
 
 
     # Load the PMF matrix and global rate for a given day and time slot
@@ -378,14 +381,15 @@ class BostonCity(gym.Env):
             # Process all events that occurred before the updated environment time
             while self.event_buffer and self.event_buffer[0].time < self.env_time:
                 event = self.event_buffer.pop(0)
-                failure, self.system_bikes, self.outside_system_bikes = event_handler(
-                    event,
-                    self.stations,
-                    self.nearby_nodes_dict,
-                    self.distance_matrix,
-                    self.system_bikes,
-                    self.outside_system_bikes,
-                    self.logger
+                failure, self.system_bikes, self.outside_system_bikes, self.next_bike_id = event_handler(
+                    event=event,
+                    station_dict=self.stations,
+                    nearby_nodes_dict=self.nearby_nodes_dict,
+                    distance_matrix=self.distance_matrix,
+                    system_bikes=self.system_bikes,
+                    outside_system_bikes=self.outside_system_bikes,
+                    logger=self.logger,
+                    next_bike_id=self.next_bike_id
                 )
                 total_failures += failure
 
