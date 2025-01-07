@@ -26,6 +26,16 @@ def departure_handler(trip: Trip, station_dict: dict, nearby_nodes_dict: dict[st
     start_station = trip.get_start_location()
     start_station_id = start_station.get_station_id()
 
+    # Check if the starting station is outside the system
+    if start_station_id == 10000:
+        if len(outside_system_bikes) == 0:
+            bikes, next_bike_id = initialize_bikes(start_station, n=100, next_bike_id=next_bike_id)
+            outside_system_bikes.update(bikes)
+        bike = outside_system_bikes.get(next(iter(outside_system_bikes)))
+        trip.set_bike(bike)
+        trip.set_failed(False)
+        return trip, next_bike_id
+
     # Check if there are any bikes available at the starting station
     if len(start_station.get_bikes()) > 0:
         bike = start_station.unlock_bike()
@@ -35,17 +45,6 @@ def departure_handler(trip: Trip, station_dict: dict, nearby_nodes_dict: dict[st
             return trip, next_bike_id
         else:
             start_station.lock_bike(bike)
-
-    # Check if the starting station is outside the system
-    if start_station_id == 10000:
-        bikes, next_bike_id = initialize_bikes(start_station, n=100, next_bike_id=next_bike_id)
-        outside_system_bikes.update(bikes)
-        for bike in bikes.values():
-            start_station.lock_bike(bike)
-        bike = start_station.unlock_bike()
-        trip.set_bike(bike)
-        trip.set_failed(False)
-        return trip, next_bike_id
 
     # Check if there are any bikes available at nearby stations
     nodes_dist_dict = {node_id: distance_matrix.at[start_station_id, node_id] for node_id in nearby_nodes_dict[start_station_id]}
@@ -79,15 +78,17 @@ def arrival_handler(trip: Trip, system_bikes: dict[int, Bike], outside_system_bi
     start_station = trip.get_start_location()
     end_station = trip.get_end_location()
     bike = trip.get_bike()
-    end_station.lock_bike(bike)
 
     # Move the bike to the outside system if the destination station is outside the system
     if end_station.get_station_id() == 10000:
         outside_system_bikes[bike.get_bike_id()] = system_bikes.pop(bike.get_bike_id())
+        return system_bikes, outside_system_bikes
 
     # Move the bike back to the system if the starting station is outside the system
     if start_station.get_station_id() == 10000:
         system_bikes[bike.get_bike_id()] = outside_system_bikes.pop(bike.get_bike_id())
+
+    end_station.lock_bike(bike)
 
     return system_bikes, outside_system_bikes
 

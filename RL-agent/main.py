@@ -116,7 +116,7 @@ def train_dueling_dqn(agent: DQNAgent, batch_size: int) -> tuple[list, list]:
 
 
     while not_done:
-        # start_time = time.time()
+        start_time = time.time()
 
         # Prepare the state for the agent
         single_state = Data(
@@ -127,22 +127,22 @@ def train_dueling_dqn(agent: DQNAgent, batch_size: int) -> tuple[list, list]:
             batch=torch.zeros(state.x.size(0), dtype=torch.long).to(device),
         )
 
-        # single_state_time.append(time.time() - start_time)
-        # start_time = time.time()
+        single_state_time.append(time.time() - start_time)
+        start_time = time.time()
 
         # Select an action using the agent
         action = agent.select_action(single_state)
         action_bins[action] += 1
 
-        # agent_action_time.append(time.time() - start_time)
-        # start_time = time.time()
+        agent_action_time.append(time.time() - start_time)
+        start_time = time.time()
 
         # Step the environment with the chosen action
         agent_state, reward, done, time_slot_terminated, info = env.step(action)
         network_state = convert_graph_to_data(info['cells_subgraph'])
 
-        # step_time.append(time.time() - start_time)
-        # start_time = time.time()
+        step_time.append(time.time() - start_time)
+        start_time = time.time()
 
         # Update state with new information
         next_state = network_state
@@ -152,8 +152,8 @@ def train_dueling_dqn(agent: DQNAgent, batch_size: int) -> tuple[list, list]:
         # Store the transition in the replay buffer
         agent.replay_buffer.push(state, action, reward, next_state, done)
 
-        # replay_buffer_time.append(time.time() - start_time)
-        # start_time = time.time()
+        replay_buffer_time.append(time.time() - start_time)
+        start_time = time.time()
 
         # Train the agent with a batch from the replay buffer
         agent.train_step(batch_size)
@@ -167,8 +167,8 @@ def train_dueling_dqn(agent: DQNAgent, batch_size: int) -> tuple[list, list]:
         # Check if the episode is complete
         not_done = not done
 
-        # train_step_time.append(time.time() - start_time)
-        # start_time = time.time()
+        train_step_time.append(time.time() - start_time)
+        start_time = time.time()
 
         if time_slot_terminated:
             # Update target network periodically
@@ -214,12 +214,12 @@ def train_dueling_dqn(agent: DQNAgent, batch_size: int) -> tuple[list, list]:
             # Update progress bar
             tbar.update(1)
 
-            # print(f"\n\nSingle state time: {np.mean(single_state_time)}")
-            # print(f"Agent action time: {np.mean(agent_action_time)}")
-            # print(f"Step time: {np.mean(step_time)}")
-            # print(f"Replay buffer time: {np.mean(replay_buffer_time)}")
-            # print(f"Train step time: {np.mean(train_step_time)}")
-            # print(f"Time slot time: {time.time() - start_time}\n")
+            print(f"\n\nSingle state time: {np.mean(single_state_time)}")
+            print(f"Agent action time: {np.mean(agent_action_time)}")
+            print(f"Step time: {np.mean(step_time)}")
+            print(f"Replay buffer time: {np.mean(replay_buffer_time)}")
+            print(f"Train step time: {np.mean(train_step_time)}")
+            print(f"Time slot time: {time.time() - start_time}\n")
 
     results_path = '../results/'
     if not os.path.exists(results_path):
