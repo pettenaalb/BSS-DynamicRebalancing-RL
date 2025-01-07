@@ -12,7 +12,8 @@ import matplotlib.pyplot as plt
 
 from tqdm.contrib.telegram import tqdm
 from agent import DQNAgent
-from utils import convert_graph_to_data, convert_seconds_to_hours_minutes, plot_data_online, plot_graph_with_truck_path
+from utils import (convert_graph_to_data, convert_seconds_to_hours_minutes, plot_data_online,
+                   plot_graph_with_truck_path, send_telegram_message)
 from replay_memory import ReplayBuffer
 from torch_geometric.data import Data
 
@@ -56,8 +57,8 @@ params = {
 
 days2num = {'monday': 0, 'tuesday': 1, 'wednesday': 2, 'thursday': 3, 'friday': 4, 'saturday': 5, 'sunday': 6}
 
-token = '7911945908:AAHkp-x7at3fIadrlmahcTB1G6_ni2awbt4'
-chat_id = '16830298'
+BOT_TOKEN = '7911945908:AAHkp-x7at3fIadrlmahcTB1G6_ni2awbt4'
+CHAT_ID = '16830298'
 
 # ----------------------------------------------------------------------------------------------------------------------
 
@@ -105,22 +106,22 @@ def train_dueling_dqn(agent: DQNAgent, batch_size: int) -> tuple[list, list]:
     # Progress bar for the episode
     tbar = tqdm(
         range(params["total_timeslots"]),
-        desc="Training phase",
+        desc="Year 1, Week 1, Monday at 01:00:00",
         position=0,
         leave=True,
         dynamic_ncols=True,
-        token=token,
-        chat_id=chat_id
+        token=BOT_TOKEN,
+        chat_id=CHAT_ID
     )
 
-    single_state_time = []
-    agent_action_time = []
-    step_time = []
-    replay_buffer_time = []
-    train_step_time = []
+    # single_state_time = []
+    # agent_action_time = []
+    # step_time = []
+    # replay_buffer_time = []
+    # train_step_time = []
 
     while not_done:
-        start_time = time.time()
+        # start_time = time.time()
 
         # Prepare the state for the agent
         single_state = Data(
@@ -131,22 +132,22 @@ def train_dueling_dqn(agent: DQNAgent, batch_size: int) -> tuple[list, list]:
             batch=torch.zeros(state.x.size(0), dtype=torch.long).to(device),
         )
 
-        single_state_time.append(time.time() - start_time)
-        start_time = time.time()
+        # single_state_time.append(time.time() - start_time)
+        # start_time = time.time()
 
         # Select an action using the agent
         action = agent.select_action(single_state)
         action_bins[action] += 1
 
-        agent_action_time.append(time.time() - start_time)
-        start_time = time.time()
+        # agent_action_time.append(time.time() - start_time)
+        # start_time = time.time()
 
         # Step the environment with the chosen action
         agent_state, reward, done, time_slot_terminated, info = env.step(action)
         network_state = convert_graph_to_data(info['cells_subgraph'])
 
-        step_time.append(time.time() - start_time)
-        start_time = time.time()
+        # step_time.append(time.time() - start_time)
+        # start_time = time.time()
 
         # Update state with new information
         next_state = network_state
@@ -156,8 +157,8 @@ def train_dueling_dqn(agent: DQNAgent, batch_size: int) -> tuple[list, list]:
         # Store the transition in the replay buffer
         agent.replay_buffer.push(state, action, reward, next_state, done)
 
-        replay_buffer_time.append(time.time() - start_time)
-        start_time = time.time()
+        # replay_buffer_time.append(time.time() - start_time)
+        # start_time = time.time()
 
         # Train the agent with a batch from the replay buffer
         agent.train_step(batch_size)
@@ -171,8 +172,8 @@ def train_dueling_dqn(agent: DQNAgent, batch_size: int) -> tuple[list, list]:
         # Check if the episode is complete
         not_done = not done
 
-        train_step_time.append(time.time() - start_time)
-        start_time = time.time()
+        # train_step_time.append(time.time() - start_time)
+        # start_time = time.time()
 
         if time_slot_terminated:
             # Update target network periodically
@@ -195,35 +196,20 @@ def train_dueling_dqn(agent: DQNAgent, batch_size: int) -> tuple[list, list]:
             day = info['day']
             week = info['week']
             year = info['year']
-            print(f"\rProcessing... Year {year + 1}, Week {week}, {day.capitalize()}, {convert_seconds_to_hours_minutes(time_elapsed)}",
-                  end="", flush=True)
-
-            # Online plot updates
-            # TODO: Plot q-values and remove plots
-            # append_path = '_' + str(week) + '_' + day + '_' + str(time_slot)
-            # plot_data_online(rewards_per_time_slot, idx=1, xlabel='Time Slot', ylabel='Reward',
-            #                  save_path='../results/rewards/rewards' + append_path + '.png')
-            # plot_data_online(failures_per_time_slot, idx=2, xlabel='Time Slot', ylabel='Failures',
-            #                  save_path='../results/failures/failures' + append_path + '.png')
-            # plot_data_online(action_bins, idx=3, xlabel='Action', ylabel='Frequency', show_histogram=True,
-            #                  bin_labels=action_bin_labels,
-            #                  save_path='../results/actions/actions' + append_path + '.png')
-            # plot_graph_with_truck_path(graph, cell_dict, nodes_dict, truck_path, show_result=False, idx=4,
-            #                            save_path='../results/truck_paths/truck_paths' + append_path + '.png')
+            # print(f"\rProcessing... Year {year + 1}, Week {week}, {day.capitalize()}, {convert_seconds_to_hours_minutes(time_elapsed)}",
+            #       end="", flush=True)
+            tbar.set_description(f"Year {year + 1}, Week {week}, {day.capitalize()} at {convert_seconds_to_hours_minutes(time_elapsed)}")
 
             truck_path = []
 
             time_slot = 0 if time_slot == 7 else time_slot + 1
 
-            # Update progress bar
-            tbar.update(1)
-
-            print(f"\n\nSingle state time: {np.mean(single_state_time)}")
-            print(f"Agent action time: {np.mean(agent_action_time)}")
-            print(f"Step time: {np.mean(step_time)}")
-            print(f"Replay buffer time: {np.mean(replay_buffer_time)}")
-            print(f"Train step time: {np.mean(train_step_time)}")
-            print(f"Time slot time: {time.time() - start_time}\n")
+            # print(f"\n\nSingle state time: {np.mean(single_state_time)}")
+            # print(f"Agent action time: {np.mean(agent_action_time)}")
+            # print(f"Step time: {np.mean(step_time)}")
+            # print(f"Replay buffer time: {np.mean(replay_buffer_time)}")
+            # print(f"Train step time: {np.mean(train_step_time)}")
+            # print(f"Time slot time: {time.time() - start_time}\n")
 
             results_path = '../results/'
             if not os.path.exists(results_path):
@@ -239,6 +225,9 @@ def train_dueling_dqn(agent: DQNAgent, batch_size: int) -> tuple[list, list]:
                 pickle.dump(q_values_per_time_slot, f)
             with open(results_path + 'action_bins.pkl', 'wb') as f:
                 pickle.dump(action_bins, f)
+
+            # Update progress bar
+            tbar.update(1)
 
     return rewards_per_time_slot, failures_per_time_slot
 
@@ -262,10 +251,14 @@ def main():
     )
 
     # Train the agent using the training loop
-    rewards_per_time_slot, failures_per_time_slot = train_dueling_dqn(
-        agent,
-        batch_size=params["batch_size"]
-    )
+    try:
+        rewards_per_time_slot, failures_per_time_slot = train_dueling_dqn(
+            agent,
+            batch_size=params["batch_size"]
+        )
+    except Exception as e:
+        send_telegram_message(BOT_TOKEN, CHAT_ID, f"An error occurred during training: {e}")
+        raise e
 
     # Print the rewards after training
     print("Training completed.")

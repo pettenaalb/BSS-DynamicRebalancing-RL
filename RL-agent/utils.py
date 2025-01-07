@@ -1,5 +1,6 @@
 import torch
 import matplotlib
+import requests
 import networkx as nx
 import osmnx as ox
 import numpy as np
@@ -214,3 +215,13 @@ def plot_graph_with_truck_path(graph: nx.MultiDiGraph, cell_dict: dict, nodes_di
             else:
                 display.display(plt.gcf())
     plt.close(fig)
+
+
+# Function to send a Telegram message
+def send_telegram_message(message: str, BOT_TOKEN: str, CHAT_ID: str):
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+    payload = {"chat_id": CHAT_ID, "text": message}
+    try:
+        requests.post(url, json=payload)
+    except requests.exceptions.RequestException as e:
+        print(f"Failed to send Telegram message: {e}")
