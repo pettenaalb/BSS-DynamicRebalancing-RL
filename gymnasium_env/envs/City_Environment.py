@@ -1,10 +1,8 @@
 import math
 import pickle
+import threading
 
 import networkx as nx
-
-import gymnasium_env
-import matplotlib
 
 import gymnasium as gym
 import numpy as np
@@ -13,6 +11,8 @@ import osmnx as ox
 
 from gymnasium import spaces
 from gymnasium.utils import seeding
+from time import time
+from queue import Queue
 
 from gymnasium_env.simulator.bike_simulator import simulate_environment, event_handler
 from gymnasium_env.simulator.truck_simulator import move_up, move_down, move_left, move_right, drop_bike, pick_up_bike, charge_bike, stay
@@ -104,6 +104,7 @@ class BostonCity(gym.Env):
         self.stations = None
         self.truck = None
         self.event_buffer = None
+        self.next_event_buffer = None
         self.env_time = 0
         self.energy_cost_per_time = 0
         self.time_slot = 0
@@ -113,9 +114,10 @@ class BostonCity(gym.Env):
         self.days_completed = 0
         self.next_bike_id = 0
         self.total_time_slots = 0
+        self.background_thread = None
 
         # Set logging options
-        self.logging = True
+        self.logging = False
         self.logger.set_logging(self.logging)
 
         # Visualization elements
@@ -308,29 +310,62 @@ class BostonCity(gym.Env):
                              truck_coords=truck_coords, xlim=x_lim, ylim=y_lim)
 
 
+    def _precompute_poisson_events(self):
+        """Background thread for precomputing Poisson events."""
+        time_slot = (self.time_slot + 1) % 8
+        day = self.day
+        if time_slot == 0:
+            day = num2days[(days2num[self.day] + 1) % 7]
+
+        # Flatten the PMF matrix for event simulation
+        pmf_matrix, global_rate = self._load_pmf_matrix(day, time_slot)
+
+        # Flatten the PMF matrix for event simulation
+        values = pmf_matrix.values.flatten()
+        ids = [(row, col) for row in pmf_matrix.index for col in pmf_matrix.columns]
+        flattened_pmf = pd.DataFrame({'id': ids, 'value': values})
+        flattened_pmf['cumsum'] = np.cumsum(flattened_pmf['value'].values)
+
+        self.next_event_buffer = simulate_environment(
+            duration=3600 * 3,  # 3 hours
+            time_slot=time_slot,
+            global_rate=global_rate,
+            pmf=flattened_pmf,
+            stations=self.stations,
+            distance_matrix=self.distance_matrix,
+        )
+
+
     def _initialize_day_timeslot(self, residual_event_buffer: list = None) -> int:
         # Load PMF matrix and global rate for the current day and time slot
         self.pmf_matrix, self.global_rate = self._load_pmf_matrix(self.day, self.time_slot)
 
         for stn_id, stn in self.stations.items():
-            stn.set_request_rate(kahan_sum(self.pmf_matrix.loc[stn_id])*self.global_rate)
-
-        # Flatten the PMF matrix for event simulation
-        values = self.pmf_matrix.values.flatten()
-        ids = [(row, col) for row in self.pmf_matrix.index for col in self.pmf_matrix.columns]
-        flattened_pmf = pd.DataFrame({'id': ids, 'value': values})
-        flattened_pmf['cumsum'] = np.cumsum(flattened_pmf['value'].values)
+            stn.set_request_rate(self.pmf_matrix.loc[stn_id, :].sum()*self.global_rate)
 
         # Simulate the environment for the time slot
-        self.event_buffer = simulate_environment(
-            duration=3600 * 3,  # 3 hours
-            time_slot=self.time_slot,
-            global_rate=self.global_rate,
-            pmf=flattened_pmf,
-            stations=self.stations,
-            distance_matrix=self.distance_matrix,
-            residual_event_buffer=residual_event_buffer,
-        )
+        if self.next_event_buffer is not None:
+            self.event_buffer = self.next_event_buffer
+            self.next_event_buffer = None
+        else:
+            # Flatten the PMF matrix for event simulation
+            values = self.pmf_matrix.values.flatten()
+            ids = [(row, col) for row in self.pmf_matrix.index for col in self.pmf_matrix.columns]
+            flattened_pmf = pd.DataFrame({'id': ids, 'value': values})
+            flattened_pmf['cumsum'] = np.cumsum(flattened_pmf['value'].values)
+
+            self.event_buffer = simulate_environment(
+                duration=3600 * 3,  # 3 hours
+                time_slot=self.time_slot,
+                global_rate=self.global_rate,
+                pmf=flattened_pmf,
+                stations=self.stations,
+                distance_matrix=self.distance_matrix,
+                residual_event_buffer=residual_event_buffer,
+            )
+
+        self.background_thread = threading.Thread(target=self._precompute_poisson_events)
+        self.background_thread.start()
 
         # Initialize environment time
         self.env_time = 0
@@ -484,3 +519,8 @@ class BostonCity(gym.Env):
 
     def _get_system_data(self) -> tuple[dict, dict, dict]:
         return self.stations, self.system_bikes, self.outside_system_bikes
+
+    def close(self):
+        """Clean up resources."""
+        self.stop_thread.set()
+        self.background_thread.join()

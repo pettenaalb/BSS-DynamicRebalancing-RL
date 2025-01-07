@@ -52,7 +52,7 @@ def build_pmf_matrix(rate_matrix: pd.DataFrame, nearby_nodes_dict: dict[str, dic
 
     for row in non_zero_rows:
         # Extract row rates
-        rates = pmf_df.loc[row]
+        rates = pmf_df.loc[row, :]
         non_zero_nodes = rates[~rates.eq(0)].index.astype(int)
         zero_nodes = rates[rates.eq(0)].index.astype(int)
 
@@ -66,7 +66,7 @@ def build_pmf_matrix(rate_matrix: pd.DataFrame, nearby_nodes_dict: dict[str, dic
             if len(nearby_non_zero_nodes) != 0:
                 coords = nodes_dict[node_id]
                 distances = np.array([compute_distance(coords, nn_zn_coords) for nn_zn_coords in nearby_non_zero_nodes.values()])
-                rts = np.array([rates.loc[nn_zn_id] for nn_zn_id in nearby_non_zero_nodes])
+                rts = np.array([rates.loc[nn_zn_id, :] for nn_zn_id in nearby_non_zero_nodes])
                 num, den = 0, 0
                 for distance, rate in zip(distances, rts):
                     num += rate/distance
@@ -88,9 +88,9 @@ def build_pmf_matrix(rate_matrix: pd.DataFrame, nearby_nodes_dict: dict[str, dic
             distances = np.array([compute_distance(coords, nn_zn_coords) for nn_zn_coords in nearby_non_zero_nodes.values()])
             num, den = pd.Series(0, index=pmf_df.columns), 0
             for distance, nn_zn_id in zip(distances, nearby_non_zero_nodes):
-                num += pmf_df.loc[nn_zn_id]
+                num += pmf_df.loc[nn_zn_id, :]
                 den += 1/distance
-            pmf_df.loc[idx] = num/den
+            pmf_df.loc[idx, :] = num/den
 
     return pmf_df
 

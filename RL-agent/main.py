@@ -10,7 +10,8 @@ import gymnasium as gym
 import numpy as np
 import matplotlib.pyplot as plt
 
-from tqdm.contrib.telegram import tqdm
+from tqdm.contrib.telegram import tqdm as tqdm_telegram
+from tqdm import tqdm
 from agent import DQNAgent
 from utils import (convert_graph_to_data, convert_seconds_to_hours_minutes, plot_data_online,
                    plot_graph_with_truck_path, send_telegram_message)
@@ -57,6 +58,7 @@ params = {
 
 days2num = {'monday': 0, 'tuesday': 1, 'wednesday': 2, 'thursday': 3, 'friday': 4, 'saturday': 5, 'sunday': 6}
 
+enable_telegram = False
 BOT_TOKEN = '7911945908:AAHkp-x7at3fIadrlmahcTB1G6_ni2awbt4'
 CHAT_ID = '16830298'
 
@@ -104,24 +106,34 @@ def train_dueling_dqn(agent: DQNAgent, batch_size: int) -> tuple[list, list]:
     not_done = True
 
     # Progress bar for the episode
-    tbar = tqdm(
-        range(params["total_timeslots"]),
-        desc="Year 1, Week 1, Monday at 01:00:00",
-        position=0,
-        leave=True,
-        dynamic_ncols=True,
-        token=BOT_TOKEN,
-        chat_id=CHAT_ID
-    )
+    if enable_telegram:
+        tbar = tqdm_telegram(
+            range(params["total_timeslots"]),
+            desc="Year 1, Week 1, Monday at 01:00:00",
+            position=0,
+            leave=True,
+            dynamic_ncols=True,
+            token=BOT_TOKEN,
+            chat_id=CHAT_ID
+        )
+    else:
+        tbar = tqdm(
+            range(params["total_timeslots"]),
+            desc="Year 1, Week 1, Monday at 01:00:00",
+            position=0,
+            leave=True,
+            dynamic_ncols=True
+        )
 
-    # single_state_time = []
-    # agent_action_time = []
-    # step_time = []
-    # replay_buffer_time = []
-    # train_step_time = []
+
+    single_state_time = []
+    agent_action_time = []
+    step_time = []
+    replay_buffer_time = []
+    train_step_time = []
 
     while not_done:
-        # start_time = time.time()
+        start_time = time.time()
 
         # Prepare the state for the agent
         single_state = Data(
@@ -132,22 +144,22 @@ def train_dueling_dqn(agent: DQNAgent, batch_size: int) -> tuple[list, list]:
             batch=torch.zeros(state.x.size(0), dtype=torch.long).to(device),
         )
 
-        # single_state_time.append(time.time() - start_time)
-        # start_time = time.time()
+        single_state_time.append(time.time() - start_time)
+        start_time = time.time()
 
         # Select an action using the agent
         action = agent.select_action(single_state)
         action_bins[action] += 1
 
-        # agent_action_time.append(time.time() - start_time)
-        # start_time = time.time()
+        agent_action_time.append(time.time() - start_time)
+        start_time = time.time()
 
         # Step the environment with the chosen action
         agent_state, reward, done, time_slot_terminated, info = env.step(action)
         network_state = convert_graph_to_data(info['cells_subgraph'])
 
-        # step_time.append(time.time() - start_time)
-        # start_time = time.time()
+        step_time.append(time.time() - start_time)
+        start_time = time.time()
 
         # Update state with new information
         next_state = network_state
@@ -157,8 +169,8 @@ def train_dueling_dqn(agent: DQNAgent, batch_size: int) -> tuple[list, list]:
         # Store the transition in the replay buffer
         agent.replay_buffer.push(state, action, reward, next_state, done)
 
-        # replay_buffer_time.append(time.time() - start_time)
-        # start_time = time.time()
+        replay_buffer_time.append(time.time() - start_time)
+        start_time = time.time()
 
         # Train the agent with a batch from the replay buffer
         agent.train_step(batch_size)
@@ -172,8 +184,8 @@ def train_dueling_dqn(agent: DQNAgent, batch_size: int) -> tuple[list, list]:
         # Check if the episode is complete
         not_done = not done
 
-        # train_step_time.append(time.time() - start_time)
-        # start_time = time.time()
+        train_step_time.append(time.time() - start_time)
+        start_time = time.time()
 
         if time_slot_terminated:
             # Update target network periodically
@@ -206,10 +218,20 @@ def train_dueling_dqn(agent: DQNAgent, batch_size: int) -> tuple[list, list]:
 
             # print(f"\n\nSingle state time: {np.mean(single_state_time)}")
             # print(f"Agent action time: {np.mean(agent_action_time)}")
-            # print(f"Step time: {np.mean(step_time)}")
+            # print(f"Step time: {np.mean(step_time[:-1])}")
+            # print(f"Max step time: {np.max(step_time[:-1])}, position: {np.argmax(step_time[:-1])}")
+            # print(f"Last step time: {step_time[-1]} at position: {len(step_time) - 1}")
             # print(f"Replay buffer time: {np.mean(replay_buffer_time)}")
             # print(f"Train step time: {np.mean(train_step_time)}")
             # print(f"Time slot time: {time.time() - start_time}\n")
+
+            single_state_time = []
+            agent_action_time = []
+            step_time = []
+            replay_buffer_time = []
+            train_step_time = []
+
+            # plot_data_online(step_time, idx=1, xlabel='Step', ylabel='Time (s)', save_path='../results/plots/step_time.png')
 
             results_path = '../results/'
             if not os.path.exists(results_path):
@@ -228,6 +250,9 @@ def train_dueling_dqn(agent: DQNAgent, batch_size: int) -> tuple[list, list]:
 
             # Update progress bar
             tbar.update(1)
+
+    tbar.close()
+    env.close()
 
     return rewards_per_time_slot, failures_per_time_slot
 
@@ -257,10 +282,12 @@ def main():
             batch_size=params["batch_size"]
         )
     except Exception as e:
-        send_telegram_message(f"An error occurred during training: {e}", BOT_TOKEN, CHAT_ID)
+        if enable_telegram:
+            send_telegram_message(f"An error occurred during training: {e}", BOT_TOKEN, CHAT_ID)
         raise e
     except KeyboardInterrupt:
-        send_telegram_message("Training interrupted by user.", BOT_TOKEN, CHAT_ID)
+        if enable_telegram:
+            send_telegram_message("Training interrupted by user.", BOT_TOKEN, CHAT_ID)
         print("\nTraining interrupted by user.")
         return
 
