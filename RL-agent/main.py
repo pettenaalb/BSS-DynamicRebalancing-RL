@@ -259,6 +259,10 @@ def main():
     except Exception as e:
         send_telegram_message(BOT_TOKEN, CHAT_ID, f"An error occurred during training: {e}")
         raise e
+    except KeyboardInterrupt:
+        send_telegram_message(BOT_TOKEN, CHAT_ID, "Training interrupted by user.")
+        print("\nTraining interrupted by user.")
+        return
 
     # Print the rewards after training
     print("Training completed.")
