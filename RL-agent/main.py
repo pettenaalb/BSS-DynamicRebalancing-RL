@@ -10,7 +10,7 @@ import gymnasium as gym
 import numpy as np
 import matplotlib.pyplot as plt
 
-from tqdm import tqdm
+from tqdm.contrib.telegram import tqdm
 from agent import DQNAgent
 from utils import convert_graph_to_data, convert_seconds_to_hours_minutes, plot_data_online, plot_graph_with_truck_path
 from replay_memory import ReplayBuffer
@@ -55,6 +55,9 @@ params = {
 }
 
 days2num = {'monday': 0, 'tuesday': 1, 'wednesday': 2, 'thursday': 3, 'friday': 4, 'saturday': 5, 'sunday': 6}
+
+token = '7911945908:AAHkp-x7at3fIadrlmahcTB1G6_ni2awbt4'
+chat_id = '16830298'
 
 # ----------------------------------------------------------------------------------------------------------------------
 
@@ -105,7 +108,9 @@ def train_dueling_dqn(agent: DQNAgent, batch_size: int) -> tuple[list, list]:
         desc="Training phase",
         position=0,
         leave=True,
-        dynamic_ncols=True
+        dynamic_ncols=True,
+        token=token,
+        chat_id=chat_id
     )
 
     single_state_time = []
@@ -113,7 +118,6 @@ def train_dueling_dqn(agent: DQNAgent, batch_size: int) -> tuple[list, list]:
     step_time = []
     replay_buffer_time = []
     train_step_time = []
-
 
     while not_done:
         start_time = time.time()
@@ -221,20 +225,20 @@ def train_dueling_dqn(agent: DQNAgent, batch_size: int) -> tuple[list, list]:
             print(f"Train step time: {np.mean(train_step_time)}")
             print(f"Time slot time: {time.time() - start_time}\n")
 
-    results_path = '../results/'
-    if not os.path.exists(results_path):
-        os.makedirs(results_path)
-        print(f"Directory '{results_path}' created.")
+            results_path = '../results/'
+            if not os.path.exists(results_path):
+                os.makedirs(results_path)
+                print(f"Directory '{results_path}' created.")
 
-    # Save lists
-    with open(results_path + 'rewards_per_time_slot.pkl', 'wb') as f:
-        pickle.dump(rewards_per_time_slot, f)
-    with open(results_path + 'failures_per_time_slot.pkl', 'wb') as f:
-        pickle.dump(failures_per_time_slot, f)
-    with open(results_path + 'q_values_per_time_slot.pkl', 'wb') as f:
-        pickle.dump(q_values_per_time_slot, f)
-    with open(results_path + 'action_bins.pkl', 'wb') as f:
-        pickle.dump(action_bins, f)
+            # Save lists
+            with open(results_path + 'rewards_per_time_slot.pkl', 'wb') as f:
+                pickle.dump(rewards_per_time_slot, f)
+            with open(results_path + 'failures_per_time_slot.pkl', 'wb') as f:
+                pickle.dump(failures_per_time_slot, f)
+            with open(results_path + 'q_values_per_time_slot.pkl', 'wb') as f:
+                pickle.dump(q_values_per_time_slot, f)
+            with open(results_path + 'action_bins.pkl', 'wb') as f:
+                pickle.dump(action_bins, f)
 
     return rewards_per_time_slot, failures_per_time_slot
 
