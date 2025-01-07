@@ -222,6 +222,10 @@ def send_telegram_message(message: str, BOT_TOKEN: str, CHAT_ID: str):
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
     payload = {"chat_id": CHAT_ID, "text": message}
     try:
-        requests.post(url, json=payload)
+        response = requests.post(url, json=payload)
+        if response.status_code == 200:
+            print("Message sent successfully.")
+        else:
+            print(f"Failed to send message. Status code: {response.status_code}")
     except requests.exceptions.RequestException as e:
         print(f"Failed to send Telegram message: {e}")

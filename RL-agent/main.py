@@ -257,10 +257,10 @@ def main():
             batch_size=params["batch_size"]
         )
     except Exception as e:
-        send_telegram_message(BOT_TOKEN, CHAT_ID, f"An error occurred during training: {e}")
+        send_telegram_message(f"An error occurred during training: {e}", BOT_TOKEN, CHAT_ID)
         raise e
     except KeyboardInterrupt:
-        send_telegram_message(BOT_TOKEN, CHAT_ID, "Training interrupted by user.")
+        send_telegram_message("Training interrupted by user.", BOT_TOKEN, CHAT_ID)
         print("\nTraining interrupted by user.")
         return
 
