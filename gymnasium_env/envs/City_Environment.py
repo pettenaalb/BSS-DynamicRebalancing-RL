@@ -1,8 +1,8 @@
 import math
 import pickle
 import threading
+import random
 
-import networkx as nx
 import gymnasium as gym
 import numpy as np
 import pandas as pd
@@ -12,11 +12,12 @@ from gymnasium import spaces
 from gymnasium.utils import seeding
 
 from gymnasium_env.simulator.bike_simulator import simulate_environment, event_handler
-from gymnasium_env.simulator.truck_simulator import move_up, move_down, move_left, move_right, drop_bike, pick_up_bike, charge_bike, stay
+from gymnasium_env.simulator.truck_simulator import (move_up, move_down, move_left, move_right, drop_bike, pick_up_bike,
+                                                     charge_bike, stay)
 from gymnasium_env.simulator.truck import Truck
-from gymnasium_env.simulator.utils import (initialize_graph, initialize_stations, kahan_sum, Logger, Actions,
+from gymnasium_env.simulator.utils import (initialize_graph, initialize_stations, Logger, Actions, initialize_bikes,
                                            convert_seconds_to_hours_minutes, initialize_cells_subgraph,
-                                            plot_graph_with_grid, truncated_gaussian, initialize_bikes)
+                                           truncated_gaussian, logistic_penalty_function)
 
 params = {
     'graph_file': 'utils/cambridge_network.graphml',
@@ -92,8 +93,9 @@ class BostonCity(gym.Env):
         )
 
         # Initialize simulation state variables
-        self.pmf_matrix, self.global_rate = None, None
+        self.pmf_matrix, self.global_rate, self.global_rate_dict = None, None, None
         self.system_bikes, self.outside_system_bikes = None, None
+        self.maximum_number_of_bikes = 2500
         self.current_cell_id = None
         self.stations = None
         self.truck = None
@@ -109,6 +111,7 @@ class BostonCity(gym.Env):
         self.next_bike_id = 0
         self.total_time_slots = 0
         self.background_thread = None
+        self.M, self.k, self.b = 10, 0.1, 50
 
         # Set logging options
         self.logging = False
@@ -135,9 +138,15 @@ class BostonCity(gym.Env):
 
         self.total_time_slots = options.get('total_time_slots', 2*365*8) if options else 2*365*8
 
-        # TODO: Implement initialization of the environment state with noise
-        # Initialize stations and system bikes
-        self.stations, self.system_bikes, self.outside_system_bikes, self.next_bike_id = initialize_stations(self.graph, next_bike_id=self.next_bike_id)
+        # Create stations dictionary
+        from gymnasium_env.simulator.station import Station
+        gdf_nodes = ox.graph_to_gdfs(self.graph, edges=False)
+        stations = {}
+        for index, row in gdf_nodes.iterrows():
+            station = Station(index, row['y'], row['x'])
+            stations[index] = station
+        stations[10000] = Station(10000, 0, 0)
+        self.stations = stations
 
         # Set the number of bikes in each cell
         for cell in self.cells.values():
@@ -154,6 +163,28 @@ class BostonCity(gym.Env):
 
         # Initialize the day and time slot
         self._initialize_day_timeslot()
+
+        # Initialize stations and system bikes
+        bikes_per_station = {}
+        total_bikes = int(self.maximum_number_of_bikes*4/5)
+        std_dev = 2.0
+
+        for stn_id in self.stations.keys():
+            base_bikes = int(self.pmf_matrix.loc[stn_id, :].sum() * total_bikes)
+            noise = random.gauss(0, std_dev) * base_bikes
+            noisy_bikes = max(0, int(base_bikes + noise))
+
+            bikes_per_station[stn_id] = noisy_bikes
+
+        # Adjust the total bikes to not exceed the desired total
+        current_total = sum(bikes_per_station.values())
+        print(f"Current total bikes: {current_total}")
+
+        self.system_bikes, self.outside_system_bikes, self.next_bike_id = initialize_stations(
+            self.stations,
+            next_bike_id=self.next_bike_id,
+            bikes_per_station=bikes_per_station
+        )
 
         # Initialize the cell subgraph
         self.cell_subgraph = initialize_cells_subgraph(self.cells, self.nodes_dict, self.distance_matrix)
@@ -226,20 +257,22 @@ class BostonCity(gym.Env):
 
         # Handle specific actions post-environment update
         if action in {Actions.DROP_BIKE.value, Actions.CHARGE_BIKE.value}:
-            station = self.stations.get(self.truck.get_position())
-            try:
-                bike = self.truck.unload_bike()
-            except ValueError:
-                distance = self.distance_matrix.loc[self.truck.get_position(), self.depot_node]
-                velocity_kmh = truncated_gaussian(10, 70, mean_velocity, 5)
-                t_reload = 2*int(distance * 3.6 / velocity_kmh)
-                bikes, self.next_bike_id = initialize_bikes(n=15, next_bike_id=self.next_bike_id)
-                self.truck.set_load(bikes)
-                new_steps = math.ceil(t_reload+t / 30) - steps
-                failures += self._jump_to_next_state(new_steps)
-                bike = self.truck.unload_bike()
-            station.lock_bike(bike)
-            self.system_bikes[bike.get_bike_id()] = bike
+            # Check if the truck can drop a bike based on the maximum number of bikes in the system
+            if len(self.system_bikes) < self.maximum_number_of_bikes or action != Actions.DROP_BIKE.value:
+                station = self.stations.get(self.truck.get_position())
+                try:
+                    bike = self.truck.unload_bike()
+                except ValueError:
+                    distance = self.distance_matrix.loc[self.truck.get_position(), self.depot_node]
+                    velocity_kmh = truncated_gaussian(10, 70, mean_velocity, 5)
+                    t_reload = 2*int(distance * 3.6 / velocity_kmh)
+                    bikes, self.next_bike_id = initialize_bikes(n=15, next_bike_id=self.next_bike_id)
+                    self.truck.set_load(bikes)
+                    new_steps = math.ceil(t_reload+t / 30) - steps
+                    failures += self._jump_to_next_state(new_steps)
+                    bike = self.truck.unload_bike()
+                station.lock_bike(bike)
+                self.system_bikes[bike.get_bike_id()] = bike
 
         # Log the ending action
         self.logger.log_ending_action(
@@ -302,7 +335,7 @@ class BostonCity(gym.Env):
             day = num2days[(days2num[self.day] + 1) % 7]
 
         # Flatten the PMF matrix for event simulation
-        pmf_matrix, global_rate = self._load_pmf_matrix(day, time_slot)
+        pmf_matrix, global_rate = self._load_pmf_matrix_global_rate(day, time_slot)
 
         # Flatten the PMF matrix for event simulation
         values = pmf_matrix.values.flatten()
@@ -322,7 +355,7 @@ class BostonCity(gym.Env):
 
     def _initialize_day_timeslot(self, residual_event_buffer: list = None) -> int:
         # Load PMF matrix and global rate for the current day and time slot
-        self.pmf_matrix, self.global_rate = self._load_pmf_matrix(self.day, self.time_slot)
+        self.pmf_matrix, self.global_rate = self._load_pmf_matrix_global_rate(self.day, self.time_slot)
 
         for stn_id, stn in self.stations.items():
             stn.set_request_rate(self.pmf_matrix.loc[stn_id, :].sum()*self.global_rate)
@@ -372,7 +405,7 @@ class BostonCity(gym.Env):
         return failure
 
 
-    def _load_pmf_matrix(self, day: str, time_slot: int) -> tuple[pd.DataFrame, float]:
+    def _load_pmf_matrix_global_rate(self, day: str, time_slot: int) -> tuple[pd.DataFrame, float]:
         # Load the PMF matrix and global rate for a given day and time slot
         # Initialize the rate matrix
         matrix_path = self.data_path + params['matrices_folder'] + '/' + str(time_slot).zfill(2) + '/'
@@ -384,7 +417,11 @@ class BostonCity(gym.Env):
         pmf_matrix.columns = pmf_matrix.columns.astype(int)
         pmf_matrix.loc[10000, 10000] = 0.0
 
-        global_rate = kahan_sum(rate_matrix.to_numpy().flatten())
+        if self.global_rate_dict is None:
+            with open(self.data_path + 'utils/global_rates.pkl', 'rb') as f:
+                self.global_rate_dict = pickle.load(f)
+
+        global_rate = self.global_rate_dict[(day.lower(), time_slot)]
 
         return pmf_matrix, global_rate
 
@@ -446,7 +483,18 @@ class BostonCity(gym.Env):
         hours, _ = divmod((self.time_slot * 3 + 1) * 3600 + self.env_time, 3600)
         hours = hours % 24
         mean_consumption = self.consumption_matrix.loc[hours, self.day]
-        return - steps - failures*steps - (distance/1000)*mean_consumption
+        bike_per_region_cost = self._compute_bike_per_region_cost()
+        total_bikes_cost = logistic_penalty_function(M=self.M, k=0.04, b=self.maximum_number_of_bikes, x=len(self.system_bikes))
+        return - steps - failures*steps - (distance/1000)*mean_consumption - bike_per_region_cost - total_bikes_cost
+
+
+    def _compute_bike_per_region_cost(self) -> float:
+        total_cost = 0.0
+        for cell_id, cell in self.cells.items():
+            n_bikes = cell.get_total_bikes()
+            cost = logistic_penalty_function(M=self.M, k=self.k, b=self.b, x=n_bikes)
+            total_cost += cost
+        return total_cost
 
 
     def _update_graph(self):

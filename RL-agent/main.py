@@ -180,7 +180,7 @@ def train_dueling_dqn(agent: DQNAgent, batch_size: int) -> tuple[list, list]:
             time_slot = 0 if time_slot == 7 else time_slot + 1
 
             # Save result lists
-            results_path = '../results/data'
+            results_path = '../results/data/'
             with open(results_path + 'rewards_per_time_slot.pkl', 'wb') as f:
                 pickle.dump(rewards_per_time_slot, f)
             with open(results_path + 'failures_per_time_slot.pkl', 'wb') as f:

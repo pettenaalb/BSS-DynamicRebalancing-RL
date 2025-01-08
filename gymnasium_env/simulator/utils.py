@@ -88,6 +88,10 @@ def kahan_sum(arr):
     return total
 
 
+def logistic_penalty_function(M=1, k=1, b=1, x=0):
+    return M / (1 + math.exp(-k * (b - x)))
+
+
 def compute_distance(coords1, coords2):
     """
     Calculate the distance between two pairs of coordinates in meters.
@@ -116,14 +120,11 @@ def generate_poisson_events(rate, time_duration) -> list[int]:
         - list: A list of event times occurring within the specified time duration.
     """
     # uniform distribution of arrival times
-    num_events = np.random.poisson(rate * time_duration)
-    event_times = np.sort(np.random.uniform(0, time_duration, num_events)).astype(int).tolist()
-    # num_events = 100000
-    # events = np.random.exponential(1 / rate, num_events)
-    # event_times = np.cumsum(events)
-    # event_times = event_times[event_times < time_duration]
+    inter_arrival_times = np.random.exponential(1 / rate, int(rate * time_duration) + 100)
+    event_times = np.cumsum(inter_arrival_times)
+    event_times = event_times[event_times < time_duration]
 
-    return event_times
+    return np.floor(event_times).astype(int)
 
 
 def convert_seconds_to_hours_minutes(seconds) -> str:
@@ -219,10 +220,12 @@ def initialize_bikes(stn: "Station" = None, n: int = 0, next_bike_id: int = 0) -
         bike = Bike(stn=stn, bike_id=next_id)
         next_id += 1
         bikes[bike.get_bike_id()] = bike
+        if stn is not None:
+            stn.lock_bike(bike)
     return bikes, next_id
 
 
-def initialize_stations(G: nx.MultiDiGraph, next_bike_id: int, bikes_per_station: dict[int, int] = None) -> tuple[dict, dict, dict, int]:
+def initialize_stations(stations: dict, next_bike_id: int, bikes_per_station: dict = None) -> tuple[dict, dict, int]:
     """
     Initialize a list of stations based on the nodes of the graph.
 
@@ -232,29 +235,22 @@ def initialize_stations(G: nx.MultiDiGraph, next_bike_id: int, bikes_per_station
     Returns:
         - dict: A dictionary containing the stations in the network.
     """
-    from gymnasium_env.simulator.station import Station
-    gdf_nodes = ox.graph_to_gdfs(G, edges=False)
-
-    stations = {}
     sys_bikes = {}
 
     next_id = next_bike_id
 
-    for index, row in gdf_nodes.iterrows():
-        station = Station(index, row["y"], row["x"])
+    for station in stations.values():
         if bikes_per_station is not None:
-            bikes = initialize_bikes(station, bikes_per_station.get(index), next_id)
+            bikes, next_id = initialize_bikes(station, bikes_per_station.get(station.get_station_id()), next_id)
         else:
             bikes, next_id = initialize_bikes(station, np.random.randint(0, 3), next_id)
         sys_bikes.update(bikes)
-        station.set_bikes(bikes)
-        stations[index] = station
 
-    stations[10000] = Station(10000, 0, 0)
+    out_sys_bikes, next_id = initialize_bikes(n=1000, next_bike_id=next_id)
+    for bike in out_sys_bikes.values():
+        bike.set_station(stations.get(10000))
 
-    out_sys_bikes, next_id = initialize_bikes(stations.get(10000), 1000, next_id)
-
-    return stations, sys_bikes, out_sys_bikes, next_id
+    return sys_bikes, out_sys_bikes, next_id
 
 
 def initialize_cells_subgraph(cells: dict[int, "Cell"], nodes_dict: dict[int, tuple[float, float]],
