@@ -38,6 +38,7 @@ params = {
     "replay_buffer_capacity": 10000,    # Capacity of replay buffer
     "gamma": 0.99,                      # Discount factor
     "epsilon_start": 1.0,               # Starting exploration rate
+    "epsilon_delta": 0.05,
     "epsilon_end": 0.00,                # Minimum exploration rate
     "epsilon_decay": 500,               # Epsilon decay rate
     "lr": 1e-3,                         # Learning rate
@@ -46,7 +47,7 @@ params = {
 
 days2num = {'monday': 0, 'tuesday': 1, 'wednesday': 2, 'thursday': 3, 'friday': 4, 'saturday': 5, 'sunday': 6}
 
-enable_telegram = False
+enable_telegram = True
 BOT_TOKEN = '7911945908:AAHkp-x7at3fIadrlmahcTB1G6_ni2awbt4'
 CHAT_ID = '16830298'
 
@@ -154,7 +155,7 @@ def train_dueling_dqn(agent: DQNAgent, batch_size: int) -> tuple[list, list]:
             # Update target network periodically
             agent.update_target_network()
             if total_timeslots % 292 == 0:
-                agent.update_epsilon(delta_epsilon=0.5)
+                agent.update_epsilon(delta_epsilon=params["epsilon_delta"])
 
             # Record metrics for the current time slot
             rewards_per_time_slot.append(total_reward/360)
