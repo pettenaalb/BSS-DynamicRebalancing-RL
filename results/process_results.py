@@ -3,13 +3,13 @@ import pickle
 from utils import plot_data_online
 
 def main():
-    with open('rewards_per_time_slot.pkl', 'rb') as f:
+    with open('data/rewards_per_time_slot.pkl', 'rb') as f:
         rewards_per_time_slot = pickle.load(f)
-    with open('failures_per_time_slot.pkl', 'rb') as f:
+    with open('data/failures_per_time_slot.pkl', 'rb') as f:
         failures_per_time_slot = pickle.load(f)
-    with open('q_values_per_time_slot.pkl', 'rb') as f:
+    with open('data/q_values_per_time_slot.pkl', 'rb') as f:
         q_values_per_time_slot = pickle.load(f)
-    with open('action_bins.pkl', 'rb') as f:
+    with open('data/action_bins.pkl', 'rb') as f:
         action_bins = pickle.load(f)
 
     action_bin_labels = ['STAY', 'RIGHT', 'UP', 'LEFT', 'DOWN', 'DROP_BIKE', 'PICK_UP_BIKE', 'CHARGE_BIKE']

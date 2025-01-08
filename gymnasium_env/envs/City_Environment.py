@@ -3,7 +3,6 @@ import pickle
 import threading
 
 import networkx as nx
-
 import gymnasium as gym
 import numpy as np
 import pandas as pd
@@ -11,18 +10,13 @@ import osmnx as ox
 
 from gymnasium import spaces
 from gymnasium.utils import seeding
-from time import time
-from queue import Queue
 
 from gymnasium_env.simulator.bike_simulator import simulate_environment, event_handler
 from gymnasium_env.simulator.truck_simulator import move_up, move_down, move_left, move_right, drop_bike, pick_up_bike, charge_bike, stay
-
 from gymnasium_env.simulator.truck import Truck
 from gymnasium_env.simulator.utils import (initialize_graph, initialize_stations, kahan_sum, Logger, Actions,
                                            convert_seconds_to_hours_minutes, initialize_cells_subgraph,
                                             plot_graph_with_grid, truncated_gaussian, initialize_bikes)
-
-# matplotlib.use('Qt5Agg')
 
 params = {
     'graph_file': 'utils/cambridge_network.graphml',
@@ -239,7 +233,6 @@ class BostonCity(gym.Env):
                 distance = self.distance_matrix.loc[self.truck.get_position(), self.depot_node]
                 velocity_kmh = truncated_gaussian(10, 70, mean_velocity, 5)
                 t_reload = 2*int(distance * 3.6 / velocity_kmh)
-                # CHECKME: is it ok to have, after the ride to the depot, only 15 bikes when the truck is empty?
                 bikes, self.next_bike_id = initialize_bikes(n=15, next_bike_id=self.next_bike_id)
                 self.truck.set_load(bikes)
                 new_steps = math.ceil(t_reload+t / 30) - steps
@@ -299,15 +292,6 @@ class BostonCity(gym.Env):
 
         # Return the step results
         return observation, reward, done, terminated, info
-
-
-    def render(self):
-        truck_coords = self.nodes_dict.get(self.truck.get_position())
-        x_lim = [truck_coords[1]-0.015, truck_coords[1]+0.015]
-        y_lim = [truck_coords[0]-0.015, truck_coords[0]+0.015]
-        total_graph = nx.compose(self.graph, self.cell_subgraph)
-        plot_graph_with_grid(total_graph, self.cells, plot_center_nodes=True, plot_number_cells=False,
-                             truck_coords=truck_coords, xlim=x_lim, ylim=y_lim)
 
 
     def _precompute_poisson_events(self):
@@ -388,8 +372,8 @@ class BostonCity(gym.Env):
         return failure
 
 
-    # Load the PMF matrix and global rate for a given day and time slot
     def _load_pmf_matrix(self, day: str, time_slot: int) -> tuple[pd.DataFrame, float]:
+        # Load the PMF matrix and global rate for a given day and time slot
         # Initialize the rate matrix
         matrix_path = self.data_path + params['matrices_folder'] + '/' + str(time_slot).zfill(2) + '/'
         pmf_matrix = pd.read_csv(matrix_path + day.lower() + '-pmf-matrix.csv', index_col='osmid')
@@ -519,6 +503,7 @@ class BostonCity(gym.Env):
 
     def _get_system_data(self) -> tuple[dict, dict, dict]:
         return self.stations, self.system_bikes, self.outside_system_bikes
+
 
     def close(self):
         """Clean up resources."""

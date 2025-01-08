@@ -1,29 +1,18 @@
 import os
 import pickle
 import torch
-import matplotlib
-import time
 
 import gymnasium_env.register_env
 
 import gymnasium as gym
 import numpy as np
-import matplotlib.pyplot as plt
 
 from tqdm.contrib.telegram import tqdm as tqdm_telegram
 from tqdm import tqdm
 from agent import DQNAgent
-from utils import (convert_graph_to_data, convert_seconds_to_hours_minutes, plot_data_online,
-                   plot_graph_with_truck_path, send_telegram_message)
+from utils import convert_graph_to_data, convert_seconds_to_hours_minutes, send_telegram_message
 from replay_memory import ReplayBuffer
 from torch_geometric.data import Data
-
-# set up matplotlib
-is_ipython = 'inline' in matplotlib.get_backend()
-if is_ipython:
-    from IPython import display
-
-plt.ion()
 
 # ----------------------------------------------------------------------------------------------------------------------
 
@@ -44,13 +33,12 @@ np.random.seed(seed)
 torch.manual_seed(seed)
 
 params = {
-    # TODO: try with 2 years
     "num_episodes": 1,                  # Total number of training episodes
     "batch_size": 32,                   # Batch size for replay buffer sampling
     "replay_buffer_capacity": 10000,    # Capacity of replay buffer
     "gamma": 0.99,                      # Discount factor
     "epsilon_start": 1.0,               # Starting exploration rate
-    "epsilon_end": 0.01,                # Minimum exploration rate
+    "epsilon_end": 0.00,                # Minimum exploration rate
     "epsilon_decay": 500,               # Epsilon decay rate
     "lr": 1e-3,                         # Learning rate
     "total_timeslots": 5840             # Total number of time slots in two years
@@ -88,19 +76,15 @@ def train_dueling_dqn(agent: DQNAgent, batch_size: int) -> tuple[list, list]:
     state.agent_state = np.concatenate([info['agent_position'], agent_state])
     state.steps = info['steps']
 
-    graph = info['network_graph']
-    cell_dict = info['cell_dict']
-    nodes_dict = info['nodes_dict']
-
     # Initialize episode metrics
     time_slot = 0
+    total_timeslots = 0
     rewards_per_time_slot = []
     total_reward = 0
     failures_per_time_slot = []
     total_failures = 0
     q_values_per_time_slot = []
     action_bins = [0] * action_size
-    action_bin_labels = ['STAY', 'RIGHT', 'UP', 'LEFT', 'DOWN', 'DROP_BIKE', 'PICK_UP_BIKE', 'CHARGE_BIKE']
     truck_path = []
 
     not_done = True
@@ -125,15 +109,7 @@ def train_dueling_dqn(agent: DQNAgent, batch_size: int) -> tuple[list, list]:
             dynamic_ncols=True
         )
 
-
-    single_state_time = []
-    agent_action_time = []
-    step_time = []
-    replay_buffer_time = []
-    train_step_time = []
-
     while not_done:
-        start_time = time.time()
 
         # Prepare the state for the agent
         single_state = Data(
@@ -144,22 +120,13 @@ def train_dueling_dqn(agent: DQNAgent, batch_size: int) -> tuple[list, list]:
             batch=torch.zeros(state.x.size(0), dtype=torch.long).to(device),
         )
 
-        single_state_time.append(time.time() - start_time)
-        start_time = time.time()
-
         # Select an action using the agent
         action = agent.select_action(single_state)
         action_bins[action] += 1
 
-        agent_action_time.append(time.time() - start_time)
-        start_time = time.time()
-
         # Step the environment with the chosen action
         agent_state, reward, done, time_slot_terminated, info = env.step(action)
         network_state = convert_graph_to_data(info['cells_subgraph'])
-
-        step_time.append(time.time() - start_time)
-        start_time = time.time()
 
         # Update state with new information
         next_state = network_state
@@ -168,9 +135,6 @@ def train_dueling_dqn(agent: DQNAgent, batch_size: int) -> tuple[list, list]:
 
         # Store the transition in the replay buffer
         agent.replay_buffer.push(state, action, reward, next_state, done)
-
-        replay_buffer_time.append(time.time() - start_time)
-        start_time = time.time()
 
         # Train the agent with a batch from the replay buffer
         agent.train_step(batch_size)
@@ -184,24 +148,22 @@ def train_dueling_dqn(agent: DQNAgent, batch_size: int) -> tuple[list, list]:
         # Check if the episode is complete
         not_done = not done
 
-        train_step_time.append(time.time() - start_time)
-        start_time = time.time()
-
         if time_slot_terminated:
+            total_timeslots += 1
+
             # Update target network periodically
             agent.update_target_network()
+            if total_timeslots % 292 == 0:
+                agent.update_epsilon(delta_epsilon=0.5)
 
             # Record metrics for the current time slot
             rewards_per_time_slot.append(total_reward/360)
             failures_per_time_slot.append(total_failures)
 
+            # Get Q-values for the current state
             with torch.no_grad():
-                # Get Q-values for the current state
                 q_values = agent.get_q_values(single_state)
                 q_values_per_time_slot.append(q_values.squeeze().cpu().numpy())
-
-            # Reset time slot metrics
-            total_reward = 0
 
             # Log progress
             time_elapsed = info['time']
@@ -212,33 +174,13 @@ def train_dueling_dqn(agent: DQNAgent, batch_size: int) -> tuple[list, list]:
             #       end="", flush=True)
             tbar.set_description(f"Year {year + 1}, Week {week}, {day.capitalize()} at {convert_seconds_to_hours_minutes(time_elapsed)}")
 
+            # Reset time slot metrics
+            total_reward = 0
             truck_path = []
-
             time_slot = 0 if time_slot == 7 else time_slot + 1
 
-            # print(f"\n\nSingle state time: {np.mean(single_state_time)}")
-            # print(f"Agent action time: {np.mean(agent_action_time)}")
-            # print(f"Step time: {np.mean(step_time[:-1])}")
-            # print(f"Max step time: {np.max(step_time[:-1])}, position: {np.argmax(step_time[:-1])}")
-            # print(f"Last step time: {step_time[-1]} at position: {len(step_time) - 1}")
-            # print(f"Replay buffer time: {np.mean(replay_buffer_time)}")
-            # print(f"Train step time: {np.mean(train_step_time)}")
-            # print(f"Time slot time: {time.time() - start_time}\n")
-
-            single_state_time = []
-            agent_action_time = []
-            step_time = []
-            replay_buffer_time = []
-            train_step_time = []
-
-            # plot_data_online(step_time, idx=1, xlabel='Step', ylabel='Time (s)', save_path='../results/plots/step_time.png')
-
-            results_path = '../results/'
-            if not os.path.exists(results_path):
-                os.makedirs(results_path)
-                print(f"Directory '{results_path}' created.")
-
-            # Save lists
+            # Save result lists
+            results_path = '../results/data'
             with open(results_path + 'rewards_per_time_slot.pkl', 'wb') as f:
                 pickle.dump(rewards_per_time_slot, f)
             with open(results_path + 'failures_per_time_slot.pkl', 'wb') as f:
@@ -249,6 +191,7 @@ def train_dueling_dqn(agent: DQNAgent, batch_size: int) -> tuple[list, list]:
                 pickle.dump(action_bins, f)
 
             # Update progress bar
+            tbar.set_postfix({'epsilon': agent.epsilon})
             tbar.update(1)
 
     tbar.close()
@@ -262,6 +205,11 @@ def main():
     print(f"Device in use: {device}\n")
     # Set up replay buffer
     replay_buffer = ReplayBuffer(params["replay_buffer_capacity"], device)
+
+    results_path = '../results/data'
+    if not os.path.exists(results_path):
+        os.makedirs(results_path)
+        print(f"Directory '{results_path}' created.")
 
     # Initialize the DQN agent
     agent = DQNAgent(

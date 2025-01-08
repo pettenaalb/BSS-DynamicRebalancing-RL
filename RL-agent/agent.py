@@ -51,6 +51,7 @@ class DQNAgent:
         self.steps_done = 0
         self.device = device
 
+
     def select_action(self, state, greedy=False):
         """
         Selects an action using an epsilon-greedy strategy.
@@ -83,17 +84,22 @@ class DQNAgent:
             return self.train_model(state)
 
 
-    def update_epsilon(self):
+    def update_epsilon(self, delta_epsilon = None):
         """
         Updates epsilon for the epsilon-greedy strategy using exponential decay.
         """
-        self.epsilon = self.epsilon_min + (1 - self.epsilon_min) * np.exp(-1.0 * self.steps_done / self.epsilon_decay)
+        if delta_epsilon is None:
+            self.epsilon = self.epsilon_min + (1 - self.epsilon_min) * np.exp(-1.0 * self.steps_done / self.epsilon_decay)
+        else:
+            self.epsilon = max(self.epsilon - delta_epsilon, self.epsilon_min)
+
 
     def update_target_network(self):
         """
         Updates the target model by copying the weights from the training model.
         """
         self.target_model.load_state_dict(self.train_model.state_dict())
+
 
     def train_step(self, batch_size):
         """
@@ -138,5 +144,5 @@ class DQNAgent:
         self.optimizer.step()
 
         # Update epsilon
-        self.steps_done += 1
-        self.update_epsilon()
+        # self.steps_done += 1
+        # self.update_epsilon()
