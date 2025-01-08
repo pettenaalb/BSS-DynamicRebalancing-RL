@@ -53,11 +53,8 @@ def plot_data_online(data, show_result=False, idx=1, xlabel='Step', ylabel='Rewa
         plt.ylabel(ylabel)
         plt.plot(data_t.numpy())
 
-        # Compute and plot 100-step moving averages
-        if len(data_t) >= 100:
-            means = data_t.unfold(0, 100, 1).mean(1).view(-1)
-            means = torch.cat((torch.zeros(99), means))
-            plt.plot(means.numpy())
+        cumulative_mean = torch.cumsum(data_t, dim=0) / torch.arange(1, len(data_t) + 1, dtype=torch.float32)
+        plt.plot(cumulative_mean.numpy())
 
     plt.tight_layout()
     if save_path:

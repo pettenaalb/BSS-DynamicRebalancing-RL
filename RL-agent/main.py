@@ -111,7 +111,6 @@ def train_dueling_dqn(agent: DQNAgent, batch_size: int) -> tuple[list, list]:
         )
 
     while not_done:
-
         # Prepare the state for the agent
         single_state = Data(
             x=state.x.to(device),
