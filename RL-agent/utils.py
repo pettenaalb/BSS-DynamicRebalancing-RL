@@ -30,11 +30,11 @@ def convert_graph_to_data(graph: nx.MultiDiGraph):
 
     # Extract node attributes
     node_attrs = [
-        'demand_rate_per_region',
-        'average_battery_level_per_region',
-        'low_battery_ratio_per_region',
-        'variance_battery_level_per_region',
-        'total_bikes_per_region'
+        'demand_rate',
+        'average_battery_level',
+        'low_battery_ratio',
+        'variance_battery_level',
+        'total_bikes'
     ]
     data.x = torch.cat([
         torch.tensor(

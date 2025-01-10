@@ -24,7 +24,7 @@ class DQNAgent:
         - steps_done: Counter for the number of steps taken, used for epsilon decay.
         - device: Device on which the model is trained (e.g., 'cpu', 'cuda').
     """
-    def __init__(self, replay_buffer, num_actions, gamma=0.99, epsilon_start=1.0, epsilon_end=0.01, epsilon_decay=500, lr=0.1, device='cpu'):
+    def __init__(self, num_actions, replay_buffer =  None, gamma=0.99, epsilon_start=1.0, epsilon_end=0.01, epsilon_decay=500, lr=0.1, device='cpu'):
         """
         Initializes the DQNAgent.
 
@@ -146,3 +146,24 @@ class DQNAgent:
         # Update epsilon
         # self.steps_done += 1
         # self.update_epsilon()
+
+
+    def save_model(self, file_path):
+        """
+        Save the model to a file.
+
+        Parameters:
+            - path (str): The path to save the model.
+        """
+        torch.save(self.train_model.state_dict(), file_path)
+
+
+    def load_model(self, file_path):
+        """
+        Load the model from a file.
+
+        Parameters:
+            - path (str): The path to load the model.
+        """
+
+        self.train_model.load_state_dict(torch.load(file_path, map_location=self.device))

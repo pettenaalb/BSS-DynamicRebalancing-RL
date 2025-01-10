@@ -10,7 +10,8 @@ data/
 gym/
 graph_images/
 simulator/
-results/plots/
+results/training/plots/
+results/validation/plots/
 simulator/dummy_file.py
 preprocessing/dummy_file.py
 simulator/trip_output.log

@@ -538,11 +538,11 @@ class BostonCity(gym.Env):
 
             # Update attributes in the subgraph
             if center_node in self.cell_subgraph:
-                self.cell_subgraph.nodes[center_node]['demand_rate_per_region'] = demand_rate
-                self.cell_subgraph.nodes[center_node]['average_battery_level_per_region'] = average_battery_level
-                self.cell_subgraph.nodes[center_node]['low_battery_ratio_per_region'] = low_battery_ratio
-                self.cell_subgraph.nodes[center_node]['variance_battery_level_per_region'] = variance_battery_level
-                self.cell_subgraph.nodes[center_node]['total_bikes_per_region'] = cell.get_total_bikes() / len(self.system_bikes)
+                self.cell_subgraph.nodes[center_node]['demand_rate'] = demand_rate
+                self.cell_subgraph.nodes[center_node]['average_battery_level'] = average_battery_level
+                self.cell_subgraph.nodes[center_node]['low_battery_ratio'] = low_battery_ratio
+                self.cell_subgraph.nodes[center_node]['variance_battery_level'] = variance_battery_level
+                self.cell_subgraph.nodes[center_node]['total_bikes'] = cell.get_total_bikes() / len(self.system_bikes)
 
 
     def _get_truck_position(self) -> tuple[float, float]:

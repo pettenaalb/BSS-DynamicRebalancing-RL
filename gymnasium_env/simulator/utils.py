@@ -282,10 +282,10 @@ def initialize_cells_subgraph(cells: dict[int, "Cell"], nodes_dict: dict[int, tu
             x=center_coords[1],  # Longitude
             y=center_coords[0],  # Latitude
             # Initialize internal parameters
-            average_battery_level_per_region=0.0,
-            variance_battery_level_per_region=0.0,
-            low_battery_ratio_per_region=0.0,
-            demand_rate_per_region=0.0,
+            average_battery_level=0.0,
+            variance_battery_level=0.0,
+            low_battery_ratio=0.0,
+            demand_rate=0.0,
         )
 
     max_length = 0

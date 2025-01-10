@@ -11,7 +11,6 @@ from tqdm.contrib.telegram import tqdm as tqdm_telegram
 from tqdm import tqdm
 from agent import DQNAgent
 from utils import convert_graph_to_data, convert_seconds_to_hours_minutes, send_telegram_message
-from replay_memory import ReplayBuffer
 from torch_geometric.data import Data
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -34,15 +33,7 @@ torch.manual_seed(seed)
 
 params = {
     "num_episodes": 1,                  # Total number of training episodes
-    "batch_size": 32,                   # Batch size for replay buffer sampling
-    "replay_buffer_capacity": 10000,    # Capacity of replay buffer
-    "gamma": 0.99,                      # Discount factor
-    "epsilon_start": 1.0,               # Starting exploration rate
-    "epsilon_delta": 0.05,
-    "epsilon_end": 0.00,                # Minimum exploration rate
-    "epsilon_decay": 500,               # Epsilon decay rate
-    "lr": 1e-3,                         # Learning rate
-    "total_timeslots": 5840             # Total number of time slots in two years
+    "total_timeslots": 240              # Total number of time slots in one month (30 days)
 }
 
 days2num = {'monday': 0, 'tuesday': 1, 'wednesday': 2, 'thursday': 3, 'friday': 4, 'saturday': 5, 'sunday': 6}
@@ -53,7 +44,7 @@ CHAT_ID = '16830298'
 
 # ----------------------------------------------------------------------------------------------------------------------
 
-def train_dueling_dqn(agent: DQNAgent, batch_size: int) -> tuple[list, list]:
+def validate_dueling_dqn(agent: DQNAgent) -> tuple[list, list]:
     """
     Trains a Dueling Deep Q-Network agent using experience replay.
 
@@ -84,8 +75,7 @@ def train_dueling_dqn(agent: DQNAgent, batch_size: int) -> tuple[list, list]:
     total_reward = 0
     failures_per_time_slot = []
     total_failures = 0
-    q_values_per_time_slot = []
-    action_bins = [0] * action_size
+    action_per_step = []
     truck_path = []
 
     not_done = True
@@ -121,23 +111,15 @@ def train_dueling_dqn(agent: DQNAgent, batch_size: int) -> tuple[list, list]:
         )
 
         # Select an action using the agent
-        action = agent.select_action(single_state)
-        action_bins[action] += 1
+        action = agent.select_action(single_state, greedy=True)
+        action_per_step.append(action)
 
         # Step the environment with the chosen action
         agent_state, reward, done, time_slot_terminated, info = env.step(action)
-        network_state = convert_graph_to_data(info['cells_subgraph'])
 
         # Update state with new information
-        next_state = network_state
+        next_state = convert_graph_to_data(info['cells_subgraph'])
         next_state.agent_state = np.concatenate([info['agent_position'], agent_state])
-        next_state.steps = info['steps']
-
-        # Store the transition in the replay buffer
-        agent.replay_buffer.push(state, action, reward, next_state, done)
-
-        # Train the agent with a batch from the replay buffer
-        agent.train_step(batch_size)
 
         # Update the state and metrics
         state = next_state
@@ -151,27 +133,15 @@ def train_dueling_dqn(agent: DQNAgent, batch_size: int) -> tuple[list, list]:
         if time_slot_terminated:
             total_timeslots += 1
 
-            # Update target network periodically
-            agent.update_target_network()
-            if total_timeslots % 292 == 0:
-                agent.update_epsilon(delta_epsilon=params["epsilon_delta"])
-
             # Record metrics for the current time slot
             rewards_per_time_slot.append(total_reward/360)
             failures_per_time_slot.append(total_failures)
-
-            # Get Q-values for the current state
-            with torch.no_grad():
-                q_values = agent.get_q_values(single_state)
-                q_values_per_time_slot.append(q_values.squeeze().cpu().numpy())
 
             # Log progress
             time_elapsed = info['time']
             day = info['day']
             week = info['week'] % 52
             year = info['year']
-            # print(f"\rProcessing... Year {year + 1}, Week {week}, {day.capitalize()}, {convert_seconds_to_hours_minutes(time_elapsed)}",
-            #       end="", flush=True)
             tbar.set_description(f"Year {year + 1}, Week {week}, {day.capitalize()} at {convert_seconds_to_hours_minutes(time_elapsed)}")
 
             # Reset time slot metrics
@@ -180,18 +150,15 @@ def train_dueling_dqn(agent: DQNAgent, batch_size: int) -> tuple[list, list]:
             time_slot = 0 if time_slot == 7 else time_slot + 1
 
             # Save result lists
-            results_path = '../results/data/'
+            results_path = '../results/validation/data/'
             with open(results_path + 'rewards_per_time_slot.pkl', 'wb') as f:
                 pickle.dump(rewards_per_time_slot, f)
             with open(results_path + 'failures_per_time_slot.pkl', 'wb') as f:
                 pickle.dump(failures_per_time_slot, f)
-            with open(results_path + 'q_values_per_time_slot.pkl', 'wb') as f:
-                pickle.dump(q_values_per_time_slot, f)
-            with open(results_path + 'action_bins.pkl', 'wb') as f:
-                pickle.dump(action_bins, f)
+            with open(results_path + 'action_per_step.pkl', 'wb') as f:
+                pickle.dump(action_per_step, f)
 
             # Update progress bar
-            tbar.set_postfix({'epsilon': agent.epsilon})
             tbar.update(1)
 
     tbar.close()
@@ -203,45 +170,34 @@ def train_dueling_dqn(agent: DQNAgent, batch_size: int) -> tuple[list, list]:
 
 def main():
     print(f"Device in use: {device}\n")
-    # Set up replay buffer
-    replay_buffer = ReplayBuffer(params["replay_buffer_capacity"], device)
 
-    results_path = '../results/data'
+    results_path = '../results/validation/data'
     if not os.path.exists(results_path):
         os.makedirs(results_path)
         print(f"Directory '{results_path}' created.")
 
     # Initialize the DQN agent
     agent = DQNAgent(
-        replay_buffer=replay_buffer,
         num_actions=env.action_space.n,
-        gamma=params["gamma"],
-        epsilon_start=params["epsilon_start"],
-        epsilon_end=params["epsilon_end"],
-        epsilon_decay=params["epsilon_decay"],
-        lr=params["lr"],
         device=device,
     )
+    agent.load_model('../data/trained_models/DuelingDQN.pt')
 
     # Train the agent using the training loop
     try:
-        rewards_per_time_slot, failures_per_time_slot = train_dueling_dqn(
-            agent,
-            batch_size=params["batch_size"]
-        )
+        validate_dueling_dqn(agent)
     except Exception as e:
         if enable_telegram:
-            send_telegram_message(f"An error occurred during training: {e}", BOT_TOKEN, CHAT_ID)
+            send_telegram_message(f"An error occurred during validation: {e}", BOT_TOKEN, CHAT_ID)
         raise e
     except KeyboardInterrupt:
         if enable_telegram:
-            send_telegram_message("Training interrupted by user.", BOT_TOKEN, CHAT_ID)
-        print("\nTraining interrupted by user.")
+            send_telegram_message("Validation interrupted by user.", BOT_TOKEN, CHAT_ID)
+        print("\nValidation interrupted by user.")
         return
 
     # Print the rewards after training
-    print("Training completed.")
-    print(f"Rewards per episode: {rewards_per_time_slot}")
+    print("Validation completed.")
 
 
 if __name__ == '__main__':
