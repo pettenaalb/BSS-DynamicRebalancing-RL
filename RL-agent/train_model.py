@@ -83,10 +83,10 @@ def train_dueling_dqn(agent: DQNAgent, batch_size: int) -> tuple[list, list]:
     rewards_per_time_slot = []
     total_reward = 0
     failures_per_time_slot = []
-    total_failures = 0
     q_values_per_time_slot = []
     action_per_step = []
     truck_path = []
+    truck_path_per_time_slot = []
 
     not_done = True
 
@@ -141,7 +141,6 @@ def train_dueling_dqn(agent: DQNAgent, batch_size: int) -> tuple[list, list]:
         # Update the state and metrics
         state = next_state
         total_reward += reward
-        total_failures += info['failures']
         truck_path.append(info['path'])
 
         # Check if the episode is complete
@@ -157,7 +156,8 @@ def train_dueling_dqn(agent: DQNAgent, batch_size: int) -> tuple[list, list]:
 
             # Record metrics for the current time slot
             rewards_per_time_slot.append((total_reward/360, agent.epsilon))
-            failures_per_time_slot.append((total_failures, agent.epsilon))
+            failures_per_time_slot.append((info['failures'], agent.epsilon))
+            truck_path_per_time_slot.append(truck_path)
 
             # Get Q-values for the current state
             with torch.no_grad():
@@ -188,9 +188,11 @@ def train_dueling_dqn(agent: DQNAgent, batch_size: int) -> tuple[list, list]:
                 pickle.dump(q_values_per_time_slot, f)
             with open(results_path + 'action_per_step.pkl', 'wb') as f:
                 pickle.dump(action_per_step, f)
+            with open(results_path + 'truck_path_per_time_slot.pkl', 'wb') as f:
+                pickle.dump(truck_path_per_time_slot, f)
 
             # Update progress bar
-            tbar.set_postfix({'epsilon': agent.epsilon})
+            tbar.set_postfix({'epsilon': agent.epsilon, 'failures': info['failures']})
             tbar.update(1)
 
     tbar.close()
