@@ -558,5 +558,4 @@ class BostonCity(gym.Env):
 
     def close(self):
         """Clean up resources."""
-        self.stop_thread.set()
         self.background_thread.join()
