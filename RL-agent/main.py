@@ -168,7 +168,7 @@ def train_dueling_dqn(agent: DQNAgent, batch_size: int) -> tuple[list, list]:
             # Log progress
             time_elapsed = info['time']
             day = info['day']
-            week = info['week']
+            week = info['week'] % 52
             year = info['year']
             # print(f"\rProcessing... Year {year + 1}, Week {week}, {day.capitalize()}, {convert_seconds_to_hours_minutes(time_elapsed)}",
             #       end="", flush=True)

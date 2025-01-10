@@ -111,7 +111,6 @@ class BostonCity(gym.Env):
         self.next_bike_id = 0
         self.total_time_slots = 0
         self.background_thread = None
-        self.M, self.k, self.b = 10, 0.1, 50
 
         # Set logging options
         self.logging = False
@@ -478,21 +477,25 @@ class BostonCity(gym.Env):
 
     def _get_reward(self, steps: int, failures: int, distance: int) -> float:
         # FIXME: Fix the reward function
-        # TODO: bike limit per region * cost
         # TODO: normalize reward + positive reward (not necessary)
-        hours, _ = divmod((self.time_slot * 3 + 1) * 3600 + self.env_time, 3600)
-        hours = hours % 24
-        mean_consumption = self.consumption_matrix.loc[hours, self.day]
+        # Cost per distance traveled
+        hour = divmod((self.time_slot * 3 + 1) * 3600 + self.env_time, 3600)[0] % 24
+        distance_cost = (distance/1000)*self.consumption_matrix.loc[hour, self.day]
+
+        # Maximum 100 bikes per region
         bike_per_region_cost = self._compute_bike_per_region_cost()
-        total_bikes_cost = logistic_penalty_function(M=self.M, k=0.04, b=self.maximum_number_of_bikes, x=len(self.system_bikes))
-        return - steps - failures*steps - (distance/1000)*mean_consumption - bike_per_region_cost - total_bikes_cost
+
+        # Maximum 2500 bikes in the system
+        total_bikes_cost = logistic_penalty_function(M=10, k=0.03, b=self.maximum_number_of_bikes, x=len(self.system_bikes))
+
+        return - steps - failures*steps - distance_cost - bike_per_region_cost - total_bikes_cost
 
 
     def _compute_bike_per_region_cost(self) -> float:
         total_cost = 0.0
         for cell_id, cell in self.cells.items():
             n_bikes = cell.get_total_bikes()
-            cost = logistic_penalty_function(M=self.M, k=self.k, b=self.b, x=n_bikes)
+            cost = logistic_penalty_function(M=1, k=1, b=100, x=n_bikes)
             total_cost += cost
         return total_cost
 

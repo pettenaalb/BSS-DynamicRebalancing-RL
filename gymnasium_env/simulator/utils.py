@@ -89,7 +89,7 @@ def kahan_sum(arr):
 
 
 def logistic_penalty_function(M=1, k=1, b=1, x=0):
-    return M / (1 + math.exp(-k * (b - x)))
+    return M / (1 + math.exp(k * (b - x)))
 
 
 def compute_distance(coords1, coords2):
