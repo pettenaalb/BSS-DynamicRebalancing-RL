@@ -2,6 +2,7 @@ import math
 import pickle
 import threading
 import random
+import bisect
 
 import gymnasium as gym
 import numpy as np
@@ -38,7 +39,6 @@ num2days = {0: 'monday', 1: 'tuesday', 2: 'wednesday', 3: 'thursday', 4: 'friday
 # ----------------------------------------------------------------------------------------------------------------------
 
 class BostonCity(gym.Env):
-    metadata = {"render_modes": ["ansi"], "render_fps": 10}
 
     # Initialize the environment
     def __init__(self, data_path: str):
@@ -116,17 +116,12 @@ class BostonCity(gym.Env):
         self.logging = False
         self.logger.set_logging(self.logging)
 
-        # Visualization elements
-        self._fig, self._ax = None, None
 
-
-    # Set the environment's seed
     def seed(self, seed=None):
         self.np_random, seed = seeding.np_random(seed)
         return [seed]
 
 
-    # Reset: Return the initial observation and reset internal state.
     def reset(self, seed=None, options=None) -> tuple[np.array, dict]:
         # Call parent class reset
         super().reset(seed=seed)
@@ -205,7 +200,6 @@ class BostonCity(gym.Env):
         return observation, info
 
 
-    # Step: Update environment based on action, return obs, reward, terminated, truncated, info.
     def step(self, action) -> tuple[np.array, float, bool, bool, dict]:
         # Log the start of the step
         self.logger.new_log_line()
@@ -363,13 +357,15 @@ class BostonCity(gym.Env):
         if self.next_event_buffer is not None:
             self.event_buffer = self.next_event_buffer
             self.next_event_buffer = None
+            if residual_event_buffer is not None:
+                for event in residual_event_buffer:
+                    bisect.insort(self.event_buffer, event, key=lambda x: x.time)
         else:
             # Flatten the PMF matrix for event simulation
             values = self.pmf_matrix.values.flatten()
             ids = [(row, col) for row in self.pmf_matrix.index for col in self.pmf_matrix.columns]
             flattened_pmf = pd.DataFrame({'id': ids, 'value': values})
             flattened_pmf['cumsum'] = np.cumsum(flattened_pmf['value'].values)
-
             self.event_buffer = simulate_environment(
                 duration=3600 * 3,  # 3 hours
                 time_slot=self.time_slot,
@@ -377,8 +373,10 @@ class BostonCity(gym.Env):
                 pmf=flattened_pmf,
                 stations=self.stations,
                 distance_matrix=self.distance_matrix,
-                residual_event_buffer=residual_event_buffer,
             )
+            if residual_event_buffer is not None:
+                for event in residual_event_buffer:
+                    bisect.insort(self.event_buffer, event, key=lambda x: x.time)
 
         self.background_thread = threading.Thread(target=self._precompute_poisson_events)
         self.background_thread.start()
@@ -406,10 +404,8 @@ class BostonCity(gym.Env):
 
     def _load_pmf_matrix_global_rate(self, day: str, time_slot: int) -> tuple[pd.DataFrame, float]:
         # Load the PMF matrix and global rate for a given day and time slot
-        # Initialize the rate matrix
         matrix_path = self.data_path + params['matrices_folder'] + '/' + str(time_slot).zfill(2) + '/'
         pmf_matrix = pd.read_csv(matrix_path + day.lower() + '-pmf-matrix.csv', index_col='osmid')
-        rate_matrix = pd.read_csv(matrix_path + day.lower() + '-rate-matrix.csv', index_col='osmid')
 
         # Convert index and columns to integers
         pmf_matrix.index = pmf_matrix.index.astype(int)
@@ -559,3 +555,58 @@ class BostonCity(gym.Env):
     def close(self):
         """Clean up resources."""
         self.background_thread.join()
+
+
+    def save(self):
+        """Save the environment state."""
+        return {
+            "pmf_matrix": self.pmf_matrix,
+            "global_rate": self.global_rate,
+            "global_rate_dict": self.global_rate_dict,
+            "system_bikes": self.system_bikes,
+            "outside_system_bikes": self.outside_system_bikes,
+            "maximum_number_of_bikes": self.maximum_number_of_bikes,
+            "current_cell_id": self.current_cell_id,
+            "stations": self.stations,
+            "truck": self.truck,
+            "event_buffer": self.event_buffer,
+            "next_event_buffer": self.next_event_buffer,
+            "env_time": self.env_time,
+            "energy_cost_per_time": self.energy_cost_per_time,
+            "time_slot": self.time_slot,
+            "day": self.day,
+            "cell_subgraph": self.cell_subgraph,
+            "time_slots_completed": self.time_slots_completed,
+            "days_completed": self.days_completed,
+            "next_bike_id": self.next_bike_id,
+            "total_time_slots": self.total_time_slots,
+            "background_thread": self.background_thread,
+            "logging": self.logging,
+        }
+
+
+    def load(self, state):
+        """Load the environment state."""
+        self.pmf_matrix = state["pmf_matrix"]
+        self.global_rate = state["global_rate"]
+        self.global_rate_dict = state["global_rate_dict"]
+        self.system_bikes = state["system_bikes"]
+        self.outside_system_bikes = state["outside_system_bikes"]
+        self.maximum_number_of_bikes = state["maximum_number_of_bikes"]
+        self.current_cell_id = state["current_cell_id"]
+        self.stations = state["stations"]
+        self.truck = state["truck"]
+        self.event_buffer = state["event_buffer"]
+        self.next_event_buffer = state["next_event_buffer"]
+        self.env_time = state["env_time"]
+        self.energy_cost_per_time = state["energy_cost_per_time"]
+        self.time_slot = state["time_slot"]
+        self.day = state["day"]
+        self.cell_subgraph = state["cell_subgraph"]
+        self.time_slots_completed = state["time_slots_completed"]
+        self.days_completed = state["days_completed"]
+        self.next_bike_id = state["next_bike_id"]
+        self.total_time_slots = state["total_time_slots"]
+        self.background_thread = state["background_thread"]
+        self.logging = state["logging"]
+        self.logger.set_logging(self.logging)

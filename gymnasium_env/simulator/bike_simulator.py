@@ -135,9 +135,6 @@ def simulate_environment(duration: int, time_slot: int, global_rate: float, pmf:
         event_buffer.append(dep_event)
         event_buffer.append(arr_event)
 
-    if residual_event_buffer:
-        event_buffer.extend(residual_event_buffer)
-
     # Sort the event buffer based on time
     event_buffer.sort(key=lambda x: x.time)
 

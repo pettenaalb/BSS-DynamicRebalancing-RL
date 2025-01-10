@@ -51,6 +51,9 @@ enable_telegram = True
 BOT_TOKEN = '7911945908:AAHkp-x7at3fIadrlmahcTB1G6_ni2awbt4'
 CHAT_ID = '16830298'
 
+enable_checkpoint = False
+restore_from_checkpoint = False
+
 # ----------------------------------------------------------------------------------------------------------------------
 
 def train_dueling_dqn(agent: DQNAgent, batch_size: int) -> tuple[list, list]:
@@ -71,22 +74,39 @@ def train_dueling_dqn(agent: DQNAgent, batch_size: int) -> tuple[list, list]:
     options ={
         'total_timeslots': params["total_timeslots"],
     }
-    agent_state, info = env.reset(options=options)
 
-    state = convert_graph_to_data(info['cells_subgraph'])
-    state.agent_state = np.concatenate([info['agent_position'], agent_state])
-    state.steps = info['steps']
+    if restore_from_checkpoint:
+        agent, environment, state, other = restore_checkpoint('../data/checkpoints/DuelingDQN.pt')
+        env.load(environment)
 
-    # Initialize episode metrics
-    time_slot = 0
-    total_timeslots = 0
-    rewards_per_time_slot = []
-    total_reward = 0
-    failures_per_time_slot = []
-    q_values_per_time_slot = []
-    action_per_step = []
-    truck_path = []
-    truck_path_per_time_slot = []
+        # Initialize episode metrics
+        time_slot = other['time_slot']
+        timeslots_completed = other['timeslots_completed']
+        rewards_per_time_slot = other['rewards_per_time_slot']
+        total_reward = other['total_reward']
+        failures_per_time_slot = other['failures_per_time_slot']
+        q_values_per_time_slot = other['q_values_per_time_slot']
+        action_per_step = other['action_per_step']
+        truck_path = other['truck_path']
+        truck_path_per_time_slot = other['truck_path_per_time_slot']
+    else:
+        agent_state, info = env.reset(options=options)
+
+        state = convert_graph_to_data(info['cells_subgraph'])
+        state.agent_state = np.concatenate([info['agent_position'], agent_state])
+        state.steps = info['steps']
+
+        # Initialize episode metrics
+        time_slot = 0
+        timeslots_completed = 0
+        rewards_per_time_slot = []
+        total_reward = 0
+        failures_per_time_slot = []
+        q_values_per_time_slot = []
+        action_per_step = []
+        truck_path = []
+        truck_path_per_time_slot = []
+
 
     not_done = True
 
@@ -147,11 +167,11 @@ def train_dueling_dqn(agent: DQNAgent, batch_size: int) -> tuple[list, list]:
         not_done = not done
 
         if time_slot_terminated:
-            total_timeslots += 1
+            timeslots_completed += 1
 
             # Update target network periodically
             agent.update_target_network()
-            if total_timeslots % 240 == 0: # every 30 days
+            if timeslots_completed % 240 == 0: # every 30 days
                 agent.update_epsilon(delta_epsilon=params["epsilon_delta"])
 
             # Record metrics for the current time slot
@@ -191,6 +211,23 @@ def train_dueling_dqn(agent: DQNAgent, batch_size: int) -> tuple[list, list]:
             with open(results_path + 'truck_path_per_time_slot.pkl', 'wb') as f:
                 pickle.dump(truck_path_per_time_slot, f)
 
+            # Save checkpoint
+            if enable_checkpoint:
+                other = {
+                    'time_slot': time_slot,
+                    'timeslots_completed': timeslots_completed,
+                    'rewards_per_time_slot': rewards_per_time_slot,
+                    'total_reward': total_reward,
+                    'failures_per_time_slot': failures_per_time_slot,
+                    'q_values_per_time_slot': q_values_per_time_slot,
+                    'action_per_step': action_per_step,
+                    'truck_path': truck_path,
+                    'truck_path_per_time_slot': truck_path_per_time_slot
+                }
+
+                save_checkpoint(agent=agent, environment=env.save(), state=state, other=other,
+                                path='../data/checkpoints/DuelingDQN.pt')
+
             # Update progress bar
             tbar.set_postfix({'epsilon': agent.epsilon, 'failures': info['failures']})
             tbar.update(1)
@@ -199,6 +236,52 @@ def train_dueling_dqn(agent: DQNAgent, batch_size: int) -> tuple[list, list]:
     env.close()
 
     return rewards_per_time_slot, failures_per_time_slot
+
+# ----------------------------------------------------------------------------------------------------------------------
+
+def save_checkpoint(agent: DQNAgent, environment: dict, state: Data, other: dict, path: str):
+    """
+    Saves the agent, replay buffer, environment, and state to a checkpoint file.
+
+    Parameters:
+        - agent (DQNAgent): The agent to save.
+        - replay_buffer (ReplayBuffer): The replay buffer to save.
+        - environment (gym.Env): The environment to save.
+        - state (Data): The state to save.
+        - path (str): The path to save the checkpoint file.
+    """
+    checkpoint = {
+        "agent": agent,
+        "environment": environment,
+        "state": state,
+        "other": other,
+        "train_model_dict": agent.train_model.state_dict(),
+        "target_model_dict": agent.target_model.state_dict(),
+    }
+    torch.save(checkpoint, path)
+
+
+def restore_checkpoint(path: str) -> tuple[DQNAgent, gymnasium_env, Data, dict]:
+    """
+    Restores the agent, replay buffer, environment, and state from a checkpoint file.
+
+    Parameters:
+        - path (str): The path to the checkpoint file.
+
+    Returns:
+        - agent (DQNAgent): The restored agent.
+        - replay_buffer (ReplayBuffer): The restored replay buffer.
+        - environment (gym.Env): The restored environment.
+        - state (Data): The restored state.
+    """
+    checkpoint = torch.load(path)
+    agent = checkpoint["agent"]
+    environment = checkpoint["environment"]
+    state = checkpoint["state"]
+    other = checkpoint["other"]
+    agent.train_model.load_state_dict(checkpoint["train_model_dict"])
+    agent.target_model.load_state_dict(checkpoint["target_model_dict"])
+    return agent, environment, state, timeslot
 
 # ----------------------------------------------------------------------------------------------------------------------
 
@@ -226,10 +309,7 @@ def main():
 
     # Train the agent using the training loop
     try:
-        rewards_per_time_slot, failures_per_time_slot = train_dueling_dqn(
-            agent,
-            batch_size=params["batch_size"]
-        )
+        train_dueling_dqn(agent, batch_size=params["batch_size"])
     except Exception as e:
         if enable_telegram:
             send_telegram_message(f"An error occurred during training: {e}", BOT_TOKEN, CHAT_ID)
@@ -244,7 +324,6 @@ def main():
 
     # Print the rewards after training
     print("Training completed.")
-    print(f"Rewards per episode: {rewards_per_time_slot}")
 
 
 if __name__ == '__main__':

@@ -8,22 +8,7 @@ from DuelingDQN import DuelingDQN
 from torch_geometric.loader import DataLoader
 
 class DQNAgent:
-    """
-    Deep Q-Network (DQN) Agent for reinforcement learning tasks.
 
-    Attributes:
-        - train_model: The Dueling DQN model used for training.
-        - target_model: The target Dueling DQN model for stable learning.
-        - optimizer: The optimizer for training the train_model.
-        - replay_buffer: Experience replay buffer for sampling transitions.
-        - num_actions: Number of possible actions in the environment.
-        - gamma: Discount factor for future rewards.
-        - epsilon: Current value for epsilon-greedy exploration.
-        - epsilon_min: Minimum value for epsilon during exploration decay.
-        - epsilon_decay: Decay rate for epsilon over time.
-        - steps_done: Counter for the number of steps taken, used for epsilon decay.
-        - device: Device on which the model is trained (e.g., 'cpu', 'cuda').
-    """
     def __init__(self, num_actions, replay_buffer =  None, gamma=0.99, epsilon_start=1.0, epsilon_end=0.01, epsilon_decay=500, lr=0.1, device='cpu'):
         """
         Initializes the DQNAgent.

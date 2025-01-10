@@ -1,5 +1,4 @@
 import pandas as pd
-import numpy as np
 import pickle
 from utils import kahan_sum
 from tqdm import tqdm
@@ -13,13 +12,7 @@ def main():
     for day in days_of_week:
         for timeslot in range(0, 8):
             matrix_path = data_path + 'matrices/09-10/' + str(timeslot).zfill(2) + '/'
-            pmf_matrix = pd.read_csv(matrix_path + day.lower() + '-pmf-matrix.csv', index_col='osmid')
             rate_matrix = pd.read_csv(matrix_path + day.lower() + '-rate-matrix.csv', index_col='osmid')
-
-            # Convert index and columns to integers
-            pmf_matrix.index = pmf_matrix.index.astype(int)
-            pmf_matrix.columns = pmf_matrix.columns.astype(int)
-            pmf_matrix.loc[10000, 10000] = 0.0
 
             global_rate = kahan_sum(rate_matrix.to_numpy().flatten())
 
