@@ -313,6 +313,8 @@ class BostonCity(gym.Env):
 
         if self.time_slots_completed == self.total_time_slots:   # 2 years
             done = True
+            # Print the total number of bikes in the environment
+            print(f"Total number of bikes in the environment: {len(self.system_bikes)}")
         else:
             done = False
 
@@ -482,7 +484,7 @@ class BostonCity(gym.Env):
         bike_per_region_cost = self._compute_bike_per_region_cost()
 
         # Maximum 2500 bikes in the system
-        total_bikes_cost = logistic_penalty_function(M=10, k=0.03, b=self.maximum_number_of_bikes, x=len(self.system_bikes))
+        total_bikes_cost = logistic_penalty_function(M=1, k=0.03, b=self.maximum_number_of_bikes, x=len(self.system_bikes))
 
         return - steps - failures*steps - distance_cost - bike_per_region_cost - total_bikes_cost
 

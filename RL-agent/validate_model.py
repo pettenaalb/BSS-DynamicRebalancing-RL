@@ -33,12 +33,12 @@ torch.manual_seed(seed)
 
 params = {
     "num_episodes": 1,                  # Total number of training episodes
-    "total_timeslots": 240              # Total number of time slots in one month (30 days)
+    "total_timeslots": 224              # Total number of time slots in one month (28 days)
 }
 
 days2num = {'monday': 0, 'tuesday': 1, 'wednesday': 2, 'thursday': 3, 'friday': 4, 'saturday': 5, 'sunday': 6}
 
-enable_telegram = True
+enable_telegram = False
 BOT_TOKEN = '7911945908:AAHkp-x7at3fIadrlmahcTB1G6_ni2awbt4'
 CHAT_ID = '16830298'
 
@@ -70,7 +70,7 @@ def validate_dueling_dqn(agent: DQNAgent) -> tuple[list, list]:
 
     # Initialize episode metrics
     time_slot = 0
-    total_timeslots = 0
+    timeslots_completed = 0
     rewards_per_time_slot = []
     total_reward = 0
     failures_per_time_slot = []
@@ -84,7 +84,7 @@ def validate_dueling_dqn(agent: DQNAgent) -> tuple[list, list]:
     if enable_telegram:
         tbar = tqdm_telegram(
             range(params["total_timeslots"]),
-            desc="Year 1, Week 1, Monday at 01:00:00",
+            desc="Validating Year 1, Week 1, Monday at 01:00:00",
             position=0,
             leave=True,
             dynamic_ncols=True,
@@ -94,7 +94,7 @@ def validate_dueling_dqn(agent: DQNAgent) -> tuple[list, list]:
     else:
         tbar = tqdm(
             range(params["total_timeslots"]),
-            desc="Year 1, Week 1, Monday at 01:00:00",
+            desc="Validating Year 1, Week 1, Monday at 01:00:00",
             position=0,
             leave=True,
             dynamic_ncols=True
@@ -112,7 +112,7 @@ def validate_dueling_dqn(agent: DQNAgent) -> tuple[list, list]:
 
         # Select an action using the agent
         action = agent.select_action(single_state, greedy=True)
-        action_per_step.append(action)
+        action_per_step.append((action, timeslots_completed))
 
         # Step the environment with the chosen action
         agent_state, reward, done, time_slot_terminated, info = env.step(action)
@@ -125,17 +125,17 @@ def validate_dueling_dqn(agent: DQNAgent) -> tuple[list, list]:
         state = next_state
         total_reward += reward
         total_failures += info['failures']
-        truck_path.append(info['path'])
+        truck_path.append((info['path'], timeslots_completed))
 
         # Check if the episode is complete
         not_done = not done
 
         if time_slot_terminated:
-            total_timeslots += 1
+            timeslots_completed += 1
 
             # Record metrics for the current time slot
-            rewards_per_time_slot.append(total_reward/360)
-            failures_per_time_slot.append(total_failures)
+            rewards_per_time_slot.append((total_reward/360, timeslots_completed-1))
+            failures_per_time_slot.append((total_failures, timeslots_completed-1))
 
             # Log progress
             time_elapsed = info['time']

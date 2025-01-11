@@ -107,14 +107,13 @@ def train_dueling_dqn(agent: DQNAgent, batch_size: int) -> tuple[list, list]:
         truck_path = []
         truck_path_per_time_slot = []
 
-
     not_done = True
 
     # Progress bar for the episode
     if enable_telegram:
         tbar = tqdm_telegram(
             range(params["total_timeslots"]),
-            desc="Year 1, Week 1, Monday at 01:00:00",
+            desc="Training Year 1, Week 1, Monday at 01:00:00",
             position=0,
             leave=True,
             dynamic_ncols=True,
@@ -124,7 +123,7 @@ def train_dueling_dqn(agent: DQNAgent, batch_size: int) -> tuple[list, list]:
     else:
         tbar = tqdm(
             range(params["total_timeslots"]),
-            desc="Year 1, Week 1, Monday at 01:00:00",
+            desc="Training Year 1, Week 1, Monday at 01:00:00",
             position=0,
             leave=True,
             dynamic_ncols=True
@@ -171,7 +170,7 @@ def train_dueling_dqn(agent: DQNAgent, batch_size: int) -> tuple[list, list]:
 
             # Update target network periodically
             agent.update_target_network()
-            if timeslots_completed % 240 == 0: # every 30 days
+            if timeslots_completed % 200 == 0: # every 30 days
                 agent.update_epsilon(delta_epsilon=params["epsilon_delta"])
 
             # Record metrics for the current time slot
@@ -281,7 +280,7 @@ def restore_checkpoint(path: str) -> tuple[DQNAgent, gymnasium_env, Data, dict]:
     other = checkpoint["other"]
     agent.train_model.load_state_dict(checkpoint["train_model_dict"])
     agent.target_model.load_state_dict(checkpoint["target_model_dict"])
-    return agent, environment, state, timeslot
+    return agent, environment, state, other
 
 # ----------------------------------------------------------------------------------------------------------------------
 
@@ -320,7 +319,14 @@ def main():
         print("\nTraining interrupted by user.")
         return
 
-    agent.save_model('../data/trained_models/DuelingDQN.pt')
+    # Save the trained model
+    trained_models_folder = '../data/trained_models'
+
+    if not os.path.exists(trained_models_folder):
+        os.makedirs(trained_models_folder)
+        print(f"Directory '{trained_models_folder}' created.")
+
+    agent.save_model(trained_models_folder + '/DuelingDQN.pt')
 
     # Print the rewards after training
     print("Training completed.")

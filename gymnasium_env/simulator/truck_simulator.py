@@ -136,7 +136,7 @@ def pick_up_bike(truck: Truck, station_dict: dict[int, Station], distance_matrix
         velocity_kmh = truncated_gaussian(10, 70, mean_velocity, 5)
         t_reload = 2*int(distance * 3.6 / velocity_kmh)
         time += t_reload
-        while truck.get_load() > 15:
+        while truck.get_load() >= 15:
             truck.unload_bike()
         truck.load_bike(bike)
     truck.set_position(station.get_station_id())

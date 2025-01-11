@@ -151,4 +151,4 @@ class DQNAgent:
             - path (str): The path to load the model.
         """
 
-        self.train_model.load_state_dict(torch.load(file_path, map_location=self.device))
+        self.train_model.load_state_dict(torch.load(file_path, map_location=self.device, weights_only=True))
