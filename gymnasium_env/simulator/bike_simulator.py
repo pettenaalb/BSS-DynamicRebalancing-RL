@@ -94,14 +94,14 @@ def arrival_handler(trip: Trip, system_bikes: dict[int, Bike], outside_system_bi
 
 # ----------------------------------------------------------------------------------------------------------------------
 
-def simulate_environment(duration: int, time_slot: int, global_rate: float, pmf: pd.DataFrame, stations: dict,
-                         distance_matrix: pd.DataFrame, residual_event_buffer: list = None) -> list[Event]:
+def simulate_environment(duration: int, timeslot: int, global_rate: float, pmf: pd.DataFrame, stations: dict,
+                         distance_matrix: pd.DataFrame) -> list[Event]:
     """
     Simulate the environment for a given time interval.
 
     Parameters:
         - time_interval (int): The time interval to simulate.
-        - time_slot (int): The time slot to simulate.
+        - timeslot (int): The time slot to simulate.
         - rate (float): The rate of requests.
         - pmf (pd.DataFrame): The PMF matrix.
         - station_dict (dict): A dictionary containing the stations in the network.
@@ -125,7 +125,7 @@ def simulate_environment(duration: int, time_slot: int, global_rate: float, pmf:
             distance = distance_matrix.at[stn_pair[0], stn_pair[1]]
             travel_time_seconds = int(distance * 3.6 / velocity_kmh)
 
-        ev_t = event_time + 3600*(3*time_slot + 1)
+        ev_t = event_time + 3600*(3*timeslot + 1)
         trip = Trip(ev_t, ev_t + travel_time_seconds, stations[stn_pair[0]],
                     stations[stn_pair[1]], distance=distance)
 

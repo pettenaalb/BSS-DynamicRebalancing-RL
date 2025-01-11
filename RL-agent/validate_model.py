@@ -54,8 +54,8 @@ def validate_dueling_dqn(agent: DQNAgent) -> tuple[list, list]:
         - batch_size (int): The batch size for training the agent.
 
     Returns:
-        - rewards_per_time_slot (list): The rewards obtained per time slot during training.
-        - failures_per_time_slot (list): The failures per time slot during training.
+        - rewards_per_timeslot (list): The rewards obtained per time slot during training.
+        - failures_per_timeslot (list): The failures per time slot during training.
     """
 
     # Reset environment and agent state
@@ -69,11 +69,11 @@ def validate_dueling_dqn(agent: DQNAgent) -> tuple[list, list]:
     state.steps = info['steps']
 
     # Initialize episode metrics
-    time_slot = 0
+    timeslot = 0
     timeslots_completed = 0
-    rewards_per_time_slot = []
+    rewards_per_timeslot = []
     total_reward = 0
-    failures_per_time_slot = []
+    failures_per_timeslot = []
     total_failures = 0
     action_per_step = []
     truck_path = []
@@ -115,7 +115,7 @@ def validate_dueling_dqn(agent: DQNAgent) -> tuple[list, list]:
         action_per_step.append((action, timeslots_completed))
 
         # Step the environment with the chosen action
-        agent_state, reward, done, time_slot_terminated, info = env.step(action)
+        agent_state, reward, done, timeslot_terminated, info = env.step(action)
 
         # Update state with new information
         next_state = convert_graph_to_data(info['cells_subgraph'])
@@ -130,12 +130,12 @@ def validate_dueling_dqn(agent: DQNAgent) -> tuple[list, list]:
         # Check if the episode is complete
         not_done = not done
 
-        if time_slot_terminated:
+        if timeslot_terminated:
             timeslots_completed += 1
 
             # Record metrics for the current time slot
-            rewards_per_time_slot.append((total_reward/360, timeslots_completed-1))
-            failures_per_time_slot.append((total_failures, timeslots_completed-1))
+            rewards_per_timeslot.append((total_reward/360, timeslots_completed-1))
+            failures_per_timeslot.append((total_failures, timeslots_completed-1))
 
             # Log progress
             time_elapsed = info['time']
@@ -147,14 +147,14 @@ def validate_dueling_dqn(agent: DQNAgent) -> tuple[list, list]:
             # Reset time slot metrics
             total_reward = 0
             truck_path = []
-            time_slot = 0 if time_slot == 7 else time_slot + 1
+            timeslot = 0 if timeslot == 7 else timeslot + 1
 
             # Save result lists
             results_path = '../results/validation/data/'
-            with open(results_path + 'rewards_per_time_slot.pkl', 'wb') as f:
-                pickle.dump(rewards_per_time_slot, f)
-            with open(results_path + 'failures_per_time_slot.pkl', 'wb') as f:
-                pickle.dump(failures_per_time_slot, f)
+            with open(results_path + 'rewards_per_timeslot.pkl', 'wb') as f:
+                pickle.dump(rewards_per_timeslot, f)
+            with open(results_path + 'failures_per_timeslot.pkl', 'wb') as f:
+                pickle.dump(failures_per_timeslot, f)
             with open(results_path + 'action_per_step.pkl', 'wb') as f:
                 pickle.dump(action_per_step, f)
 
@@ -164,7 +164,7 @@ def validate_dueling_dqn(agent: DQNAgent) -> tuple[list, list]:
     tbar.close()
     env.close()
 
-    return rewards_per_time_slot, failures_per_time_slot
+    return rewards_per_timeslot, failures_per_timeslot
 
 # ----------------------------------------------------------------------------------------------------------------------
 

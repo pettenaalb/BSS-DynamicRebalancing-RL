@@ -1,4 +1,5 @@
 import torch
+import os
 import matplotlib
 import numpy as np
 
@@ -12,7 +13,7 @@ if is_ipython:
 plt.ion()
 
 def plot_data_online(data, show_result=False, idx=1, xlabel='Step', ylabel='Reward', show_histogram=False,
-                     bin_labels=None, save_path=None):
+                     bin_labels=None, save_path=None, mean = True):
     """
     Plots rewards data online during training or displays final results.
 
@@ -53,8 +54,9 @@ def plot_data_online(data, show_result=False, idx=1, xlabel='Step', ylabel='Rewa
         plt.ylabel(ylabel)
         plt.plot(data_t.numpy())
 
-        cumulative_mean = torch.cumsum(data_t, dim=0) / torch.arange(1, len(data_t) + 1, dtype=torch.float32)
-        plt.plot(cumulative_mean.numpy())
+        if mean:
+            cumulative_mean = torch.cumsum(data_t, dim=0) / torch.arange(1, len(data_t) + 1, dtype=torch.float32)
+            plt.plot(cumulative_mean.numpy())
 
     plt.tight_layout()
     if save_path:
@@ -69,3 +71,33 @@ def plot_data_online(data, show_result=False, idx=1, xlabel='Step', ylabel='Rewa
                 display.display(plt.gcf())
 
     plt.close()
+
+
+def plot_dict_data_per_day(data_dict: dict, save_path=None, save_name=None):
+    """
+    Creates a separate plot for each day in the dictionary.
+
+    Parameters:
+        - data_dict: Dictionary in the format {day: {timeslot: mean_value}}.
+    """
+    if not os.path.exists(save_path):
+        os.makedirs(save_path)
+
+    for day, timeslot_data in data_dict.items():
+        # Sort timeslots to ensure proper ordering
+        timeslots = sorted(timeslot_data.keys())
+        means = [timeslot_data[t] for t in timeslots]
+
+        plt.figure(figsize=(8, 5))
+        plt.title(f"Mean Data for {day.capitalize()}")
+        plt.xlabel("Timeslots")
+        plt.ylabel("Mean Value")
+        plt.plot(timeslots, means, marker='o', label=f"{day.capitalize()} Timeslot Data")
+        plt.xticks(timeslots)  # Set x-axis ticks to timeslot indices
+        plt.legend()
+        plt.grid(alpha=0.3)
+        plt.tight_layout()
+        if save_path and save_name:
+            plt.savefig(save_path + day + '_' + save_name + '.png', dpi=200)
+        else:
+            plt.show()

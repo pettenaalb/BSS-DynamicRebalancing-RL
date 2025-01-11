@@ -103,13 +103,13 @@ class BostonCity(gym.Env):
         self.next_event_buffer = None
         self.env_time = 0
         self.energy_cost_per_time = 0
-        self.time_slot = 0
+        self.timeslot = 0
         self.day = 'monday'
         self.cell_subgraph = None
-        self.time_slots_completed = 0
+        self.timeslots_completed = 0
         self.days_completed = 0
         self.next_bike_id = 0
-        self.total_time_slots = 0
+        self.total_timeslots = 0
         self.background_thread = None
 
         # Set logging options
@@ -128,9 +128,9 @@ class BostonCity(gym.Env):
 
         # Update day and time slot if provided in options
         self.day = options.get('day', 'monday') if options else 'monday'
-        self.time_slot = options.get('time_slot', 0) if options else 0
+        self.timeslot = options.get('timeslot', 0) if options else 0
 
-        self.total_time_slots = options.get('total_time_slots', 2*365*8) if options else 2*365*8
+        self.total_timeslots = options.get('total_timeslots', 2*365*8) if options else 2*365*8
 
         # Create stations dictionary
         from gymnasium_env.simulator.station import Station
@@ -208,7 +208,7 @@ class BostonCity(gym.Env):
         t = 0
         distance = 0
         prev_position = self.truck.get_position()
-        hours, _ = divmod((self.time_slot * 3 + 1) * 3600 + self.env_time, 3600)
+        hours, _ = divmod((self.timeslot * 3 + 1) * 3600 + self.env_time, 3600)
         hours = hours % 24
         mean_velocity = self.velocity_matrix.loc[hours, self.day]
         if action == Actions.STAY.value:
@@ -242,7 +242,7 @@ class BostonCity(gym.Env):
         steps = math.ceil(t / 30)
         self.logger.log_state(
             step=int(self.env_time / 30),
-            time=convert_seconds_to_hours_minutes((self.time_slot * 3 + 1) * 3600 + self.env_time)
+            time=convert_seconds_to_hours_minutes((self.timeslot * 3 + 1) * 3600 + self.env_time)
         )
 
         # Update the environment state
@@ -269,7 +269,7 @@ class BostonCity(gym.Env):
 
         # Log the ending action
         self.logger.log_ending_action(
-            time=convert_seconds_to_hours_minutes((self.time_slot * 3 + 1) * 3600 + self.env_time)
+            time=convert_seconds_to_hours_minutes((self.timeslot * 3 + 1) * 3600 + self.env_time)
         )
 
         # Perform a final state update
@@ -284,14 +284,14 @@ class BostonCity(gym.Env):
             residual_event_buffer = self.event_buffer
             for event in residual_event_buffer:
                 event.time -= 3600*3
-            if self.time_slot == 7:
-                self.time_slot = 0
+            if self.timeslot == 7:
+                self.timeslot = 0
                 self.day = num2days[(days2num[self.day] + 1) % 7]
                 self.days_completed += 1
             else:
-                self.time_slot += 1
+                self.timeslot += 1
             failures += self._initialize_day_timeslot(residual_event_buffer)
-            self.time_slots_completed += 1
+            self.timeslots_completed += 1
             terminated = True
 
         # Compute the outputs
@@ -303,7 +303,7 @@ class BostonCity(gym.Env):
             'cells_subgraph': self.cell_subgraph,
             'agent_position': self._get_truck_position(),
             'steps': steps,
-            'time': self.env_time + (self.time_slot * 3 + 1) * 3600,
+            'time': self.env_time + (self.timeslot * 3 + 1) * 3600,
             'day': self.day,
             'week': int(self.days_completed // 7),
             'year': int(self.days_completed // 365),
@@ -311,7 +311,7 @@ class BostonCity(gym.Env):
             'path': path,
         }
 
-        if self.time_slots_completed == self.total_time_slots:   # 2 years
+        if self.timeslots_completed == self.total_timeslots:   # 2 years
             done = True
             # Print the total number of bikes in the environment
             print(f"Total number of bikes in the environment: {len(self.system_bikes)}")
@@ -324,13 +324,13 @@ class BostonCity(gym.Env):
 
     def _precompute_poisson_events(self):
         """Background thread for precomputing Poisson events."""
-        time_slot = (self.time_slot + 1) % 8
+        timeslot = (self.timeslot + 1) % 8
         day = self.day
-        if time_slot == 0:
+        if timeslot == 0:
             day = num2days[(days2num[self.day] + 1) % 7]
 
         # Flatten the PMF matrix for event simulation
-        pmf_matrix, global_rate = self._load_pmf_matrix_global_rate(day, time_slot)
+        pmf_matrix, global_rate = self._load_pmf_matrix_global_rate(day, timeslot)
 
         # Flatten the PMF matrix for event simulation
         values = pmf_matrix.values.flatten()
@@ -340,7 +340,7 @@ class BostonCity(gym.Env):
 
         self.next_event_buffer = simulate_environment(
             duration=3600 * 3,  # 3 hours
-            time_slot=time_slot,
+            timeslot=timeslot,
             global_rate=global_rate,
             pmf=flattened_pmf,
             stations=self.stations,
@@ -350,7 +350,7 @@ class BostonCity(gym.Env):
 
     def _initialize_day_timeslot(self, residual_event_buffer: list = None) -> int:
         # Load PMF matrix and global rate for the current day and time slot
-        self.pmf_matrix, self.global_rate = self._load_pmf_matrix_global_rate(self.day, self.time_slot)
+        self.pmf_matrix, self.global_rate = self._load_pmf_matrix_global_rate(self.day, self.timeslot)
 
         for stn_id, stn in self.stations.items():
             stn.set_request_rate(self.pmf_matrix.loc[stn_id, :].sum()*self.global_rate)
@@ -370,7 +370,7 @@ class BostonCity(gym.Env):
             flattened_pmf['cumsum'] = np.cumsum(flattened_pmf['value'].values)
             self.event_buffer = simulate_environment(
                 duration=3600 * 3,  # 3 hours
-                time_slot=self.time_slot,
+                timeslot=self.timeslot,
                 global_rate=self.global_rate,
                 pmf=flattened_pmf,
                 stations=self.stations,
@@ -404,9 +404,9 @@ class BostonCity(gym.Env):
         return failure
 
 
-    def _load_pmf_matrix_global_rate(self, day: str, time_slot: int) -> tuple[pd.DataFrame, float]:
+    def _load_pmf_matrix_global_rate(self, day: str, timeslot: int) -> tuple[pd.DataFrame, float]:
         # Load the PMF matrix and global rate for a given day and time slot
-        matrix_path = self.data_path + params['matrices_folder'] + '/' + str(time_slot).zfill(2) + '/'
+        matrix_path = self.data_path + params['matrices_folder'] + '/' + str(timeslot).zfill(2) + '/'
         pmf_matrix = pd.read_csv(matrix_path + day.lower() + '-pmf-matrix.csv', index_col='osmid')
 
         # Convert index and columns to integers
@@ -418,7 +418,7 @@ class BostonCity(gym.Env):
             with open(self.data_path + 'utils/global_rates.pkl', 'rb') as f:
                 self.global_rate_dict = pickle.load(f)
 
-        global_rate = self.global_rate_dict[(day.lower(), time_slot)]
+        global_rate = self.global_rate_dict[(day.lower(), timeslot)]
 
         return pmf_matrix, global_rate
 
@@ -449,7 +449,7 @@ class BostonCity(gym.Env):
             # Log the updated state after processing events
             self.logger.log_state(
                 step=int(self.env_time / 30),
-                time=convert_seconds_to_hours_minutes((self.time_slot * 3 + 1) * 3600 + self.env_time)
+                time=convert_seconds_to_hours_minutes((self.timeslot * 3 + 1) * 3600 + self.env_time)
             )
 
         # Return the total number of failures encountered
@@ -459,7 +459,7 @@ class BostonCity(gym.Env):
     def _get_obs(self) -> np.array:
         # FIXME: Fix the observation space
         # Encode time slot and day
-        h, _ = divmod((self.time_slot * 3 + 1) * 3600 + self.env_time, 3600)
+        h, _ = divmod((self.timeslot * 3 + 1) * 3600 + self.env_time, 3600)
         hour = [1 if h == i else 0 for i in range(24)]
         day = [1 if self.day == d else 0 for d in days2num.keys()]
 
@@ -477,7 +477,7 @@ class BostonCity(gym.Env):
         # FIXME: Fix the reward function
         # TODO: normalize reward + positive reward (not necessary)
         # Cost per distance traveled
-        hour = divmod((self.time_slot * 3 + 1) * 3600 + self.env_time, 3600)[0] % 24
+        hour = divmod((self.timeslot * 3 + 1) * 3600 + self.env_time, 3600)[0] % 24
         distance_cost = (distance/1000)*self.consumption_matrix.loc[hour, self.day]
 
         # Maximum 100 bikes per region
@@ -575,13 +575,13 @@ class BostonCity(gym.Env):
             "next_event_buffer": self.next_event_buffer,
             "env_time": self.env_time,
             "energy_cost_per_time": self.energy_cost_per_time,
-            "time_slot": self.time_slot,
+            "timeslot": self.timeslot,
             "day": self.day,
             "cell_subgraph": self.cell_subgraph,
-            "time_slots_completed": self.time_slots_completed,
+            "timeslots_completed": self.timeslots_completed,
             "days_completed": self.days_completed,
             "next_bike_id": self.next_bike_id,
-            "total_time_slots": self.total_time_slots,
+            "total_timeslots": self.total_timeslots,
             "background_thread": self.background_thread,
             "logging": self.logging,
         }
@@ -602,13 +602,13 @@ class BostonCity(gym.Env):
         self.next_event_buffer = state["next_event_buffer"]
         self.env_time = state["env_time"]
         self.energy_cost_per_time = state["energy_cost_per_time"]
-        self.time_slot = state["time_slot"]
+        self.timeslot = state["timeslot"]
         self.day = state["day"]
         self.cell_subgraph = state["cell_subgraph"]
-        self.time_slots_completed = state["time_slots_completed"]
+        self.timeslots_completed = state["timeslots_completed"]
         self.days_completed = state["days_completed"]
         self.next_bike_id = state["next_bike_id"]
-        self.total_time_slots = state["total_time_slots"]
+        self.total_timeslots = state["total_timeslots"]
         self.background_thread = state["background_thread"]
         self.logging = state["logging"]
         self.logger.set_logging(self.logging)
