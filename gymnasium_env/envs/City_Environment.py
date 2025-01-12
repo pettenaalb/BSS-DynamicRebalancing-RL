@@ -95,7 +95,7 @@ class BostonCity(gym.Env):
         # Initialize simulation state variables
         self.pmf_matrix, self.global_rate, self.global_rate_dict = None, None, None
         self.system_bikes, self.outside_system_bikes = None, None
-        self.maximum_number_of_bikes = 2500
+        self.maximum_number_of_bikes = 3500
         self.current_cell_id = None
         self.stations = None
         self.truck = None
@@ -163,7 +163,7 @@ class BostonCity(gym.Env):
         std_dev = 1.0
 
         for stn_id in self.stations.keys():
-            base_bikes = int(self.pmf_matrix.loc[stn_id, :].sum() * self.maximum_number_of_bikes)
+            base_bikes = int(self.pmf_matrix.loc[stn_id, :].sum() * int(self.maximum_number_of_bikes*0.8))
             noise = random.gauss(0, std_dev) * base_bikes
             noisy_bikes = max(0, int(base_bikes + noise))
 

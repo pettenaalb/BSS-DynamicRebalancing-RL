@@ -146,6 +146,7 @@ def validate_dueling_dqn(agent: DQNAgent) -> tuple[list, list]:
 
             # Reset time slot metrics
             total_reward = 0
+            total_failures = 0
             truck_path = []
             timeslot = 0 if timeslot == 7 else timeslot + 1
 

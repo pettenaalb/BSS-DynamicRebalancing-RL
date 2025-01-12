@@ -1,11 +1,14 @@
 import pickle
 import os
 import numpy as np
+import pandas as pd
 
-from utils import plot_data_online, plot_dict_data_per_day
+from utils import plot_data_online, plot_confusion_matrix
 from collections import defaultdict
 
-mode = 'train'
+# CHANGE THIS VARIABLE TO 'train' OR 'validate'
+MODE = 'validate'
+
 action_bin_labels = ['STAY', 'RIGHT', 'UP', 'LEFT', 'DOWN', 'DROP_BIKE', 'PICK_UP_BIKE', 'CHARGE_BIKE']
 epsilon_threshold = 0.1
 
@@ -91,40 +94,54 @@ def process_training_results(base_path: str):
 def process_validation_results(base_path: str):
     rewards_per_timeslot, failures_per_timeslot, action_per_step = load_data(base_path)
 
-    rewards = process_list(rewards_per_timeslot)
-    failures = process_list(failures_per_timeslot)
+    failures_df = pd.DataFrame()
 
-    data_by_day = defaultdict(lambda: defaultdict(list))
-    for data, timeslot in action_per_step:
-        day_of_week = timeslot // 8
-        daily_slot = timeslot % 8
-        data_by_day[day_of_week][daily_slot].append(data)
-    actions = {}
-    days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
-    for day_index, day_name in enumerate(days):
-        actions[day_name] = {}
-        for slot, values in data_by_day[day_index].items():
-            action_bins = [0]*len(action_bin_labels)
-            for value in values:
-                action_bins[value] += 1
-            actions[day_name][slot] = action_bins
+    for day, day_num in days2num.items():
+        rewards = []
+        failures = []
+        for timeslot in range(0,8):
+            counter = 0
+            rews = 0
+            fails = 0
 
-    for day, reward in rewards.items():
-        plot_data_online(data=reward.values(), xlabel='Time Slot', ylabel='Reward',
-                         save_path=base_path + 'plots/rewards_' + day + '.png')
+            while counter*7*8 + day_num*8 + timeslot < len(rewards_per_timeslot) and counter*7*8 + day_num*8 + timeslot < len(failures_per_timeslot):
+                rews += rewards_per_timeslot[counter*7*8 + day_num*8 + timeslot][0]
+                fails += failures_per_timeslot[counter*7*8 + day_num*8 + timeslot][0]
+                counter += 1
 
-    for day, failure in failures.items():
-        plot_data_online(data=failure.values(), xlabel='Time Slot', ylabel='Failures',
-                         save_path=base_path + 'plots/failures_' + day + '.png')
+            if counter > 0:
+                rews /= counter
+                fails /= counter
+
+            rewards.append(rews)
+            failures.append(fails)
+
+            # Assign to DataFrame
+            failures_df.loc[timeslot, day.capitalize()] = fails
+
+        if not os.path.exists(base_path + 'plots/rewards'):
+            os.makedirs(base_path + 'plots/rewards')
+            print(f"Directory '{base_path}plots/rewards' created.")
+        plot_data_online(rewards, idx=1, xlabel='Time Slot', ylabel='Reward',
+                         save_path=base_path + 'plots/rewards/rewards_per_timeslot_' + day + '.png')
+
+        if not os.path.exists(base_path + 'plots/failures'):
+            os.makedirs(base_path + 'plots/failures')
+            print(f"Directory '{base_path}plots/failures' created.")
+        plot_data_online(failures, idx=2, xlabel='Time Slot', ylabel='Failures',
+                         save_path=base_path + 'plots/failures/failures_per_timeslot_' + day + '.png')
+
+        plot_confusion_matrix(failures_df, title="Failures per Time Slot", x_label="Day", y_label="Time Slot",
+                              cbar_label="Failures", save_path=base_path + 'plots/failures/failures_heatmap.png')
 
 
 # ----------------------------------------------------------------------------------------------------------------------
 
 def main():
-    if mode == 'train':
+    if MODE == 'train':
         base_path = 'training/'
         process_training_results(base_path)
-    elif mode == 'validate':
+    elif MODE == 'validate':
         base_path = 'validation/'
         process_validation_results(base_path)
     else:

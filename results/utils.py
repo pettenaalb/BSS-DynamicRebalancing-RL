@@ -1,5 +1,5 @@
-import torch
-import os
+import pandas as pd
+import seaborn as sns
 import matplotlib
 import numpy as np
 
@@ -13,7 +13,7 @@ if is_ipython:
 plt.ion()
 
 def plot_data_online(data, show_result=False, idx=1, xlabel='Step', ylabel='Reward', show_histogram=False,
-                     bin_labels=None, save_path=None, mean = True):
+                     bin_labels=None, save_path=None, mean=True):
     """
     Plots rewards data online during training or displays final results.
 
@@ -25,9 +25,15 @@ def plot_data_online(data, show_result=False, idx=1, xlabel='Step', ylabel='Rewa
         - ylabel: Label for the y-axis (default='Reward').
         - show_histogram: If True, displays a histogram of the data (default=False).
     """
-    # Convert input data to a PyTorch tensor
-    data = np.array(data)
-    data_t = torch.tensor(data, dtype=torch.float)
+    new_data = []*8
+    if isinstance(data, dict):
+        for timeslot, value in data.items():
+            print(timeslot, value)
+            new_data[timeslot] = value
+        data = new_data
+
+    # Ensure input data is a NumPy array
+    data = np.array(data, dtype=np.float32)
 
     plt.figure(idx)
     plt.clf()
@@ -52,11 +58,11 @@ def plot_data_online(data, show_result=False, idx=1, xlabel='Step', ylabel='Rewa
 
         plt.xlabel(xlabel)
         plt.ylabel(ylabel)
-        plt.plot(data_t.numpy())
+        plt.plot(data)
 
         if mean:
-            cumulative_mean = torch.cumsum(data_t, dim=0) / torch.arange(1, len(data_t) + 1, dtype=torch.float32)
-            plt.plot(cumulative_mean.numpy())
+            cumulative_mean = np.cumsum(data) / np.arange(1, len(data) + 1, dtype=np.float32)
+            plt.plot(cumulative_mean)
 
     plt.tight_layout()
     if save_path:
@@ -73,31 +79,43 @@ def plot_data_online(data, show_result=False, idx=1, xlabel='Step', ylabel='Rewa
     plt.close()
 
 
-def plot_dict_data_per_day(data_dict: dict, save_path=None, save_name=None):
+def plot_confusion_matrix(data: pd.DataFrame, title="Heatmap", x_label = "", y_label = "", cbar_label = "", cmap="YlGnBu", save_path=None):
     """
-    Creates a separate plot for each day in the dictionary.
+    Plots a heatmap for failures with days on the x-axis and time slots on the y-axis.
 
     Parameters:
-        - data_dict: Dictionary in the format {day: {timeslot: mean_value}}.
+        - failures: 2D array or DataFrame where rows correspond to time slots and columns to days.
+        - days: List of strings for the days of the week (x-axis labels).
+        - time_slots: List of strings for the time slots (y-axis labels).
+        - title: Title of the heatmap (default: "Failure Heatmap").
+        - save_path: Path to save the plot (default: None, which means display it).
     """
-    if not os.path.exists(save_path):
-        os.makedirs(save_path)
+    # Create the heatmap
+    plt.figure(figsize=(10, 6))
+    ax = sns.heatmap(
+        data=data,
+        annot=True,
+        fmt=".0f",
+        cmap=cmap,
+        cbar_kws={'label': cbar_label},
+        xticklabels=data.columns,
+        yticklabels=data.index
+    )
 
-    for day, timeslot_data in data_dict.items():
-        # Sort timeslots to ensure proper ordering
-        timeslots = sorted(timeslot_data.keys())
-        means = [timeslot_data[t] for t in timeslots]
+    # Set labels and title
+    ax.set_xlabel(x_label)
+    ax.set_ylabel(y_label)
+    ax.set_title(title, pad=15)
 
-        plt.figure(figsize=(8, 5))
-        plt.title(f"Mean Data for {day.capitalize()}")
-        plt.xlabel("Timeslots")
-        plt.ylabel("Mean Value")
-        plt.plot(timeslots, means, marker='o', label=f"{day.capitalize()} Timeslot Data")
-        plt.xticks(timeslots)  # Set x-axis ticks to timeslot indices
-        plt.legend()
-        plt.grid(alpha=0.3)
-        plt.tight_layout()
-        if save_path and save_name:
-            plt.savefig(save_path + day + '_' + save_name + '.png', dpi=200)
-        else:
-            plt.show()
+    # Set x-axis ticks on top
+    ax.xaxis.set_ticks_position('top')
+    ax.xaxis.set_label_position('top')  # Move x-axis label to the top
+
+    # Adjust layout
+    plt.tight_layout()
+
+    # Save or show the plot
+    if save_path:
+        plt.savefig(save_path, dpi=300)
+    else:
+        plt.show()
