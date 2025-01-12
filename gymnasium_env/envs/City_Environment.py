@@ -160,11 +160,10 @@ class BostonCity(gym.Env):
 
         # Initialize stations and system bikes
         bikes_per_station = {}
-        total_bikes = int(self.maximum_number_of_bikes*4/5)
-        std_dev = 2.0
+        std_dev = 1.0
 
         for stn_id in self.stations.keys():
-            base_bikes = int(self.pmf_matrix.loc[stn_id, :].sum() * total_bikes)
+            base_bikes = int(self.pmf_matrix.loc[stn_id, :].sum() * self.maximum_number_of_bikes)
             noise = random.gauss(0, std_dev) * base_bikes
             noisy_bikes = max(0, int(base_bikes + noise))
 
