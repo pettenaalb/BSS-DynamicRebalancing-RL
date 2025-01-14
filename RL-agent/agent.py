@@ -58,7 +58,8 @@ class DQNAgent:
 
         # Select the greedy action
         with torch.no_grad():
-            sorted_q_values = self.train_model(state).argsort(dim=-1, descending=True)
+            # Get sorted indices of Q-values
+            sorted_q_values = self.train_model(state).squeeze(0).argsort(dim=-1, descending=True)
             action = sorted_q_values[0].item()
             if avoid_action is not None:
                 if action == avoid_action:

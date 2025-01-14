@@ -14,7 +14,6 @@ Cartopy~=0.24.1
 torch~=2.5.1
 ipython~=8.29.0
 torch-geometric~=2.6.1
-gymnasium_env~=1.0.0
 requests~=2.32.3
 Twisted~=24.11.0
 setuptools~=70.3.0
