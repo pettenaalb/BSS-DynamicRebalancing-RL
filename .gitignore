@@ -11,6 +11,4 @@ gym/
 graph_images/
 simulator/
 plots/
-simulator/dummy_file.py
-preprocessing/dummy_file.py
-simulator/trip_output.log
+dummy_file.py

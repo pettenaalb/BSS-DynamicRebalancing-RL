@@ -111,6 +111,7 @@ class BostonCity(gym.Env):
         self.next_bike_id = 0
         self.total_timeslots = 0
         self.background_thread = None
+        self.discount_factor = 0.99
 
         self.depot, self.next_bike_id = initialize_bikes(n=self.maximum_number_of_bikes, next_bike_id=self.next_bike_id)
 
@@ -131,6 +132,7 @@ class BostonCity(gym.Env):
         # Update day and time slot if provided in options
         self.day = options.get('day', 'monday') if options else 'monday'
         self.timeslot = options.get('timeslot', 0) if options else 0
+        self.discount_factor = options.get('discount_factor', 0.99) if options else 0.99
 
         self.total_timeslots = options.get('total_timeslots', 2*365*8) if options else 2*365*8
         self.maximum_number_of_bikes = options.get('maximum_number_of_bikes', self.maximum_number_of_bikes) if options else self.maximum_number_of_bikes
@@ -155,7 +157,7 @@ class BostonCity(gym.Env):
         self.truck = Truck(cell.center_node, cell, bikes=bikes, max_load=max_truck_load)
 
         # Initialize the day and time slot
-        self._initialize_day_timeslot()
+        self._initialize_day_timeslot(handle_first_events=True)
 
         # Initialize stations and system bikes
         bikes_per_station = {}
@@ -224,8 +226,8 @@ class BostonCity(gym.Env):
         hours, _ = divmod((self.timeslot * 3 + 1) * 3600 + self.env_time, 3600)
         hours = hours % 24
         mean_velocity = self.velocity_matrix.loc[hours, self.day]
+        bike_picked_up = False
         if action == Actions.STAY.value:
-            # FIXME: Fix the stay action
             t = stay()
             self.logger.log_starting_action('STAY', t)
         elif action == Actions.RIGHT.value:
@@ -244,12 +246,12 @@ class BostonCity(gym.Env):
             t, distance = drop_bike(self.truck, self.distance_matrix, mean_velocity, self.depot_node, self.depot)
             self.logger.log_starting_action('DROP_BIKE', t)
         elif action == Actions.PICK_UP_BIKE.value:
-            t, distance = pick_up_bike(self.truck, self.stations, self.distance_matrix, mean_velocity, self.depot_node,
+            t, distance, _ = pick_up_bike(self.truck, self.stations, self.distance_matrix, mean_velocity, self.depot_node,
                                        self.depot, self.system_bikes)
             self.logger.log_starting_action('PICK_UP_BIKE', t)
         elif action == Actions.CHARGE_BIKE.value:
-            t, distance = charge_bike(self.truck, self.stations, self.distance_matrix, mean_velocity, self.depot_node,
-                                      self.depot, self.system_bikes)
+            t, distance, bike_picked_up = charge_bike(self.truck, self.stations, self.distance_matrix, mean_velocity,
+                                                      self.depot_node, self.depot, self.system_bikes)
             self.logger.log_starting_action('CHARGE_BIKE', t)
 
         # Calculate steps and log the state
@@ -259,31 +261,17 @@ class BostonCity(gym.Env):
             time=convert_seconds_to_hours_minutes((self.timeslot * 3 + 1) * 3600 + self.env_time)
         )
 
+        # Check if the environment time exceeds the maximum time
+        remaining_steps = 0
+        if self.env_time + steps*30 > 3600*3:
+            steps = math.ceil((3600*3 - self.env_time) / 30)
+            remaining_steps = math.ceil((t - steps*30) / 30)
+
         # Update the environment state
         failures = self._jump_to_next_state(steps)
 
-        # Handle specific actions post-environment update
-        if action in {Actions.DROP_BIKE.value, Actions.CHARGE_BIKE.value}:
-            station = self.stations.get(self.truck.get_position())
-            bike = self.truck.unload_bike()
-            station.lock_bike(bike)
-            self.system_bikes[bike.get_bike_id()] = bike
-
-        # Log the ending action
-        self.logger.log_ending_action(
-            time=convert_seconds_to_hours_minutes((self.timeslot * 3 + 1) * 3600 + self.env_time)
-        )
-
-        # Perform a final state update
-        # print("Entering in last state update")
-        failures += self._jump_to_next_state(steps=1)
-
-        # Log truck state
-        self.logger.log_truck(self.truck)
-
-        # Update the environment time and time slot
         terminated = False
-        if self.env_time > 3600*3:
+        if self.env_time >= 3600*3:
             residual_event_buffer = self.event_buffer
             for event in residual_event_buffer:
                 event.time -= 3600*3
@@ -293,20 +281,42 @@ class BostonCity(gym.Env):
                 self.days_completed += 1
             else:
                 self.timeslot += 1
-            failures += self._initialize_day_timeslot(residual_event_buffer)
+            self._initialize_day_timeslot(residual_event_buffer)
             self.timeslots_completed += 1
             terminated = True
 
+        if remaining_steps > 0:
+            failures.extend(self._jump_to_next_state(remaining_steps))
+
+        # Handle specific actions post-environment update
+        if action in {Actions.DROP_BIKE.value, Actions.CHARGE_BIKE.value}:
+            if bike_picked_up or action == Actions.DROP_BIKE.value:
+                station = self.stations.get(self.truck.get_position())
+                bike = self.truck.unload_bike()
+                station.lock_bike(bike)
+                self.system_bikes[bike.get_bike_id()] = bike
+
+        # Log the ending action
+        self.logger.log_ending_action(
+            time=convert_seconds_to_hours_minutes((self.timeslot * 3 + 1) * 3600 + self.env_time)
+        )
+
+        # Perform a final state update after the last action
+        # print("Entering in last state update")
+        failures.extend(self._jump_to_next_state(steps=1))
+
+        # Log truck state
+        self.logger.log_truck(self.truck)
+
         # Compute the outputs
         observation = self._get_obs()
-        reward = self._get_reward(steps, failures, distance)
+        reward = self._get_reward(steps+remaining_steps, failures, distance)
         self._update_graph()
         path = (prev_position, self.truck.get_position())
 
         info = {
             'cells_subgraph': self.cell_subgraph,
             'agent_position': self._get_truck_position(),
-            'steps': steps,
             'time': self.env_time + (self.timeslot * 3 + 1) * 3600,
             'day': self.day,
             'week': int(self.days_completed // 7),
@@ -314,6 +324,7 @@ class BostonCity(gym.Env):
             'failures': failures,
             'path': path,
             'number_of_system_bikes': len(self.system_bikes),
+            'steps': steps+remaining_steps,
         }
 
         if self.timeslots_completed == self.total_timeslots:   # 2 years
@@ -353,7 +364,7 @@ class BostonCity(gym.Env):
         )
 
 
-    def _initialize_day_timeslot(self, residual_event_buffer: list = None) -> int:
+    def _initialize_day_timeslot(self, residual_event_buffer: list = None, handle_first_events = False) -> int:
         # Load PMF matrix and global rate for the current day and time slot
         self.pmf_matrix, self.global_rate = self._load_pmf_matrix_global_rate(self.day, self.timeslot)
 
@@ -393,7 +404,7 @@ class BostonCity(gym.Env):
 
         # Handle the first event if it occurs at the start of the simulation
         failure = 0
-        if self.event_buffer and self.event_buffer[0].time == self.env_time:
+        if handle_first_events and self.event_buffer and self.event_buffer[0].time == self.env_time:
             event = self.event_buffer.pop(0)
             failure, self.next_bike_id = event_handler(
                 event=event,
@@ -428,8 +439,8 @@ class BostonCity(gym.Env):
         return pmf_matrix, global_rate
 
 
-    def _jump_to_next_state(self, steps: int = 0) -> int:
-        total_failures = 0
+    def _jump_to_next_state(self, steps: int = 0) -> list:
+        failures = []
 
         # Iterate through each step
         for _ in range(0, steps):
@@ -437,6 +448,7 @@ class BostonCity(gym.Env):
             # Increment the environment time by 30 seconds
             self.env_time += 30
 
+            total_failures = 0
             # Process all events that occurred before the updated environment time
             while self.event_buffer and self.event_buffer[0].time < self.env_time:
                 # print("Entering in while")
@@ -452,6 +464,7 @@ class BostonCity(gym.Env):
                     next_bike_id=self.next_bike_id
                 )
                 total_failures += failure
+            failures.append(total_failures)
 
             # Log the updated state after processing events
             self.logger.log_state(
@@ -460,7 +473,7 @@ class BostonCity(gym.Env):
             )
 
         # Return the total number of failures encountered
-        return total_failures
+        return failures
 
 
     def _get_obs(self) -> np.array:
@@ -480,8 +493,7 @@ class BostonCity(gym.Env):
         return observation.astype(np.float32)
 
 
-    def _get_reward(self, steps: int, failures: int, distance: int) -> float:
-        # FIXME: Fix the reward function
+    def _get_reward(self, steps: int, failures: list, distance: int) -> float:
         # Cost per distance traveled
         hour = divmod((self.timeslot * 3 + 1) * 3600 + self.env_time, 3600)[0] % 24
         distance_cost = (distance/1000)*self.consumption_matrix.loc[hour, self.day]
@@ -492,8 +504,12 @@ class BostonCity(gym.Env):
         # Maximum 2500 bikes in the system
         # total_bikes_cost = logistic_penalty_function(M=1, k=0.03, b=self.maximum_number_of_bikes, x=len(self.system_bikes))
 
-        # discounted failures
-        return - steps - failures*steps - distance_cost - bike_per_region_cost
+        # Reward for each step
+        reward = - steps - failures[0] - distance_cost - bike_per_region_cost
+        for i, failure in enumerate(failures[1:]):
+            reward -= failure*(self.discount_factor**i)
+
+        return reward
 
 
     def _compute_bike_per_region_cost(self) -> float:

@@ -123,12 +123,11 @@ class DQNAgent:
         with torch.no_grad():
             next_q_values = self.target_model(batch, 't').max(dim=1, keepdim=True)[0]
 
-            # Compute cumulative gamma (sum of discount factors for each step)
-            cumulative_discount = self.gamma * (1 - self.gamma ** batch.steps) / (1 - self.gamma)
+            # Discount factor for the terminal state
             discount = self.gamma ** (batch.steps + 1)
 
             # Final target Q-value equation
-            target_q_values = batch.reward + cumulative_discount + discount * next_q_values * (1 - batch.done.float())
+            target_q_values = batch.reward + discount * next_q_values * (1 - batch.done.float())
 
         # Compute loss
         loss = F.smooth_l1_loss(train_q_values, target_q_values)

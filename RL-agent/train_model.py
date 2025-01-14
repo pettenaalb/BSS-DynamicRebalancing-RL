@@ -75,6 +75,7 @@ def train_dueling_dqn(agent: DQNAgent, batch_size: int) -> tuple[list, list]:
     options ={
         'total_timeslots': params["total_timeslots"],
         'maximum_number_of_bikes': params["maximum_number_of_bikes"],
+        'discount_factor': params["gamma"],
     }
 
     # if restore_from_checkpoint:
@@ -168,7 +169,7 @@ def train_dueling_dqn(agent: DQNAgent, batch_size: int) -> tuple[list, list]:
         # Update the state and metrics
         state = next_state
         total_reward += reward
-        total_failures += info['failures']
+        total_failures += sum(info['failures'])
         truck_path.append(info['path'])
 
         # Check if the episode is complete
@@ -201,12 +202,6 @@ def train_dueling_dqn(agent: DQNAgent, batch_size: int) -> tuple[list, list]:
             #       end="", flush=True)
             tbar.set_description(f"Year {year + 1}, Week {week}, {day.capitalize()} at {convert_seconds_to_hours_minutes(time_elapsed)}")
 
-            # Reset time slot metrics
-            total_reward = 0
-            total_failures = 0
-            truck_path = []
-            timeslot = 0 if timeslot == 7 else timeslot + 1
-
             # Save result lists
             results_path = '../results/training/data/'
             with open(results_path + 'rewards_per_timeslot.pkl', 'wb') as f:
@@ -220,26 +215,32 @@ def train_dueling_dqn(agent: DQNAgent, batch_size: int) -> tuple[list, list]:
             with open(results_path + 'truck_path_per_timeslot.pkl', 'wb') as f:
                 pickle.dump(truck_path_per_timeslot, f)
 
-            # Save checkpoint
-            if enable_checkpoint:
-                other = {
-                    'timeslot': timeslot,
-                    'timeslots_completed': timeslots_completed,
-                    'rewards_per_timeslot': rewards_per_timeslot,
-                    'total_reward': total_reward,
-                    'failures_per_timeslot': failures_per_timeslot,
-                    'q_values_per_timeslot': q_values_per_timeslot,
-                    'action_per_step': action_per_step,
-                    'truck_path': truck_path,
-                    'truck_path_per_timeslot': truck_path_per_timeslot
-                }
-
-                save_checkpoint(agent=agent, environment=env.save(), state=state, other=other,
-                                path='../data/checkpoints/DuelingDQN.pt')
+            # # Save checkpoint
+            # if enable_checkpoint:
+            #     other = {
+            #         'timeslot': timeslot,
+            #         'timeslots_completed': timeslots_completed,
+            #         'rewards_per_timeslot': rewards_per_timeslot,
+            #         'total_reward': total_reward,     # BUG!!
+            #         'failures_per_timeslot': failures_per_timeslot,
+            #         'q_values_per_timeslot': q_values_per_timeslot,
+            #         'action_per_step': action_per_step,
+            #         'truck_path': truck_path,
+            #         'truck_path_per_timeslot': truck_path_per_timeslot
+            #     }
+            #
+            #     save_checkpoint(agent=agent, environment=env.save(), state=state, other=other,
+            #                     path='../data/checkpoints/DuelingDQN.pt')
 
             # Update progress bar
-            tbar.set_postfix({'epsilon': agent.epsilon, 'failures': info['failures']})
+            tbar.set_postfix({'epsilon': agent.epsilon, 'failures': total_failures})
             tbar.update(1)
+
+            # Reset time slot metrics
+            total_reward = 0
+            total_failures = 0
+            truck_path = []
+            timeslot = 0 if timeslot == 7 else timeslot + 1
 
     tbar.close()
     env.close()

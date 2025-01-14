@@ -76,12 +76,12 @@ def move_right(truck: Truck, distance_matrix: pd.DataFrame, cell_dict: dict[int,
 
 
 def drop_bike(truck: Truck, distance_matrix: pd.DataFrame, mean_velocity: int, depot_node: int,
-              depot: dict) -> tuple[int, int]:
+              depot: dict, node: int = None) -> tuple[int, int]:
     time = 0
     distance = 0
 
     position = truck.get_position()
-    center_cell_position = truck.get_cell().get_center_node()
+    target_node = truck.get_cell().get_center_node() if node is None else node
 
     if truck.get_load() == 0:
         distance = distance_matrix.loc[truck.get_position(), depot_node]
@@ -91,25 +91,26 @@ def drop_bike(truck: Truck, distance_matrix: pd.DataFrame, mean_velocity: int, d
         truck.set_load(bikes)
         position = depot_node
 
-    if position != center_cell_position:
-        distance = distance_matrix.loc[position, center_cell_position]
+    if position != target_node:
+        distance = distance_matrix.loc[position, target_node]
         velocity_kmh = truncated_gaussian(10, 70, mean_velocity, 5)
         time += int(distance * 3.6 / velocity_kmh)
-        truck.set_position(center_cell_position)
+        truck.set_position(target_node)
 
     return time, distance
 
 
 def pick_up_bike(truck: Truck, station_dict: dict[int, Station], distance_matrix: pd.DataFrame,
-                 mean_velocity: int, depot_node: int, depot: dict, system_bikes: dict) -> tuple[int, int]:
+                 mean_velocity: int, depot_node: int, depot: dict, system_bikes: dict) -> tuple[int, int, bool]:
     cell = truck.get_cell()
     nearby_stations = {station_id: station_dict.get(station_id) for station_id in cell.get_nodes()}
     bike_dict = {}
     for station in nearby_stations.values():
         bike_dict.update(station.get_bikes())
 
+    # Flag no bike picked up
     if len(bike_dict) == 0:
-        return 0, 0
+        return 0, 0, False
 
     # Find max distance between truck and nearby station in order to normalize the metric
     max_distance = cell.get_diagonal()
@@ -152,12 +153,12 @@ def pick_up_bike(truck: Truck, station_dict: dict[int, Station], distance_matrix
         truck.load_bike(bike)
     truck.set_position(station.get_station_id())
 
-    return time, distance
+    return time, distance, True
 
 
 def stay() -> int: return 0
 
 
 def charge_bike(truck: Truck, station_dict: dict[int, Station], distance_matrix: pd.DataFrame,
-                mean_velocity: int, depot_node: int, depot: dict, system_bikes: dict) -> tuple[int, int]:
+                mean_velocity: int, depot_node: int, depot: dict, system_bikes: dict) -> tuple[int, int, bool]:
     return pick_up_bike(truck, station_dict, distance_matrix, mean_velocity, depot_node, depot, system_bikes)

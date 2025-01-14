@@ -35,6 +35,7 @@ params = {
     "num_episodes": 1,                  # Total number of training episodes
     "total_timeslots": 224,             # Total number of time slots in one month (28 days)
     "maximum_number_of_bikes": 3500,    # Maximum number of bikes in the system
+    "gamma": 0.99,                      # Discount factor for future rewards
 }
 
 days2num = {'monday': 0, 'tuesday': 1, 'wednesday': 2, 'thursday': 3, 'friday': 4, 'saturday': 5, 'sunday': 6}
@@ -63,6 +64,7 @@ def validate_dueling_dqn(agent: DQNAgent) -> tuple[list, list]:
     options ={
         'total_timeslots': params["total_timeslots"],
         'maximum_number_of_bikes': params["maximum_number_of_bikes"],
+        'discount_factor': params["gamma"],
     }
     agent_state, info = env.reset(options=options)
 

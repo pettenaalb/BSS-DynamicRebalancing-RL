@@ -24,9 +24,9 @@ def main():
     total_failures = 0
 
     while not_done:
-        action = Actions.RIGHT.value
+        action = Actions.DROP_BIKE.value
         _, _, done, timeslot_terminated, info = env.step(action)
-        total_failures += info['failures']
+        total_failures += sum(info['failures'])
 
         # Check if the episode is complete
         not_done = not done
