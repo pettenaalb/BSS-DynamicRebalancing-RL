@@ -10,7 +10,7 @@ import numpy as np
 from tqdm.contrib.telegram import tqdm as tqdm_telegram
 from tqdm import tqdm
 from agent import DQNAgent
-from utils import convert_graph_to_data, convert_seconds_to_hours_minutes, send_telegram_message
+from utils import convert_graph_to_data, convert_seconds_to_hours_minutes, send_telegram_message, Actions
 from torch_geometric.data import Data
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -33,7 +33,8 @@ torch.manual_seed(seed)
 
 params = {
     "num_episodes": 1,                  # Total number of training episodes
-    "total_timeslots": 224              # Total number of time slots in one month (28 days)
+    "total_timeslots": 224,             # Total number of time slots in one month (28 days)
+    "maximum_number_of_bikes": 3500,    # Maximum number of bikes in the system
 }
 
 days2num = {'monday': 0, 'tuesday': 1, 'wednesday': 2, 'thursday': 3, 'friday': 4, 'saturday': 5, 'sunday': 6}
@@ -61,6 +62,7 @@ def validate_dueling_dqn(agent: DQNAgent) -> tuple[list, list]:
     # Reset environment and agent state
     options ={
         'total_timeslots': params["total_timeslots"],
+        'maximum_number_of_bikes': params["maximum_number_of_bikes"],
     }
     agent_state, info = env.reset(options=options)
 
@@ -111,7 +113,10 @@ def validate_dueling_dqn(agent: DQNAgent) -> tuple[list, list]:
         )
 
         # Select an action using the agent
-        action = agent.select_action(single_state, greedy=True)
+        avoid_action = None
+        if info['number_of_system_bikes'] > params["maximum_number_of_bikes"] - 50:
+            avoid_action = Actions.PICK_UP_BIKE.value
+        action = agent.select_action(single_state, avoid_action=avoid_action, greedy=True)
         action_per_step.append((action, timeslots_completed))
 
         # Step the environment with the chosen action

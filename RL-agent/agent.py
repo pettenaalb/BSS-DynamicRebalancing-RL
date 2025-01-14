@@ -37,7 +37,7 @@ class DQNAgent:
         self.device = device
 
 
-    def select_action(self, state, greedy=False):
+    def select_action(self, state, greedy=False, avoid_action: int = None):
         """
         Selects an action using an epsilon-greedy strategy.
 
@@ -48,11 +48,23 @@ class DQNAgent:
         Returns:
             - The selected action as an integer.
         """
+        # Select a random action with probability epsilon
         if not greedy and random.random() < self.epsilon:
-            return random.randint(0, self.num_actions - 1)
+            action = random.randint(0, self.num_actions - 1)
+            if avoid_action is not None:
+                while action == avoid_action:
+                    action = random.randint(0, self.num_actions - 1)
+            return action
+
+        # Select the greedy action
         with torch.no_grad():
-            q_values = self.train_model(state)
-            return q_values.argmax(dim=-1).item()
+            sorted_q_values = self.train_model(state).argsort(dim=-1, descending=True)
+            action = sorted_q_values[0].item()
+            if avoid_action is not None:
+                if action == avoid_action:
+                    action = sorted_q_values[1].item()
+
+        return action
 
 
     def get_q_values(self, state):

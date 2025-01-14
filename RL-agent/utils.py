@@ -8,6 +8,7 @@ import geopandas as gpd
 
 from torch_geometric.utils import from_networkx
 from matplotlib import pyplot as plt
+from enum import Enum
 
 # set up matplotlib
 is_ipython = 'inline' in matplotlib.get_backend()
@@ -15,6 +16,18 @@ if is_ipython:
     from IPython import display
 
 plt.ion()
+
+
+class Actions(Enum):
+    STAY = 0
+    RIGHT = 1
+    UP = 2
+    LEFT = 3
+    DOWN = 4
+    DROP_BIKE = 5
+    PICK_UP_BIKE = 6
+    CHARGE_BIKE = 7
+
 
 def convert_graph_to_data(graph: nx.MultiDiGraph):
     """

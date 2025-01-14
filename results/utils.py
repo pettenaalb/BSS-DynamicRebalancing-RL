@@ -13,7 +13,7 @@ if is_ipython:
 plt.ion()
 
 def plot_data_online(data, show_result=False, idx=1, xlabel='Step', ylabel='Reward', show_histogram=False,
-                     bin_labels=None, save_path=None, mean=True):
+                     bin_labels=None, title="Plot", save_path=None, mean=True):
     """
     Plots rewards data online during training or displays final results.
 
@@ -39,7 +39,7 @@ def plot_data_online(data, show_result=False, idx=1, xlabel='Step', ylabel='Rewa
     plt.clf()
 
     if show_histogram:
-        plt.title('Data Histogram')
+        plt.title(title)
         plt.xlabel('Value')
         plt.ylabel('Frequency')
         bins = len(data)
@@ -52,9 +52,9 @@ def plot_data_online(data, show_result=False, idx=1, xlabel='Step', ylabel='Rewa
             plt.xticks(ticks=range(bins), labels=bin_labels, rotation=45, ha='right')
     else:
         if show_result:
-            plt.title('Result')
+            plt.title(title)
         else:
-            plt.title('Training...')
+            plt.title(title)
 
         plt.xlabel(xlabel)
         plt.ylabel(ylabel)

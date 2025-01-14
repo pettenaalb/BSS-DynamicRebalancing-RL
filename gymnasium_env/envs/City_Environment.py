@@ -18,7 +18,7 @@ from gymnasium_env.simulator.truck_simulator import (move_up, move_down, move_le
 from gymnasium_env.simulator.truck import Truck
 from gymnasium_env.simulator.utils import (initialize_graph, initialize_stations, Logger, Actions, initialize_bikes,
                                            convert_seconds_to_hours_minutes, initialize_cells_subgraph,
-                                           truncated_gaussian, logistic_penalty_function)
+                                           logistic_penalty_function)
 
 params = {
     'graph_file': 'utils/cambridge_network.graphml',
@@ -112,8 +112,10 @@ class BostonCity(gym.Env):
         self.total_timeslots = 0
         self.background_thread = None
 
+        self.depot, self.next_bike_id = initialize_bikes(n=self.maximum_number_of_bikes, next_bike_id=self.next_bike_id)
+
         # Set logging options
-        self.logging = False
+        self.logging = True
         self.logger.set_logging(self.logging)
 
 
@@ -131,6 +133,7 @@ class BostonCity(gym.Env):
         self.timeslot = options.get('timeslot', 0) if options else 0
 
         self.total_timeslots = options.get('total_timeslots', 2*365*8) if options else 2*365*8
+        self.maximum_number_of_bikes = options.get('maximum_number_of_bikes', self.maximum_number_of_bikes) if options else self.maximum_number_of_bikes
 
         # Create stations dictionary
         from gymnasium_env.simulator.station import Station
@@ -142,17 +145,13 @@ class BostonCity(gym.Env):
         stations[10000] = Station(10000, 0, 0)
         self.stations = stations
 
-        # Set the number of bikes in each cell
-        for cell in self.cells.values():
-            for node in cell.nodes:
-                self.stations[node].set_cell(cell)
-                cell.set_total_bikes(cell.get_total_bikes() + self.stations[node].get_number_of_bikes())
-
         # Initialize the truck
         self.current_cell_id = options.get('initial_cell', 185) if options else 185
         cell = self.cells[self.current_cell_id]
-        bikes, self.next_bike_id = initialize_bikes(n=15, next_bike_id=self.next_bike_id)
         max_truck_load = options.get('max_truck_load', 30) if options else 30
+
+        # Pop out 15 bikes from the depot and load them into the truck
+        bikes = {key: self.depot.pop(key) for key in list(self.depot.keys())[:15]}
         self.truck = Truck(cell.center_node, cell, bikes=bikes, max_load=max_truck_load)
 
         # Initialize the day and time slot
@@ -161,23 +160,34 @@ class BostonCity(gym.Env):
         # Initialize stations and system bikes
         bikes_per_station = {}
         std_dev = 1.0
-
         for stn_id in self.stations.keys():
             base_bikes = int(self.pmf_matrix.loc[stn_id, :].sum() * int(self.maximum_number_of_bikes*0.8))
             noise = random.gauss(0, std_dev) * base_bikes
             noisy_bikes = max(0, int(base_bikes + noise))
-
             bikes_per_station[stn_id] = noisy_bikes
 
         # Adjust the total bikes to not exceed the desired total
         current_total = sum(bikes_per_station.values())
+        if current_total > self.maximum_number_of_bikes*0.8:
+            # Scale down proportionally if we exceed the total
+            scale_factor = self.maximum_number_of_bikes*0.8 / current_total
+            bikes_per_station = {stn_id: int(bikes * scale_factor) for stn_id, bikes in bikes_per_station.items()}
+
         print(f"Current total bikes: {current_total}")
 
+        # Initialize the system bikes
         self.system_bikes, self.outside_system_bikes, self.next_bike_id = initialize_stations(
-            self.stations,
+            stations=self.stations,
+            depot=self.depot,
+            bikes_per_station=bikes_per_station,
             next_bike_id=self.next_bike_id,
-            bikes_per_station=bikes_per_station
         )
+
+        # Set the number of bikes in each cell
+        for cell in self.cells.values():
+            for node in cell.nodes:
+                self.stations[node].set_cell(cell)
+                cell.set_total_bikes(cell.get_total_bikes() + self.stations[node].get_number_of_bikes())
 
         # Initialize the cell subgraph
         self.cell_subgraph = initialize_cells_subgraph(self.cells, self.nodes_dict, self.distance_matrix)
@@ -193,7 +203,8 @@ class BostonCity(gym.Env):
             'cell_dict': self.cells,
             'nodes_dict': self.nodes_dict,
             'agent_position': self._get_truck_position(),
-            'steps': 0
+            'steps': 0,
+            'number_of_system_bikes': len(self.system_bikes),
         }
 
         return observation, info
@@ -203,6 +214,9 @@ class BostonCity(gym.Env):
         # Log the start of the step
         self.logger.new_log_line()
 
+        # Check for discrepancies in the depot + system bikes between total bikes
+        self._adjust_depot_system_discrepancy()
+
         # Perform the action and log it
         t = 0
         distance = 0
@@ -211,6 +225,7 @@ class BostonCity(gym.Env):
         hours = hours % 24
         mean_velocity = self.velocity_matrix.loc[hours, self.day]
         if action == Actions.STAY.value:
+            # FIXME: Fix the stay action
             t = stay()
             self.logger.log_starting_action('STAY', t)
         elif action == Actions.RIGHT.value:
@@ -226,15 +241,15 @@ class BostonCity(gym.Env):
             t, distance = move_down(self.truck, self.distance_matrix, self.cells, mean_velocity)
             self.logger.log_starting_action('DOWN', t)
         elif action == Actions.DROP_BIKE.value:
-            t, distance = drop_bike(self.truck, self.distance_matrix, mean_velocity)
+            t, distance = drop_bike(self.truck, self.distance_matrix, mean_velocity, self.depot_node, self.depot)
             self.logger.log_starting_action('DROP_BIKE', t)
         elif action == Actions.PICK_UP_BIKE.value:
-            t, distance, self.system_bikes = pick_up_bike(self.truck, self.stations, self.distance_matrix, mean_velocity,
-                                                          self.depot_node, self.system_bikes)
+            t, distance = pick_up_bike(self.truck, self.stations, self.distance_matrix, mean_velocity, self.depot_node,
+                                       self.depot, self.system_bikes)
             self.logger.log_starting_action('PICK_UP_BIKE', t)
         elif action == Actions.CHARGE_BIKE.value:
-            t, distance, self.system_bikes = charge_bike(self.truck, self.stations, self.distance_matrix, mean_velocity,
-                                                         self.depot_node, self.system_bikes)
+            t, distance = charge_bike(self.truck, self.stations, self.distance_matrix, mean_velocity, self.depot_node,
+                                      self.depot, self.system_bikes)
             self.logger.log_starting_action('CHARGE_BIKE', t)
 
         # Calculate steps and log the state
@@ -249,22 +264,10 @@ class BostonCity(gym.Env):
 
         # Handle specific actions post-environment update
         if action in {Actions.DROP_BIKE.value, Actions.CHARGE_BIKE.value}:
-            # Check if the truck can drop a bike based on the maximum number of bikes in the system
-            if len(self.system_bikes) < self.maximum_number_of_bikes or action != Actions.DROP_BIKE.value:
-                station = self.stations.get(self.truck.get_position())
-                try:
-                    bike = self.truck.unload_bike()
-                except ValueError:
-                    distance = self.distance_matrix.loc[self.truck.get_position(), self.depot_node]
-                    velocity_kmh = truncated_gaussian(10, 70, mean_velocity, 5)
-                    t_reload = 2*int(distance * 3.6 / velocity_kmh)
-                    bikes, self.next_bike_id = initialize_bikes(n=15, next_bike_id=self.next_bike_id)
-                    self.truck.set_load(bikes)
-                    new_steps = math.ceil(t_reload+t / 30) - steps
-                    failures += self._jump_to_next_state(new_steps)
-                    bike = self.truck.unload_bike()
-                station.lock_bike(bike)
-                self.system_bikes[bike.get_bike_id()] = bike
+            station = self.stations.get(self.truck.get_position())
+            bike = self.truck.unload_bike()
+            station.lock_bike(bike)
+            self.system_bikes[bike.get_bike_id()] = bike
 
         # Log the ending action
         self.logger.log_ending_action(
@@ -272,6 +275,7 @@ class BostonCity(gym.Env):
         )
 
         # Perform a final state update
+        # print("Entering in last state update")
         failures += self._jump_to_next_state(steps=1)
 
         # Log truck state
@@ -298,6 +302,7 @@ class BostonCity(gym.Env):
         reward = self._get_reward(steps, failures, distance)
         self._update_graph()
         path = (prev_position, self.truck.get_position())
+
         info = {
             'cells_subgraph': self.cell_subgraph,
             'agent_position': self._get_truck_position(),
@@ -308,6 +313,7 @@ class BostonCity(gym.Env):
             'year': int(self.days_completed // 365),
             'failures': failures,
             'path': path,
+            'number_of_system_bikes': len(self.system_bikes),
         }
 
         if self.timeslots_completed == self.total_timeslots:   # 2 years
@@ -389,7 +395,7 @@ class BostonCity(gym.Env):
         failure = 0
         if self.event_buffer and self.event_buffer[0].time == self.env_time:
             event = self.event_buffer.pop(0)
-            failure, self.system_bikes, self.outside_system_bikes, self.next_bike_id = event_handler(
+            failure, self.next_bike_id = event_handler(
                 event=event,
                 station_dict=self.stations,
                 nearby_nodes_dict=self.nearby_nodes_dict,
@@ -426,14 +432,16 @@ class BostonCity(gym.Env):
         total_failures = 0
 
         # Iterate through each step
-        for _ in range(steps):
+        for _ in range(0, steps):
+            # print("Entering in for")
             # Increment the environment time by 30 seconds
             self.env_time += 30
 
             # Process all events that occurred before the updated environment time
             while self.event_buffer and self.event_buffer[0].time < self.env_time:
+                # print("Entering in while")
                 event = self.event_buffer.pop(0)
-                failure, self.system_bikes, self.outside_system_bikes, self.next_bike_id = event_handler(
+                failure, self.next_bike_id = event_handler(
                     event=event,
                     station_dict=self.stations,
                     nearby_nodes_dict=self.nearby_nodes_dict,
@@ -474,7 +482,6 @@ class BostonCity(gym.Env):
 
     def _get_reward(self, steps: int, failures: int, distance: int) -> float:
         # FIXME: Fix the reward function
-        # TODO: normalize reward + positive reward (not necessary)
         # Cost per distance traveled
         hour = divmod((self.timeslot * 3 + 1) * 3600 + self.env_time, 3600)[0] % 24
         distance_cost = (distance/1000)*self.consumption_matrix.loc[hour, self.day]
@@ -483,9 +490,10 @@ class BostonCity(gym.Env):
         bike_per_region_cost = self._compute_bike_per_region_cost()
 
         # Maximum 2500 bikes in the system
-        total_bikes_cost = logistic_penalty_function(M=1, k=0.03, b=self.maximum_number_of_bikes, x=len(self.system_bikes))
+        # total_bikes_cost = logistic_penalty_function(M=1, k=0.03, b=self.maximum_number_of_bikes, x=len(self.system_bikes))
 
-        return - steps - failures*steps - distance_cost - bike_per_region_cost - total_bikes_cost
+        # discounted failures
+        return - steps - failures*steps - distance_cost - bike_per_region_cost
 
 
     def _compute_bike_per_region_cost(self) -> float:
@@ -551,6 +559,21 @@ class BostonCity(gym.Env):
 
     def _get_system_data(self) -> tuple[dict, dict, dict]:
         return self.stations, self.system_bikes, self.outside_system_bikes
+
+
+    def _adjust_depot_system_discrepancy(self):
+        """
+        Adjust the discrepancy of the depot + system bikes to the maximum number of bikes.
+        This is done to prevent the truck from failing to load bikes from the depot.
+        """
+        depot_load = len(self.depot)
+        system_load = len(self.system_bikes)
+
+        if depot_load + system_load < self.maximum_number_of_bikes:
+            n_bikes = self.maximum_number_of_bikes - depot_load - system_load
+            for _ in range(n_bikes):
+                bike = self.outside_system_bikes.pop(next(iter(self.outside_system_bikes)))
+                self.depot[bike.get_bike_id()] = bike
 
 
     def close(self):

@@ -10,7 +10,7 @@ import numpy as np
 from tqdm.contrib.telegram import tqdm as tqdm_telegram
 from tqdm import tqdm
 from agent import DQNAgent
-from utils import convert_graph_to_data, convert_seconds_to_hours_minutes, send_telegram_message
+from utils import convert_graph_to_data, convert_seconds_to_hours_minutes, send_telegram_message, Actions
 from replay_memory import ReplayBuffer
 from torch_geometric.data import Data
 
@@ -42,7 +42,8 @@ params = {
     "epsilon_end": 0.00,                # Minimum exploration rate
     "epsilon_decay": 500,               # Epsilon decay rate
     "lr": 1e-3,                         # Learning rate
-    "total_timeslots": 5840             # Total number of time slots in two years
+    "total_timeslots": 5840,            # Total number of time slots in two years
+    "maximum_number_of_bikes": 3500,    # Maximum number of bikes in the system
 }
 
 days2num = {'monday': 0, 'tuesday': 1, 'wednesday': 2, 'thursday': 3, 'friday': 4, 'saturday': 5, 'sunday': 6}
@@ -73,39 +74,42 @@ def train_dueling_dqn(agent: DQNAgent, batch_size: int) -> tuple[list, list]:
     # Reset environment and agent state
     options ={
         'total_timeslots': params["total_timeslots"],
+        'maximum_number_of_bikes': params["maximum_number_of_bikes"],
     }
 
-    if restore_from_checkpoint:
-        agent, environment, state, other = restore_checkpoint('../data/checkpoints/DuelingDQN.pt')
-        env.load(environment)
+    # if restore_from_checkpoint:
+    #     agent, environment, state, other = restore_checkpoint('../data/checkpoints/DuelingDQN.pt')
+    #     env.load(environment)
+    #
+    #     # Initialize episode metrics
+    #     timeslot = other['timeslot']
+    #     timeslots_completed = other['timeslots_completed']
+    #     rewards_per_timeslot = other['rewards_per_timeslot']
+    #     total_reward = other['total_reward']
+    #     failures_per_timeslot = other['failures_per_timeslot']
+    #     q_values_per_timeslot = other['q_values_per_timeslot']
+    #     action_per_step = other['action_per_step']
+    #     truck_path = other['truck_path']
+    #     truck_path_per_timeslot = other['truck_path_per_timeslot']
+    # else:
 
-        # Initialize episode metrics
-        timeslot = other['timeslot']
-        timeslots_completed = other['timeslots_completed']
-        rewards_per_timeslot = other['rewards_per_timeslot']
-        total_reward = other['total_reward']
-        failures_per_timeslot = other['failures_per_timeslot']
-        q_values_per_timeslot = other['q_values_per_timeslot']
-        action_per_step = other['action_per_step']
-        truck_path = other['truck_path']
-        truck_path_per_timeslot = other['truck_path_per_timeslot']
-    else:
-        agent_state, info = env.reset(options=options)
+    agent_state, info = env.reset(options=options)
 
-        state = convert_graph_to_data(info['cells_subgraph'])
-        state.agent_state = np.concatenate([info['agent_position'], agent_state])
-        state.steps = info['steps']
+    state = convert_graph_to_data(info['cells_subgraph'])
+    state.agent_state = np.concatenate([info['agent_position'], agent_state])
+    state.steps = info['steps']
 
-        # Initialize episode metrics
-        timeslot = 0
-        timeslots_completed = 0
-        rewards_per_timeslot = []
-        total_reward = 0
-        failures_per_timeslot = []
-        q_values_per_timeslot = []
-        action_per_step = []
-        truck_path = []
-        truck_path_per_timeslot = []
+    # Initialize episode metrics
+    timeslot = 0
+    timeslots_completed = 0
+    rewards_per_timeslot = []
+    total_reward = 0
+    failures_per_timeslot = []
+    total_failures = 0
+    q_values_per_timeslot = []
+    action_per_step = []
+    truck_path = []
+    truck_path_per_timeslot = []
 
     not_done = True
 
@@ -140,7 +144,11 @@ def train_dueling_dqn(agent: DQNAgent, batch_size: int) -> tuple[list, list]:
         )
 
         # Select an action using the agent
-        action = agent.select_action(single_state)
+        avoid_action = None
+        if info['number_of_system_bikes'] > params["maximum_number_of_bikes"] - 50:
+            # Avoid picking up bikes if the system is almost full
+            avoid_action = Actions.PICK_UP_BIKE.value
+        action = agent.select_action(single_state, avoid_action=avoid_action)
         action_per_step.append((action, agent.epsilon))
 
         # Step the environment with the chosen action
@@ -160,6 +168,7 @@ def train_dueling_dqn(agent: DQNAgent, batch_size: int) -> tuple[list, list]:
         # Update the state and metrics
         state = next_state
         total_reward += reward
+        total_failures += info['failures']
         truck_path.append(info['path'])
 
         # Check if the episode is complete
@@ -175,7 +184,7 @@ def train_dueling_dqn(agent: DQNAgent, batch_size: int) -> tuple[list, list]:
 
             # Record metrics for the current time slot
             rewards_per_timeslot.append((total_reward/360, agent.epsilon))
-            failures_per_timeslot.append((info['failures'], agent.epsilon))
+            failures_per_timeslot.append((total_failures, agent.epsilon))
             truck_path_per_timeslot.append(truck_path)
 
             # Get Q-values for the current state
@@ -194,6 +203,7 @@ def train_dueling_dqn(agent: DQNAgent, batch_size: int) -> tuple[list, list]:
 
             # Reset time slot metrics
             total_reward = 0
+            total_failures = 0
             truck_path = []
             timeslot = 0 if timeslot == 7 else timeslot + 1
 

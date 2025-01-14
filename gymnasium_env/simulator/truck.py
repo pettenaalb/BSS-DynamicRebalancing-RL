@@ -7,7 +7,6 @@ if TYPE_CHECKING:
 class Truck:
     truck_id = 0
     def __init__(self, position: int, cell: "Cell", bikes: dict[int, "Bike"], max_range: float = 300, max_load: int = 30):
-        from gymnasium_env.simulator.bike import Bike
         self.id = Truck.truck_id
         self.position = position
         self.cell = cell
@@ -28,8 +27,8 @@ class Truck:
     def set_cell(self, cell: "Cell"):
         self.cell = cell
 
-    def set_range(self, range: float):
-        self.range = range
+    def set_range(self, r: float):
+        self.range = r
 
     def set_load(self, bikes: dict[int, "Bike"]):
         self.current_load = len(bikes)

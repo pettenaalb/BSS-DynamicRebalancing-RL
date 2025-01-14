@@ -32,27 +32,6 @@ def load_data(base_path: str):
         action_per_step = pickle.load(f)
     return rewards_per_timeslot, failures_per_timeslot, action_per_step
 
-
-def process_list(list_data):
-    # Initialize a dictionary to hold data per day and timeslot
-    data_by_day = defaultdict(lambda: defaultdict(list))
-
-    # Loop over the data and assign values to the corresponding day and timeslot
-    for data, timeslot in list_data:
-        day_of_week = timeslot // 8  # There are 8 timeslots per day
-        daily_slot = timeslot % 8  # Timeslot index within a day (0-7)
-        data_by_day[day_of_week][daily_slot].append(data)
-
-    # Compute the mean for each day and timeslot
-    result = {}
-    days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
-    for day_index, day_name in enumerate(days):
-        result[day_name] = {}
-        for slot, values in data_by_day[day_index].items():
-            result[day_name][slot] = sum(values) / len(values) if values else 0
-
-    return result
-
 # ----------------------------------------------------------------------------------------------------------------------
 
 def process_training_results(base_path: str):
@@ -100,18 +79,18 @@ def process_validation_results(base_path: str):
         rewards = []
         failures = []
         for timeslot in range(0,8):
-            counter = 0
+            k = 0
             rews = 0
             fails = 0
 
-            while counter*7*8 + day_num*8 + timeslot < len(rewards_per_timeslot) and counter*7*8 + day_num*8 + timeslot < len(failures_per_timeslot):
-                rews += rewards_per_timeslot[counter*7*8 + day_num*8 + timeslot][0]
-                fails += failures_per_timeslot[counter*7*8 + day_num*8 + timeslot][0]
-                counter += 1
+            while k*7*8 + day_num*8 + timeslot < len(rewards_per_timeslot) and k*7*8 + day_num*8 + timeslot < len(failures_per_timeslot):
+                rews += rewards_per_timeslot[k*7*8 + day_num*8 + timeslot][0]
+                fails += failures_per_timeslot[k*7*8 + day_num*8 + timeslot][0]
+                k += 1
 
-            if counter > 0:
-                rews /= counter
-                fails /= counter
+            if k > 0:
+                rews /= k
+                fails /= k
 
             rewards.append(rews)
             failures.append(fails)
@@ -134,6 +113,12 @@ def process_validation_results(base_path: str):
         plot_confusion_matrix(failures_df, title="Failures per Time Slot", x_label="Day", y_label="Time Slot",
                               cbar_label="Failures", save_path=base_path + 'plots/failures/failures_heatmap.png')
 
+    action_bins = [0]*len(action_bin_labels)
+    for action, _ in action_per_step:
+        action_bins[action] += 1
+
+    plot_data_online(action_bins, idx=4, xlabel='Action', ylabel='Frequency', show_histogram=True,
+                     bin_labels=action_bin_labels, save_path=base_path + 'plots/action_bins.png')
 
 # ----------------------------------------------------------------------------------------------------------------------
 

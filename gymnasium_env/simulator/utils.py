@@ -225,7 +225,7 @@ def initialize_bikes(stn: "Station" = None, n: int = 0, next_bike_id: int = 0) -
     return bikes, next_id
 
 
-def initialize_stations(stations: dict, next_bike_id: int, bikes_per_station: dict = None) -> tuple[dict, dict, int]:
+def initialize_stations(stations: dict, depot: dict, bikes_per_station: dict, next_bike_id: int) -> tuple[dict, dict, int]:
     """
     Initialize a list of stations based on the nodes of the graph.
 
@@ -237,20 +237,17 @@ def initialize_stations(stations: dict, next_bike_id: int, bikes_per_station: di
     """
     sys_bikes = {}
 
-    next_id = next_bike_id
-
     for station in stations.values():
-        if bikes_per_station is not None:
-            bikes, next_id = initialize_bikes(station, bikes_per_station.get(station.get_station_id()), next_id)
-        else:
-            bikes, next_id = initialize_bikes(station, np.random.randint(0, 3), next_id)
+        station_id = station.get_station_id()
+        total_bikes_for_station = bikes_per_station.get(station_id)
+        bikes = {key: depot.pop(key) for key in list(depot.keys())[:total_bikes_for_station]}
         sys_bikes.update(bikes)
 
-    out_sys_bikes, next_id = initialize_bikes(n=1000, next_bike_id=next_id)
+    out_sys_bikes, next_bike_id = initialize_bikes(n=1000, next_bike_id=next_bike_id)
     for bike in out_sys_bikes.values():
         bike.set_station(stations.get(10000))
 
-    return sys_bikes, out_sys_bikes, next_id
+    return sys_bikes, out_sys_bikes, next_bike_id
 
 
 def initialize_cells_subgraph(cells: dict[int, "Cell"], nodes_dict: dict[int, tuple[float, float]],

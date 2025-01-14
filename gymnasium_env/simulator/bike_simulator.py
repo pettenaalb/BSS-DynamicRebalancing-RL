@@ -65,7 +65,7 @@ def departure_handler(trip: Trip, station_dict: dict, nearby_nodes_dict: dict[st
     return trip, next_bike_id
 
 
-def arrival_handler(trip: Trip, system_bikes: dict[int, Bike], outside_system_bikes: dict[int, Bike]) -> tuple[dict[int, Bike], dict[int, Bike]]:
+def arrival_handler(trip: Trip, system_bikes: dict[int, Bike], outside_system_bikes: dict[int, Bike]):
     """
     Handle the arrival of a trip at the destination station.
 
@@ -73,7 +73,7 @@ def arrival_handler(trip: Trip, system_bikes: dict[int, Bike], outside_system_bi
         - trip (Trip): The trip object to be processed.
     """
     if trip.is_failed():
-        return system_bikes, outside_system_bikes
+        return
 
     start_station = trip.get_start_location()
     end_station = trip.get_end_location()
@@ -82,15 +82,13 @@ def arrival_handler(trip: Trip, system_bikes: dict[int, Bike], outside_system_bi
     # Move the bike to the outside system if the destination station is outside the system
     if end_station.get_station_id() == 10000:
         outside_system_bikes[bike.get_bike_id()] = system_bikes.pop(bike.get_bike_id())
-        return system_bikes, outside_system_bikes
+        return
 
     # Move the bike back to the system if the starting station is outside the system
     if start_station.get_station_id() == 10000:
         system_bikes[bike.get_bike_id()] = outside_system_bikes.pop(bike.get_bike_id())
 
     end_station.lock_bike(bike)
-
-    return system_bikes, outside_system_bikes
 
 # ----------------------------------------------------------------------------------------------------------------------
 
@@ -143,7 +141,7 @@ def simulate_environment(duration: int, timeslot: int, global_rate: float, pmf: 
 
 def event_handler(event: Event, station_dict: dict[int, Station], nearby_nodes_dict: dict[str, dict[str, tuple]],
                   distance_matrix: pd.DataFrame, system_bikes: dict[int, Bike], outside_system_bikes: dict[int, Bike],
-                  next_bike_id: int, logger: Logger) -> tuple[int, dict[int, Bike], dict[int, Bike], int]:
+                  next_bike_id: int, logger: Logger) -> tuple[int, int]:
     """
     Handle the event based on its type.
 
@@ -170,6 +168,6 @@ def event_handler(event: Event, station_dict: dict[int, Station], nearby_nodes_d
         else:
             logger.log_trip(trip)
     else:
-        system_bikes, outside_system_bikes = arrival_handler(event.get_trip(), system_bikes, outside_system_bikes)
+        arrival_handler(event.get_trip(), system_bikes, outside_system_bikes)
 
-    return failure, system_bikes, outside_system_bikes, next_bike_id
+    return failure, next_bike_id
