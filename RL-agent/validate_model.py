@@ -116,8 +116,14 @@ def validate_dueling_dqn(agent: DQNAgent) -> tuple[list, list]:
 
         # Select an action using the agent
         avoid_action = None
+
         if info['number_of_system_bikes'] > params["maximum_number_of_bikes"] - 50:
+            avoid_action = Actions.DROP_BIKE.value
+
+        if info['number_of_system_bikes'] < 50:
+            # Avoid picking up bikes if the system is almost empty
             avoid_action = Actions.PICK_UP_BIKE.value
+
         action = agent.select_action(single_state, avoid_action=avoid_action, greedy=True)
         action_per_step.append((action, timeslots_completed))
 
