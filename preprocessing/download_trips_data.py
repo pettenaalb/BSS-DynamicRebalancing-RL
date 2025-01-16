@@ -77,6 +77,7 @@ def main():
     for month in range(0, 12):
         url = 'https://s3.amazonaws.com/hubway-data/2022' + str(month+1).zfill(2) + '-bluebikes-tripdata.zip'
         download_and_extract(url, save_path, tbar)
+        tbar.update(1)
 
     os.remove(save_path + '__MACOSX/')  # Remove the __MACOSX directory
 
