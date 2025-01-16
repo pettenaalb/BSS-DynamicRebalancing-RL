@@ -1,4 +1,5 @@
 import os
+import platform
 import osmnx as ox
 import networkx as nx
 import pickle
@@ -19,7 +20,11 @@ def initialize_graph(graph_path: str = None) -> nx.MultiDiGraph:
 
 
 def main():
-    graph = initialize_graph('../data/utils/cambridge_network.graphml')
+    data_path = '../data/'
+    if platform.system() == "Linux":
+        data_path = "/mnt/mydisk/edoardo_scarpel/data/"
+
+    graph = initialize_graph(data_path + 'utils/cambridge_network.graphml')
 
     nodes_gdf = ox.graph_to_gdfs(graph, edges=False)
     nodes_dict = {node_id: (row['y'], row['x']) for node_id, row in nodes_gdf.iterrows()}
@@ -29,7 +34,7 @@ def main():
     nearby_nodes_dict = {node_id: nodes_within_radius(node_id, nodes_dict, radius) for node_id in tqdm(nodes_dict, desc="Nodes")}
 
     # Save dictionary to a file
-    with open('../data/utils/nearby_nodes.pkl', 'wb') as file:
+    with open(data_path + 'utils/nearby_nodes.pkl', 'wb') as file:
         pickle.dump(nearby_nodes_dict, file)
 
 

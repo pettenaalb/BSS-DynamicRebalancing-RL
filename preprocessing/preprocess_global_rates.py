@@ -1,4 +1,6 @@
+import os
 import pandas as pd
+import platform
 import pickle
 from utils import kahan_sum
 from tqdm import tqdm
@@ -7,6 +9,12 @@ days_of_week = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturda
 
 def main():
     data_path = '../data/'
+    if platform.system() == "Linux":
+        data_path = "/mnt/mydisk/edoardo_scarpel/data/"
+    if not os.path.exists(data_path + 'utils/'):
+        os.makedirs(data_path + 'utils/')
+        print('Created directory:', data_path + 'utils/')
+
     global_rates = {}
     tbar = tqdm(total=7*8, desc='Processing global rates')
     for day in days_of_week:

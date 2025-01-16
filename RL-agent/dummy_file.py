@@ -1,10 +1,15 @@
+import platform
 import gymnasium as gym
 import gymnasium_env.register_env
 from tqdm import tqdm
 from utils import Actions, plot_data_online
 
+data_path = "../data/"
+if platform.system() == "Linux":
+    data_path = "/mnt/mydisk/edoardo_scarpel/data/"
+
 # Create the environment
-env = gym.make('gymnasium_env/BostonCity-v0', data_path='../data/')
+env = gym.make('gymnasium_env/BostonCity-v0', data_path=data_path)
 action_size = env.action_space.n
 
 def main():

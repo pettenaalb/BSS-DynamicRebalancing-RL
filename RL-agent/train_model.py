@@ -1,6 +1,7 @@
 import os
 import pickle
 import torch
+import platform
 
 import gymnasium_env.register_env
 
@@ -16,7 +17,11 @@ from torch_geometric.data import Data
 
 # ----------------------------------------------------------------------------------------------------------------------
 
-env = gym.make('gymnasium_env/BostonCity-v0', data_path='../data/')
+data_path = "../data/"
+if platform.system() == "Linux":
+    data_path = "/mnt/mydisk/edoardo_scarpel/data/"
+
+env = gym.make('gymnasium_env/BostonCity-v0', data_path=data_path)
 action_size = env.action_space.n
 
 # if GPU is to be used
@@ -79,7 +84,7 @@ def train_dueling_dqn(agent: DQNAgent, batch_size: int) -> tuple[list, list]:
     }
 
     # if restore_from_checkpoint:
-    #     agent, environment, state, other = restore_checkpoint('../data/checkpoints/DuelingDQN.pt')
+    #     agent, environment, state, other = restore_checkpoint(data_path + 'checkpoints/DuelingDQN.pt')
     #     env.load(environment)
     #
     #     # Initialize episode metrics
@@ -236,7 +241,7 @@ def train_dueling_dqn(agent: DQNAgent, batch_size: int) -> tuple[list, list]:
             #     }
             #
             #     save_checkpoint(agent=agent, environment=env.save(), state=state, other=other,
-            #                     path='../data/checkpoints/DuelingDQN.pt')
+            #                     path=data_path + 'checkpoints/DuelingDQN.pt')
 
             # Update progress bar
             tbar.set_postfix({'epsilon': agent.epsilon, 'failures': total_failures})
@@ -337,7 +342,7 @@ def main():
         return
 
     # Save the trained model
-    trained_models_folder = '../data/trained_models'
+    trained_models_folder = data_path + 'trained_models'
 
     if not os.path.exists(trained_models_folder):
         os.makedirs(trained_models_folder)

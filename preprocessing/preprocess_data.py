@@ -1,4 +1,5 @@
 import os
+import platform
 import pandas as pd
 import osmnx as ox
 import networkx as nx
@@ -18,6 +19,9 @@ params = {
 
     'day_of_week': ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"],
 }
+
+if platform.system() == "Linux":
+    params['data_path'] = "/mnt/mydisk/edoardo_scarpel/data/"
 
 # ----------------------------------------------------------------------------------------------------------------------
 
@@ -72,6 +76,10 @@ def initialize_graph(places: [str], network_type: str, graph_path: str = None, s
             for node in nodes_to_remove:
                 nearest_node = ox.distance.nearest_nodes(graph, X=node[1], Y=node[0])
                 graph.remove_node(nearest_node)
+
+        if not os.path.exists(graph_path):
+            os.makedirs(graph_path)
+            print(f"Directory '{graph_path}' created.")
 
         ox.save_graphml(graph, graph_path)
         print("Network data downloaded and saved successfully.")
@@ -246,6 +254,10 @@ def initialize_rate_matrix(G: nx.MultiDiGraph, rate_df: pd.DataFrame) -> pd.Data
 
 def main():
     # Initialize the graph
+    if not os.path.exists(params['data_path']):
+        os.makedirs(params['data_path'])
+        print(f"Directory '{params['data_path']}' created.")
+
     print("Initializing the graph... ")
     graph = initialize_graph(params['place'], params['network_type'], params['data_path'] + params['graph_file'],
                              remove_isolated_nodes=True, simplify_network=True, nodes_to_remove=params['nodes_to_remove'])

@@ -1,4 +1,5 @@
 import os
+import platform
 import pandas as pd
 import osmnx as ox
 import networkx as nx
@@ -10,12 +11,15 @@ params = {
     'network_type': 'bike',
 
     'data_path': "../data/",
-    'graph_file': "cambridge_network.graphml",
+    'graph_file': "utils/cambridge_network.graphml",
     'year': 2022,
     'month': [1],
 
     'time_duration': [31*24*3600]
 }
+
+if platform.system() == "Linux":
+    params['data_path'] = "/mnt/mydisk/edoardo_scarpel/data/"
 
 def initialize_graph(graph_path: str = None) -> nx.MultiDiGraph:
     if os.path.isfile(graph_path):
@@ -60,9 +64,13 @@ def initialize_distance_matrix(G: nx.MultiDiGraph) -> pd.DataFrame:
 
 
 def main():
+    if not os.path.exists(params['data_path'] + 'utils/'):
+        os.makedirs(params['data_path'] + 'utils/')
+        print("Directory created: " + params['data_path'] + 'utils/')
+
     # Initialize the graph
     print("Initializing the graph... ")
-    graph = initialize_graph('../data/utils/cambridge_network.graphml')
+    graph = initialize_graph(params['data_path'] + params['graph_file'])
 
     # Initialize the distance matrix
     print("Initializing the distance matrix... ")
@@ -70,7 +78,7 @@ def main():
 
     # Save the distance matrix to a CSV file
     print("Saving the distance matrix to a CSV file... ")
-    distance_matrix.to_csv(params['data_path'] + 'distance_matrix.csv', index=True)
+    distance_matrix.to_csv(params['data_path'] + 'utils/distance_matrix.csv', index=True)
 
 
 if __name__ == '__main__':

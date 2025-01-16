@@ -1,4 +1,5 @@
 import os
+import platform
 import pandas as pd
 import osmnx as ox
 import networkx as nx
@@ -18,6 +19,9 @@ params = {
 
     'day_of_week': ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"],
 }
+
+if platform.system() == "Linux":
+    params['data_path'] = "/mnt/mydisk/edoardo_scarpel/data/"
 
 # ----------------------------------------------------------------------------------------------------------------------
 

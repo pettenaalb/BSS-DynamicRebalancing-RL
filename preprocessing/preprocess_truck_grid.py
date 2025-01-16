@@ -1,4 +1,5 @@
 import os
+import platform
 import pickle
 import osmnx as ox
 import pandas as pd
@@ -16,6 +17,9 @@ params = {
     'data_path': "../data/",
     'graph_file': "utils/cambridge_network.graphml",
 }
+
+if platform.system() == "Linux":
+    params['data_path'] = "/mnt/mydisk/edoardo_scarpel/data/"
 
 # ----------------------------------------------------------------------------------------------------------------------
 
@@ -177,7 +181,7 @@ def main():
     plot_graph_with_grid(graph, cell_dict, plot_center_nodes=True)
 
     # Save dictionary to a file
-    with open('../data/utils/cell_data.pkl', 'wb') as file:
+    with open(params['data_path'] + 'utils/cell_data.pkl', 'wb') as file:
         pickle.dump(cell_dict, file)
 
 

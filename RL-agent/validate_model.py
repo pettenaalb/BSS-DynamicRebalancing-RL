@@ -1,6 +1,7 @@
 import os
 import pickle
 import torch
+import platform
 
 import gymnasium_env.register_env
 
@@ -15,7 +16,11 @@ from torch_geometric.data import Data
 
 # ----------------------------------------------------------------------------------------------------------------------
 
-env = gym.make('gymnasium_env/BostonCity-v0', data_path='../data/')
+data_path = "../data/"
+if platform.system() == "Linux":
+    data_path = "/mnt/mydisk/edoardo_scarpel/data/"
+
+env = gym.make('gymnasium_env/BostonCity-v0', data_path=data_path)
 action_size = env.action_space.n
 
 # if GPU is to be used
