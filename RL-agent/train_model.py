@@ -356,6 +356,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Train the Dueling DQN agent.')
     parser.add_argument('--enable_telegram', action='store_true', help='Enable Telegram notifications.')
     parser.add_argument('--data_path', type=str, default='../data/', help='Path to the data folder.')
+    parser.add_argument('--cuda_device', type=int, default=1, help='CUDA device to use.')
 
     args = parser.parse_args()
 
@@ -364,5 +365,8 @@ if __name__ == '__main__':
 
     if args.data_path:
         data_path = args.data_path
+
+    if args.cuda_device and torch.cuda.is_available():
+        device = torch.device(f"cuda:{args.cuda_device}")
 
     main()

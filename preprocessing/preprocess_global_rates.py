@@ -3,8 +3,6 @@ import pandas as pd
 import argparse
 import pickle
 
-from GPy.util.datasets import data_path
-
 from utils import kahan_sum
 from tqdm import tqdm
 
