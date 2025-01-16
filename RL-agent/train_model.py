@@ -24,7 +24,7 @@ action_size = env.action_space.n
 
 # if GPU is to be used
 device = torch.device(
-    "cuda:1" if torch.cuda.is_available() else
+    "cuda" if torch.cuda.is_available() else
     # "mps" if torch.backends.mps.is_available() else
     "cpu"
 )
@@ -356,7 +356,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Train the Dueling DQN agent.')
     parser.add_argument('--enable_telegram', action='store_true', help='Enable Telegram notifications.')
     parser.add_argument('--data_path', type=str, default='../data/', help='Path to the data folder.')
-    parser.add_argument('--cuda_device', type=int, default=1, help='CUDA device to use.')
+    parser.add_argument('--cuda_device', type=int, default=0, help='CUDA device to use.')
 
     args = parser.parse_args()
 
