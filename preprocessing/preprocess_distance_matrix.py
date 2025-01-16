@@ -1,5 +1,5 @@
 import os
-import platform
+import argparse
 import pandas as pd
 import osmnx as ox
 import networkx as nx
@@ -17,9 +17,6 @@ params = {
 
     'time_duration': [31*24*3600]
 }
-
-if platform.system() == "Linux":
-    params['data_path'] = "/mnt/mydisk/edoardo_scarpel/data/"
 
 def initialize_graph(graph_path: str = None) -> nx.MultiDiGraph:
     if os.path.isfile(graph_path):
@@ -82,4 +79,11 @@ def main():
 
 
 if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description="Preprocess the distance matrix for the road network.")
+    parser.add_argument('--data_path', type=str, default=params['data_path'], help="The path to the data directory.")
+
+    args = parser.parse_args()
+    if args.data_path:
+        params['data_path'] = args.data_path
+
     main()

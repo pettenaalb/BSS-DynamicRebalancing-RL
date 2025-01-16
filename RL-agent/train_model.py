@@ -1,7 +1,7 @@
 import os
 import pickle
 import torch
-import platform
+import argparse
 
 import gymnasium_env.register_env
 
@@ -18,8 +18,6 @@ from torch_geometric.data import Data
 # ----------------------------------------------------------------------------------------------------------------------
 
 data_path = "../data/"
-if platform.system() == "Linux":
-    data_path = "/mnt/mydisk/edoardo_scarpel/data/"
 
 env = gym.make('gymnasium_env/BostonCity-v0', data_path=data_path)
 action_size = env.action_space.n
@@ -355,4 +353,16 @@ def main():
 
 
 if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description='Train the Dueling DQN agent.')
+    parser.add_argument('--enable_telegram', action='store_true', help='Enable Telegram notifications.')
+    parser.add_argument('--data_path', type=str, default='../data/', help='Path to the data folder.')
+
+    args = parser.parse_args()
+
+    if args.enable_telegram:
+        enable_telegram = True
+
+    if args.data_path:
+        data_path = args.data_path
+
     main()

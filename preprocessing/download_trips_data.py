@@ -1,5 +1,5 @@
 import os
-import platform
+import argparse
 import requests
 import zipfile
 from urllib.parse import urlparse
@@ -7,8 +7,6 @@ from tqdm import tqdm
 import shutil
 
 data_path = "../data/"
-if platform.system() == "Linux":
-    data_path = "/mnt/mydisk/edoardo_scarpel/data/"
 
 # ----------------------------------------------------------------------------------------------------------------------
 
@@ -84,4 +82,11 @@ def main():
 
 
 if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description="Download the trips data for the Bluebikes dataset.")
+    parser.add_argument("--data_path", type=str, default="../data/", help="The directory where the data will be saved.")
+
+    args = parser.parse_args()
+    if args.data_path:
+        data_path = args.data_path
+
     main()

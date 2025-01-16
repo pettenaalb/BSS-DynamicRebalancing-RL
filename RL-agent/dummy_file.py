@@ -1,12 +1,10 @@
-import platform
+import argparse
 import gymnasium as gym
 import gymnasium_env.register_env
 from tqdm import tqdm
 from utils import Actions, plot_data_online
 
 data_path = "../data/"
-if platform.system() == "Linux":
-    data_path = "/mnt/mydisk/edoardo_scarpel/data/"
 
 # Create the environment
 env = gym.make('gymnasium_env/BostonCity-v0', data_path=data_path)
@@ -48,4 +46,11 @@ def main():
 
 
 if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description='Dummy file')
+    parser.add_argument('--data_path', type=str, default="../data/", help='Path to the data folder')
+
+    args = parser.parse_args()
+    if args.data_path:
+        data_path = args.data_path
+
     main()

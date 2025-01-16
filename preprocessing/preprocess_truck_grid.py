@@ -1,5 +1,5 @@
 import os
-import platform
+import argparse
 import pickle
 import osmnx as ox
 import pandas as pd
@@ -17,9 +17,6 @@ params = {
     'data_path': "../data/",
     'graph_file': "utils/cambridge_network.graphml",
 }
-
-if platform.system() == "Linux":
-    params['data_path'] = "/mnt/mydisk/edoardo_scarpel/data/"
 
 # ----------------------------------------------------------------------------------------------------------------------
 
@@ -186,4 +183,11 @@ def main():
 
 
 if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description="Preprocess the truck grid data.")
+    parser.add_argument('--data_path', type=str, default="../data/", help="Path to the data directory.")
+
+    args = parser.parse_args()
+    if args.data_path:
+        params['data_path'] = args.data_path
+
     main()

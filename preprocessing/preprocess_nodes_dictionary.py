@@ -1,10 +1,12 @@
 import os
-import platform
+import argparse
 import osmnx as ox
 import networkx as nx
 import pickle
 
 from tqdm import tqdm
+
+from preprocessing.download_trips_data import data_path
 from utils import nodes_within_radius
 
 def initialize_graph(graph_path: str = None) -> nx.MultiDiGraph:
@@ -19,11 +21,7 @@ def initialize_graph(graph_path: str = None) -> nx.MultiDiGraph:
     return graph
 
 
-def main():
-    data_path = '../data/'
-    if platform.system() == "Linux":
-        data_path = "/mnt/mydisk/edoardo_scarpel/data/"
-
+def main(data_path: str):
     graph = initialize_graph(data_path + 'utils/cambridge_network.graphml')
 
     nodes_gdf = ox.graph_to_gdfs(graph, edges=False)
@@ -40,4 +38,10 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    parser = argparse.ArgumentParser(description='Preprocess the nodes dictionary')
+    parser.add_argument('--data_path', type=str, default='../data/', help='Path to the data folder')
+
+    args = parser.parse_args()
+    data_path = args.data_path
+
+    main(data_path)

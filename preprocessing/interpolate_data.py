@@ -1,5 +1,5 @@
 import os
-import platform
+import argparse
 import pandas as pd
 import osmnx as ox
 import networkx as nx
@@ -19,9 +19,6 @@ params = {
 
     'day_of_week': ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"],
 }
-
-if platform.system() == "Linux":
-    params['data_path'] = "/mnt/mydisk/edoardo_scarpel/data/"
 
 # ----------------------------------------------------------------------------------------------------------------------
 
@@ -189,4 +186,11 @@ def main():
 
 
 if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description="Interpolate the rate matrices to build the PMF matrices.")
+    parser.add_argument('--data_path', type=str, default="../data/", help="The path to the data directory.")
+
+    args = parser.parse_args()
+    if args.data_path:
+        params['data_path'] = args.data_path
+
     main()

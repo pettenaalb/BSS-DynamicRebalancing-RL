@@ -1,16 +1,16 @@
 import os
 import pandas as pd
-import platform
+import argparse
 import pickle
+
+from GPy.util.datasets import data_path
+
 from utils import kahan_sum
 from tqdm import tqdm
 
 days_of_week = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
 
-def main():
-    data_path = '../data/'
-    if platform.system() == "Linux":
-        data_path = "/mnt/mydisk/edoardo_scarpel/data/"
+def main(data_path: str):
     if not os.path.exists(data_path + 'utils/'):
         os.makedirs(data_path + 'utils/')
         print('Created directory:', data_path + 'utils/')
@@ -34,4 +34,10 @@ def main():
         pickle.dump(global_rates, f)
 
 if __name__ == '__main__':
-    main()
+    parser = argparse.ArgumentParser(description='Preprocess global rates')
+    parser.add_argument('--data_path', type=str, default='../data/', help='Path to data directory')
+
+    args = parser.parse_args()
+    data_path = args.data_path
+
+    main(data_path)
