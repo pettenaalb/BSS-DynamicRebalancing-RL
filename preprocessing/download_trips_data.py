@@ -2,6 +2,7 @@ import os
 import platform
 import requests
 import zipfile
+from urllib.parse import urlparse
 
 data_path = "../data/"
 if platform.system() == "Linux":
@@ -9,16 +10,22 @@ if platform.system() == "Linux":
 
 # ----------------------------------------------------------------------------------------------------------------------
 
-def download_and_extract(url, save_path, extract_to):
+def download_and_extract(url, target_directory):
     """
-    Downloads a file from the given URL, saves it to the specified path,
+    Downloads a file from the given URL, saves it to the specified directory,
     extracts it if it's a ZIP file, and removes the ZIP file after extraction.
 
     :param url: The URL to download the file from.
-    :param save_path: The local path to save the downloaded file.
-    :param extract_to: The directory to extract the contents to.
+    :param target_directory: The directory where the file will be saved and extracted.
     """
     try:
+        # Ensure the target directory exists
+        os.makedirs(target_directory, exist_ok=True)
+
+        # Parse the filename from the URL
+        filename = os.path.basename(urlparse(url).path)
+        save_path = os.path.join(target_directory, filename)
+
         # Download the file
         print(f"Downloading file from {url}...")
         response = requests.get(url, stream=True)
@@ -31,10 +38,10 @@ def download_and_extract(url, save_path, extract_to):
 
         # Check if the file is a ZIP file and extract it
         if zipfile.is_zipfile(save_path):
-            print(f"Extracting contents of {save_path} to {extract_to}...")
+            print(f"Extracting contents of {save_path} to {target_directory}...")
             with zipfile.ZipFile(save_path, "r") as zip_ref:
-                zip_ref.extractall(extract_to)
-            print(f"Extraction complete. Files extracted to {extract_to}")
+                zip_ref.extractall(target_directory)
+            print(f"Extraction complete. Files extracted to {target_directory}")
 
             # Remove the ZIP file
             os.remove(save_path)
@@ -59,7 +66,7 @@ def main():
 
     for month in range(0, 12):
         url = 'https://s3.amazonaws.com/hubway-data/2022' + str(month).zfill(2) + '-bluebikes-tripdata.zip'
-        download_and_extract(url, save_path, save_path)
+        download_and_extract(url, save_path)
 
     os.remove(save_path + '__MACOSX/')  # Remove the __MACOSX directory
 
