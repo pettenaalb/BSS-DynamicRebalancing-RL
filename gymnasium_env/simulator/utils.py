@@ -164,32 +164,6 @@ def load_cells_from_csv(filename) -> dict[int, "Cell"]:
     return cells
 
 
-def load_nearby_nodes_dict_from_csv(filename) -> dict:
-    # Extract nearby nodes
-    nearby_nodes_df = pd.read_csv(filename)
-
-    # Ensure integer conversion
-    nearby_nodes_df['central_node'] = nearby_nodes_df['central_node'].astype(int)
-    nearby_nodes_df['nearby_node'] = nearby_nodes_df['nearby_node'].astype(int)
-
-    # Reconstruct the dictionary with integer keys and list values
-    from collections import defaultdict
-
-    nearby_nodes_dict = defaultdict(list)
-    for _, row in nearby_nodes_df.iterrows():
-        central_node = row['central_node']
-        nearby_node = row['nearby_node']
-        nearby_nodes_dict[central_node].append(nearby_node)
-
-    # Reconstruct as a regular dictionary
-    nearby_nodes_dict = {}
-    for central_node, group in nearby_nodes_df.groupby('central_node'):
-        nearby_nodes_dict[central_node] = group['nearby_node'].tolist()
-
-    return nearby_nodes_dict
-
-# ----------------------------------------------------------------------------------------------------------------------
-
 def initialize_graph(graph_path: str = None) -> nx.MultiDiGraph:
     if os.path.isfile(graph_path):
         print("Network file already exists. Loading the network data: ", end="")

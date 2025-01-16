@@ -305,7 +305,7 @@ def main():
             matrix_path = params['data_path'] + 'matrices/' + mon_str + '/' + str(timeslot).zfill(2) + '/'
             if not os.path.exists(matrix_path):
                 os.makedirs(matrix_path)
-                # print(f"Directory '{matrix_path}' created.")
+                print(f"Directory '{matrix_path}' created.")
             rate_matrix.to_csv(matrix_path + day.lower() + '-rate-matrix.csv', index=True)
 
             tbar.update(1)

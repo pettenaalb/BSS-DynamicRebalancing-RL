@@ -4,6 +4,7 @@ import requests
 import zipfile
 from urllib.parse import urlparse
 from tqdm import tqdm
+import shutil
 
 data_path = "../data/"
 if platform.system() == "Linux":
@@ -79,7 +80,7 @@ def main():
         download_and_extract(url, save_path, tbar)
         tbar.update(1)
 
-    os.remove(save_path + '__MACOSX/')  # Remove the __MACOSX directory
+    shutil.rmtree(save_path + '__MACOSX')
 
 
 if __name__ == '__main__':
