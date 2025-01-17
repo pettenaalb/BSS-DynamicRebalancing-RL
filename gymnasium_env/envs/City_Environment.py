@@ -147,6 +147,11 @@ class BostonCity(gym.Env):
         stations[10000] = Station(10000, 0, 0)
         self.stations = stations
 
+        # Set the cell for each station
+        for cell in self.cells.values():
+            for node in cell.nodes:
+                self.stations[node].set_cell(cell)
+
         # Initialize the truck
         self.current_cell_id = options.get('initial_cell', 185) if options else 185
         cell = self.cells[self.current_cell_id]
@@ -162,10 +167,11 @@ class BostonCity(gym.Env):
         # Initialize stations and system bikes
         bikes_per_station = {}
         std_dev = 1.0
-        for stn_id in self.stations.keys():
+        for stn_id, stn in self.stations.items():
             base_bikes = int(self.pmf_matrix.loc[stn_id, :].sum() * int(self.maximum_number_of_bikes*0.8))
             noise = random.gauss(0, std_dev) * base_bikes
             noisy_bikes = max(0, int(base_bikes + noise))
+            noisy_bikes = min(noisy_bikes, stn.get_capacity())
             bikes_per_station[stn_id] = noisy_bikes
 
         # Adjust the total bikes to not exceed the desired total
@@ -184,12 +190,6 @@ class BostonCity(gym.Env):
             bikes_per_station=bikes_per_station,
             next_bike_id=self.next_bike_id,
         )
-
-        # Set the number of bikes in each cell
-        for cell in self.cells.values():
-            for node in cell.nodes:
-                self.stations[node].set_cell(cell)
-                cell.set_total_bikes(cell.get_total_bikes() + self.stations[node].get_number_of_bikes())
 
         # Initialize the cell subgraph
         self.cell_subgraph = initialize_cells_subgraph(self.cells, self.nodes_dict, self.distance_matrix)
@@ -591,6 +591,10 @@ class BostonCity(gym.Env):
                 bike = self.outside_system_bikes.pop(next(iter(self.outside_system_bikes)))
                 self.depot[bike.get_bike_id()] = bike
 
+    def _check_bikes_in_system(self):
+        for bike_id, bike in self.system_bikes.items():
+            if bike.get_station() is None:
+                print(f"Error: Bike {bike_id} is not in a station.")
 
     def close(self):
         """Clean up resources."""

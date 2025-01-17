@@ -45,7 +45,14 @@ class Station:
         Parameters:
         bikes (list): List of Bike objects at the station.
         """
-        self.bikes = bikes
+        if len(bikes) < self.capacity:
+            for bike_id, bike in bikes.items():
+                bike.set_availability(True)
+                bike.set_station(self)
+                self.bikes[bike_id] = bike
+                self.cell.set_total_bikes(self.cell.get_total_bikes() + 1)
+        else:
+            raise ValueError("The number of bikes exceeds the station's capacity.")
 
     def set_request_rate(self, request_rate: float):
         """

@@ -209,19 +209,20 @@ def initialize_stations(stations: dict, depot: dict, bikes_per_station: dict, ne
     Returns:
         - dict: A dictionary containing the stations in the network.
     """
-    sys_bikes = {}
+    system_bikes = {}
 
     for station in stations.values():
         station_id = station.get_station_id()
         total_bikes_for_station = bikes_per_station.get(station_id)
         bikes = {key: depot.pop(key) for key in list(depot.keys())[:total_bikes_for_station]}
-        sys_bikes.update(bikes)
+        station.set_bikes(bikes)
+        system_bikes.update(bikes)
 
-    out_sys_bikes, next_bike_id = initialize_bikes(n=1000, next_bike_id=next_bike_id)
-    for bike in out_sys_bikes.values():
+    outside_system_bikes, next_bike_id = initialize_bikes(n=1000, next_bike_id=next_bike_id)
+    for bike in outside_system_bikes.values():
         bike.set_station(stations.get(10000))
 
-    return sys_bikes, out_sys_bikes, next_bike_id
+    return system_bikes, outside_system_bikes, next_bike_id
 
 
 def initialize_cells_subgraph(cells: dict[int, "Cell"], nodes_dict: dict[int, tuple[float, float]],
