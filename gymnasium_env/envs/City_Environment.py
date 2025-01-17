@@ -263,7 +263,7 @@ class BostonCity(gym.Env):
 
         # Check if the environment time exceeds the maximum time
         remaining_steps = 0
-        if self.env_time + steps*30 > 3600*3:
+        if self.env_time + steps*30 >= 3600*3:
             steps = math.ceil((3600*3 - self.env_time) / 30)
             remaining_steps = math.ceil((t - steps*30) / 30)
 
