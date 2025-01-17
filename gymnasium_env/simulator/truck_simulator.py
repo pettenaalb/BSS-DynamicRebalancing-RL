@@ -118,7 +118,7 @@ def pick_up_bike(truck: Truck, station_dict: dict[int, Station], distance_matrix
         distance = distance_matrix.loc[truck.get_position(), station_id]
         if distance > max_distance:
             max_distance = distance
-        for bike_id, bike in station_dict[station_id].get_bikes():
+        for bike_id, bike in station_dict.get(station_id).get_bikes().items():
             battery = bike.get_battery() / bike.get_max_battery()
             if distance != 0:
                 bikes_metric[bike_id] = (distance/max_distance) * (1 - battery)
