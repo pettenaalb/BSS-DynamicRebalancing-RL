@@ -9,6 +9,40 @@ from gymnasium_env.simulator.utils import generate_poisson_events, truncated_gau
 
 # ----------------------------------------------------------------------------------------------------------------------
 
+def event_handler(event: Event, station_dict: dict[int, Station], nearby_nodes_dict: dict[str, dict[str, tuple]],
+                  distance_matrix: pd.DataFrame, system_bikes: dict[int, Bike], outside_system_bikes: dict[int, Bike],
+                  next_bike_id: int, logger: Logger) -> tuple[int, int]:
+    """
+    Handle the event based on its type.
+
+    Parameters:
+        - event (Event): The event object to be processed.
+        - station_dict (dict): A dictionary containing the stations in the network.
+        - nearby_nodes_dict (dict): A dictionary containing the nearby nodes for each station.
+        - distance_matrix (pd.DataFrame): A DataFrame containing the distance matrix between stations.
+        - system_bikes (dict): A dictionary containing the bikes in the system.
+        - outside_system_bikes (dict): A dictionary containing the bikes outside the system.
+
+    Returns:
+        - bool: A boolean indicating whether the event failed or not.
+        - dict: A dictionary containing the bikes in the system.
+        - dict: A dictionary containing the bikes outside the system.
+    """
+    failure = 0
+    if event.is_departure():
+        trip, next_bike_id = departure_handler(event.get_trip(), station_dict, nearby_nodes_dict, distance_matrix,
+                                 outside_system_bikes, next_bike_id)
+        if trip.is_failed():
+            failure = 1
+            logger.log_no_available_bikes(trip.get_start_location().get_station_id(), trip.get_end_location().get_station_id())
+        else:
+            logger.log_trip(trip)
+    else:
+        arrival_handler(event.get_trip(), system_bikes, outside_system_bikes)
+
+    return failure, next_bike_id
+
+
 def departure_handler(trip: Trip, station_dict: dict, nearby_nodes_dict: dict[str, dict[str, tuple]],
                       distance_matrix: pd.DataFrame, outside_system_bikes: dict[int, Bike], next_bike_id: int) -> tuple[Trip, int]:
     """
@@ -31,13 +65,13 @@ def departure_handler(trip: Trip, station_dict: dict, nearby_nodes_dict: dict[st
         if len(outside_system_bikes) == 0:
             bikes, next_bike_id = initialize_bikes(start_station, n=100, next_bike_id=next_bike_id)
             outside_system_bikes.update(bikes)
-        bike = outside_system_bikes.get(next(iter(outside_system_bikes)))
+        bike = outside_system_bikes.pop(next(iter(outside_system_bikes)))
         trip.set_bike(bike)
         trip.set_failed(False)
         return trip, next_bike_id
 
     # Check if there are any bikes available at the starting station
-    if len(start_station.get_bikes()) > 0:
+    if start_station.get_number_of_bikes() > 0:
         bike = start_station.unlock_bike()
         if bike.get_battery() > trip.get_distance()/1000:
             trip.set_bike(bike)
@@ -48,9 +82,8 @@ def departure_handler(trip: Trip, station_dict: dict, nearby_nodes_dict: dict[st
 
     # Check if there are any bikes available at nearby stations
     nodes_dist_dict = {node_id: distance_matrix.at[start_station_id, node_id] for node_id in nearby_nodes_dict[start_station_id]}
-    sorted_nodes = {k: v for k, v in sorted(nodes_dist_dict.items(), key=lambda item: item[1])}
-    for node_id in sorted_nodes:
-        if len(station_dict[node_id].get_bikes()) > 0:
+    for node_id, _ in sorted(nodes_dist_dict.items(), key=lambda item: item[1]):
+        if station_dict[node_id].get_number_of_bikes() > 0:
             bike = station_dict[node_id].unlock_bike()
             if bike.get_battery() > trip.get_distance()/1000:
                 trip.set_deviated_location(station_dict[node_id])
@@ -137,37 +170,3 @@ def simulate_environment(duration: int, timeslot: int, global_rate: float, pmf: 
     event_buffer.sort(key=lambda x: x.time)
 
     return event_buffer
-
-
-def event_handler(event: Event, station_dict: dict[int, Station], nearby_nodes_dict: dict[str, dict[str, tuple]],
-                  distance_matrix: pd.DataFrame, system_bikes: dict[int, Bike], outside_system_bikes: dict[int, Bike],
-                  next_bike_id: int, logger: Logger) -> tuple[int, int]:
-    """
-    Handle the event based on its type.
-
-    Parameters:
-        - event (Event): The event object to be processed.
-        - station_dict (dict): A dictionary containing the stations in the network.
-        - nearby_nodes_dict (dict): A dictionary containing the nearby nodes for each station.
-        - distance_matrix (pd.DataFrame): A DataFrame containing the distance matrix between stations.
-        - system_bikes (dict): A dictionary containing the bikes in the system.
-        - outside_system_bikes (dict): A dictionary containing the bikes outside the system.
-
-    Returns:
-        - bool: A boolean indicating whether the event failed or not.
-        - dict: A dictionary containing the bikes in the system.
-        - dict: A dictionary containing the bikes outside the system.
-    """
-    failure = 0
-    if event.is_departure():
-        trip, next_bike_id = departure_handler(event.get_trip(), station_dict, nearby_nodes_dict, distance_matrix,
-                                 outside_system_bikes, next_bike_id)
-        if trip.is_failed():
-            failure = 1
-            logger.log_no_available_bikes(trip.get_start_location().get_station_id(), trip.get_end_location().get_station_id())
-        else:
-            logger.log_trip(trip)
-    else:
-        arrival_handler(event.get_trip(), system_bikes, outside_system_bikes)
-
-    return failure, next_bike_id

@@ -5,17 +5,17 @@ if TYPE_CHECKING:
 
 class Bike:
 
-    def __init__(self, bike_id: int, stn: "Station" = None, max_battery: float = 50.0):
+    def __init__(self, bike_id: int, station: "Station" = None, max_battery: float = 50.0):
         """
         Initialize a Bike object.
 
         Parameters:
         bike_id (int): Unique identifier for the bike.
-        stn (Station): The station where the bike is located.
+        station (Station): The station where the bike is located.
         max_battery (int): Maximum battery capacity of the bike. Default is 100 (in km).
         """
         self.bike_id = bike_id
-        self.stn = stn
+        self.station = station
         self.max_battery = max_battery
         self.battery = max_battery
         self.available = True
@@ -27,7 +27,7 @@ class Bike:
         Returns:
         str: A string describing the bike with its ID and current station.
         """
-        return f"Bike {self.bike_id} at {self.stn} - Battery: {self.battery} km - Available: {self.available}"
+        return f"Bike {self.bike_id} at {self.station} - Battery: {self.battery} km - Available: {self.available}"
 
     def set_availability(self, available: bool):
         """
@@ -38,14 +38,14 @@ class Bike:
         """
         self.available = available
 
-    def set_station(self, stn: "Station"):
+    def set_station(self, station: "Station"):
         """
         Set the station where the bike is located.
 
         Parameters:
         stn (Station): The station where the bike is located.
         """
-        self.stn = stn
+        self.station = station
 
     def set_battery(self, battery: float):
         """
@@ -63,7 +63,7 @@ class Bike:
         Returns:
         Station: The station where the bike is located.
         """
-        return self.stn
+        return self.station
 
     def get_battery(self) -> float:
         """
