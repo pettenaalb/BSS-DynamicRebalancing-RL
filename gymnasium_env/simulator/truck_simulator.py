@@ -103,27 +103,27 @@ def drop_bike(truck: Truck, distance_matrix: pd.DataFrame, mean_velocity: int, d
 def pick_up_bike(truck: Truck, station_dict: dict[int, Station], distance_matrix: pd.DataFrame,
                  mean_velocity: int, depot_node: int, depot: dict, system_bikes: dict) -> tuple[int, int, bool]:
     cell = truck.get_cell()
-    nearby_stations = {station_id: station_dict.get(station_id) for station_id in cell.get_nodes()}
     bike_dict = {}
-    for station in nearby_stations.values():
-        bike_dict.update(station.get_bikes())
+    for station_id in cell.get_nodes():
+        bike_dict.update(station_dict[station_id].get_bikes())
 
     # Flag no bike picked up
-    if len(bike_dict) == 0:
+    if cell.get_total_bikes() == 0:
         return 0, 0, False
 
     # Find max distance between truck and nearby station in order to normalize the metric
     max_distance = cell.get_diagonal()
     bikes_metric = {}
-    for bike_id, bike in bike_dict.items():
-        distance = distance_matrix.loc[truck.get_position(), bike.get_station().get_station_id()]
+    for station_id in cell.get_nodes():
+        distance = distance_matrix.loc[truck.get_position(), station_id]
         if distance > max_distance:
             max_distance = distance
-        battery = bike.get_battery() / bike.get_max_battery()
-        if distance != 0:
-            bikes_metric[bike_id] = (distance/max_distance) * (1 - battery)
-        else:
-            bikes_metric[bike_id] = (1 - battery)
+        for bike_id, bike in station_dict[station_id].get_bikes():
+            battery = bike.get_battery() / bike.get_max_battery()
+            if distance != 0:
+                bikes_metric[bike_id] = (distance/max_distance) * (1 - battery)
+            else:
+                bikes_metric[bike_id] = (1 - battery)
 
     # Find the lowest metric bike
     bike_id = min(bikes_metric, key=bikes_metric.get)
