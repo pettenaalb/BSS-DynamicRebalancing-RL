@@ -176,7 +176,7 @@ def initialize_graph(graph_path: str = None) -> nx.MultiDiGraph:
     return graph
 
 
-def initialize_bikes(stn: "Station" = None, n: int = 0, next_bike_id: int = 0) -> tuple[dict[int, "Bike"], int]:
+def initialize_bikes(station: "Station" = None, n: int = 0, next_bike_id: int = 0) -> tuple[dict[int, "Bike"], int]:
     """
     Initialize a list of bikes at a station.
 
@@ -191,11 +191,11 @@ def initialize_bikes(stn: "Station" = None, n: int = 0, next_bike_id: int = 0) -
     next_id = next_bike_id
     bikes = {}
     for i in range(n):
-        bike = Bike(stn=stn, bike_id=next_id)
+        bike = Bike(station=station, bike_id=next_id)
         next_id += 1
         bikes[bike.get_bike_id()] = bike
-        if stn is not None:
-            stn.lock_bike(bike)
+        if station is not None:
+            station.lock_bike(bike)
     return bikes, next_id
 
 
