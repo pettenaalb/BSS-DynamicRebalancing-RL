@@ -20,7 +20,7 @@ class Bike:
         self.station = station
         self.max_battery = max_battery
         self.battery = max_battery
-        self.available = True
+        self.available = False
 
     def __str__(self):
         """

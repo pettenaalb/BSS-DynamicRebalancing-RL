@@ -165,8 +165,8 @@ class BostonCity(gym.Env):
         bikes = {key: self.depot.pop(key) for key in list(self.depot.keys())[:15]}
         self.truck = Truck(cell.center_node, cell, bikes=bikes, max_load=max_truck_load)
 
-        # Initialize the day and time slot
-        self._initialize_day_timeslot(handle_first_events=True)
+        # Load the PMF matrix and global rate for the current day and time slot
+        self.pmf_matrix, self.global_rate = self._load_pmf_matrix_global_rate(self.day, self.timeslot)
 
         # Initialize stations and system bikes
         bikes_per_station = {}
@@ -201,6 +201,9 @@ class BostonCity(gym.Env):
         # Update the graph with regional metrics
         self._update_graph()
 
+        # Initialize the day and time slot
+        self._initialize_day_timeslot(handle_first_events=True)
+
         # Return the initial observation and an optional info dictionary
         observation = self._get_obs()
         info = {
@@ -223,14 +226,17 @@ class BostonCity(gym.Env):
         # Check for discrepancies in the depot + system bikes between total bikes
         self._adjust_depot_system_discrepancy()
 
-        # Perform the action and log it
+        # Initialize the variables
         t = 0
         distance = 0
-        prev_position = self.truck.get_position()
-        hours, _ = divmod((self.timeslot * 3 + 1) * 3600 + self.env_time, 3600)
-        hours = hours % 24
+
+        hours = divmod((self.timeslot * 3 + 1) * 3600 + self.env_time, 3600)[0] % 24
         mean_velocity = self.velocity_matrix.loc[hours, self.day]
+
+        prev_position = self.truck.get_position()
         bike_picked_up = False
+
+        # Perform the action
         if action == Actions.STAY.value:
             t = stay()
             self.logger.log_starting_action('STAY', t)
