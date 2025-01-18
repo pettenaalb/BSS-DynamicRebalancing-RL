@@ -123,26 +123,22 @@ def pick_up_bike(truck: Truck, station_dict: dict[int, Station], distance_matrix
             if distance > max_distance:
                 max_distance = distance
             for bike_id, bike in station_dict.get(station_id).get_bikes().items():
-                battery = bike.get_battery() / bike.get_max_battery()
+                norm_batt = bike.get_battery() / bike.get_max_battery()
                 if distance != 0:
-                    bikes_metric[bike_id] = distance * (1 - battery)
+                    bikes_metric[bike_id] = distance * norm_batt
                 else:
-                    bikes_metric[bike_id] = (1 - battery)
+                    bikes_metric[bike_id] = norm_batt
 
-    for bike_id in bikes_metric.keys():
-        bikes_metric[bike_id] = bikes_metric[bike_id] / max_distance
+    # Normalize the metric
+    if max_distance != 0:
+        for bike_id in bikes_metric.keys():
+            bikes_metric[bike_id] = bikes_metric[bike_id] / max_distance
 
     # Find the lowest metric bike
     bike_id = min(bikes_metric, key=bikes_metric.get)
     station = bike_dict[bike_id].get_station()
 
-    try:
-        distance = distance_matrix.loc[truck.get_position(), station.get_station_id()]
-    except Exception as e:
-        log = bike_dict[bike_id].get_log()
-        print(log)
-        print(e)
-        raise e
+    distance = distance_matrix.loc[truck.get_position(), station.get_station_id()]
     velocity_kmh = truncated_gaussian(10, 70, mean_velocity, 5)
     time = int(distance * 3.6 / velocity_kmh)
 

@@ -31,15 +31,15 @@ class Bike:
         """
         return f"Bike {self.bike_id} at {self.station} - Battery: {self.battery} km - Available: {self.available}"
 
-    def __getattribute__(self, name):
-        if name != "log":  # Avoid accessing log recursively
-            super().__getattribute__('log').append(f"Accessing {name}")
-        return super().__getattribute__(name)
-
-    def __setattr__(self, name, value):
-        if name != "log":  # Avoid accessing log recursively
-            super().__getattribute__('log').append(f"Setting {name} to {value}")
-        super().__setattr__(name, value)
+    # def __getattribute__(self, name):
+    #     if name != "log":  # Avoid accessing log recursively
+    #         super().__getattribute__('log').append(f"Accessing {name}")
+    #     return super().__getattribute__(name)
+    #
+    # def __setattr__(self, name, value):
+    #     if name != "log":  # Avoid accessing log recursively
+    #         super().__getattribute__('log').append(f"Setting {name} to {value}")
+    #     super().__setattr__(name, value)
 
     def set_availability(self, available: bool):
         """
