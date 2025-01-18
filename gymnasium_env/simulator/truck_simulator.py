@@ -1,3 +1,5 @@
+from types import NoneType
+
 import pandas as pd
 
 from gymnasium_env.simulator.cell import Cell
@@ -130,7 +132,13 @@ def pick_up_bike(truck: Truck, station_dict: dict[int, Station], distance_matrix
 
     station = bike_dict[bike_id].get_station()
 
-    distance = distance_matrix.loc[truck.get_position(), station.get_station_id()]
+    try:
+        distance = distance_matrix.loc[truck.get_position(), station.get_station_id()]
+    except Exception as e:
+        log = bike_dict[bike_id].get_log()
+        print(log)
+        print(e)
+        raise e
     velocity_kmh = truncated_gaussian(10, 70, mean_velocity, 5)
     time = int(distance * 3.6 / velocity_kmh)
 

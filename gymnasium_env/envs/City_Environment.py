@@ -67,7 +67,6 @@ class BostonCity(gym.Env):
         # Initialize the cells
         with open(data_path + params['cell_file'], 'rb') as file:
             self.cells = pickle.load(file)
-        self.depot_node = self.cells.get(491).get_center_node()
 
         # Initialize the distance matrix
         self.distance_matrix = pd.read_csv(data_path + params['distance_matrix_file'], index_col='osmid')
@@ -113,10 +112,12 @@ class BostonCity(gym.Env):
         self.background_thread = None
         self.discount_factor = 0.99
 
+        # Initialize the depot
+        self.depot_node = self.cells.get(491).get_center_node()
         self.depot, self.next_bike_id = initialize_bikes(n=self.maximum_number_of_bikes, next_bike_id=self.next_bike_id)
 
         # Set logging options
-        self.logging = True
+        self.logging = False
         self.logger.set_logging(self.logging)
 
 
@@ -128,6 +129,9 @@ class BostonCity(gym.Env):
     def reset(self, seed=None, options=None) -> tuple[np.array, dict]:
         # Call parent class reset
         super().reset(seed=seed)
+
+        #Enabling the logging
+        self.logging = options.get('logging', False) if options else False
 
         # Update day and time slot if provided in options
         self.day = options.get('day', 'monday') if options else 'monday'

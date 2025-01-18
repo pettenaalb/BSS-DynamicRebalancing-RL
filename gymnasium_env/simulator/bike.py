@@ -14,6 +14,8 @@ class Bike:
         station (Station): The station where the bike is located.
         max_battery (int): Maximum battery capacity of the bike. Default is 100 (in km).
         """
+        super().__setattr__('log', [])
+
         self.bike_id = bike_id
         self.station = station
         self.max_battery = max_battery
@@ -28,6 +30,16 @@ class Bike:
         str: A string describing the bike with its ID and current station.
         """
         return f"Bike {self.bike_id} at {self.station} - Battery: {self.battery} km - Available: {self.available}"
+
+    def __getattribute__(self, name):
+        if name != "log":  # Avoid accessing log recursively
+            super().__getattribute__('log').append(f"Accessing {name}")
+        return super().__getattribute__(name)
+
+    def __setattr__(self, name, value):
+        if name != "log":  # Avoid accessing log recursively
+            super().__getattribute__('log').append(f"Setting {name} to {value}")
+        super().__setattr__(name, value)
 
     def set_availability(self, available: bool):
         """
@@ -100,3 +112,13 @@ class Bike:
         float: The maximum battery capacity of the bike.
         """
         return self.max_battery
+
+
+    def get_log(self) -> list:
+        """
+        Get the log of attribute accesses and settings.
+
+        Returns:
+        list: A list of log entries.
+        """
+        return self.log

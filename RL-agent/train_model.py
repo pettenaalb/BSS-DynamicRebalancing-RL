@@ -57,6 +57,7 @@ CHAT_ID = '16830298'
 
 enable_checkpoint = False
 restore_from_checkpoint = False
+enable_logging = False
 
 # ----------------------------------------------------------------------------------------------------------------------
 
@@ -79,7 +80,10 @@ def train_dueling_dqn(agent: DQNAgent, batch_size: int) -> tuple[list, list]:
         'total_timeslots': params["total_timeslots"],
         'maximum_number_of_bikes': params["maximum_number_of_bikes"],
         'discount_factor': params["gamma"],
+        'logging': enable_logging
     }
+
+    print(enable_telegram, enable_logging)
 
     # if restore_from_checkpoint:
     #     agent, environment, state, other = restore_checkpoint(data_path + 'checkpoints/DuelingDQN.pt')
@@ -357,6 +361,7 @@ if __name__ == '__main__':
     parser.add_argument('--enable_telegram', action='store_true', help='Enable Telegram notifications.')
     parser.add_argument('--data_path', type=str, default='../data/', help='Path to the data folder.')
     parser.add_argument('--cuda_device', type=int, default=0, help='CUDA device to use.')
+    parser.add_argument('--enable_logging', action='store_true', help='Enable logging.')
 
     args = parser.parse_args()
 
@@ -368,5 +373,8 @@ if __name__ == '__main__':
 
     if args.cuda_device and torch.cuda.is_available():
         device = torch.device(f"cuda:{args.cuda_device}")
+
+    if args.enable_logging:
+        enable_logging = True
 
     main()
