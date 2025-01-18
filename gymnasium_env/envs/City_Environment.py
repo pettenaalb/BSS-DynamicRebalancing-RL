@@ -597,9 +597,9 @@ class BostonCity(gym.Env):
 
         if depot_load + system_load < self.maximum_number_of_bikes:
             n_bikes = self.maximum_number_of_bikes - depot_load - system_load
-            bikes, self.next_bike_id = initialize_bikes(n=n_bikes, next_bike_id=self.next_bike_id)
-            self.depot.update(bikes)
-
+            for _ in range(n_bikes):
+                bike = self.outside_system_bikes.pop(next(iter(self.outside_system_bikes)))
+                self.depot[bike.get_bike_id()] = bike
 
     def _check_bikes_in_system(self):
         for bike_id, bike in self.system_bikes.items():
