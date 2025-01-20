@@ -94,6 +94,7 @@ class BostonCity(gym.Env):
         # Initialize simulation state variables
         self.pmf_matrix, self.global_rate, self.global_rate_dict = None, None, None
         self.system_bikes, self.outside_system_bikes = None, None
+        self.depot, self.depot_node = None, None
         self.maximum_number_of_bikes = 3500
         self.current_cell_id = None
         self.stations = None
@@ -101,7 +102,6 @@ class BostonCity(gym.Env):
         self.event_buffer = None
         self.next_event_buffer = None
         self.env_time = 0
-        self.energy_cost_per_time = 0
         self.timeslot = 0
         self.day = 'monday'
         self.cell_subgraph = None
@@ -112,23 +112,23 @@ class BostonCity(gym.Env):
         self.background_thread = None
         self.discount_factor = 0.99
 
-        # Initialize the depot
-        self.depot_node = self.cells.get(491).get_center_node()
-        self.depot, self.next_bike_id = initialize_bikes(n=self.maximum_number_of_bikes, next_bike_id=self.next_bike_id)
-
         # Set logging options
         self.logging = False
         self.logger.set_logging(self.logging)
 
 
-    def seed(self, seed=None):
-        self.np_random, seed = seeding.np_random(seed)
-        return [seed]
-
-
     def reset(self, seed=None, options=None) -> tuple[np.array, dict]:
         # Call parent class reset
         super().reset(seed=seed)
+
+        # Reset the cells
+        for cell in self.cells.values():
+            cell.reset()
+
+        # Initialize the depot
+        self.next_bike_id = 0
+        self.depot_node = self.cells.get(491).get_center_node()
+        self.depot, self.next_bike_id = initialize_bikes(n=self.maximum_number_of_bikes, next_bike_id=self.next_bike_id)
 
         #Enabling the logging
         self.logging = options.get('logging', False) if options else False
@@ -140,6 +140,12 @@ class BostonCity(gym.Env):
 
         self.total_timeslots = options.get('total_timeslots', 2*365*8) if options else 2*365*8
         self.maximum_number_of_bikes = options.get('maximum_number_of_bikes', self.maximum_number_of_bikes) if options else self.maximum_number_of_bikes
+
+        self.timeslots_completed = 0
+        self.days_completed = 0
+
+        self.event_buffer = None
+        self.next_event_buffer = None
 
         # Create stations dictionary
         from gymnasium_env.simulator.station import Station
@@ -170,7 +176,7 @@ class BostonCity(gym.Env):
 
         # Initialize stations and system bikes
         bikes_per_station = {}
-        std_dev = 1.0
+        std_dev = 0.0
         for stn_id, stn in self.stations.items():
             base_bikes = int(self.pmf_matrix.loc[stn_id, :].sum() * int(self.maximum_number_of_bikes*0.8))
             noise = random.gauss(0, std_dev) * base_bikes
@@ -184,8 +190,6 @@ class BostonCity(gym.Env):
             # Scale down proportionally if we exceed the total
             scale_factor = self.maximum_number_of_bikes*0.8 / current_total
             bikes_per_station = {stn_id: int(bikes * scale_factor) for stn_id, bikes in bikes_per_station.items()}
-
-        print(f"Current total bikes: {current_total}")
 
         # Initialize the system bikes
         self.system_bikes, self.outside_system_bikes, self.next_bike_id = initialize_stations(
@@ -346,6 +350,16 @@ class BostonCity(gym.Env):
 
         # Return the step results
         return observation, reward, done, terminated, info
+
+
+    def seed(self, seed=None):
+        self.np_random, seed = seeding.np_random(seed)
+        return [seed]
+
+
+    def close(self):
+        """Clean up resources."""
+        self.background_thread.join()
 
 
     def _precompute_poisson_events(self):
@@ -543,8 +557,8 @@ class BostonCity(gym.Env):
             center_node = cell.get_center_node()
 
             # Initialize regional metrics
-            demand_rate, average_battery_level = 0.0, 0.0
-            low_battery_ratio, variance_battery_level = 0.0, 0.0
+            demand_rate, bike_load = 0.0, cell.get_total_bikes()/500
+            average_battery_level, low_battery_ratio, variance_battery_level = 0.0, 0.0, 0.0
 
             # Aggregate metrics for nodes in the cell
             for node in cell.nodes:
@@ -573,7 +587,7 @@ class BostonCity(gym.Env):
                 self.cell_subgraph.nodes[center_node]['average_battery_level'] = average_battery_level
                 self.cell_subgraph.nodes[center_node]['low_battery_ratio'] = low_battery_ratio
                 self.cell_subgraph.nodes[center_node]['variance_battery_level'] = variance_battery_level
-                self.cell_subgraph.nodes[center_node]['total_bikes'] = cell.get_total_bikes() / len(self.system_bikes)
+                self.cell_subgraph.nodes[center_node]['total_bikes'] = cell.get_total_bikes() / num_nodes
 
 
     def _get_truck_position(self) -> tuple[float, float]:
@@ -581,10 +595,6 @@ class BostonCity(gym.Env):
         normalized_coords = ((truck_coords[0] - self.min_lat) / (self.max_lat - self.min_lat),
                              (truck_coords[1] - self.min_lon) / (self.max_lon - self.min_lon))
         return normalized_coords
-
-
-    def _get_system_data(self) -> tuple[dict, dict, dict]:
-        return self.stations, self.system_bikes, self.outside_system_bikes
 
 
     def _adjust_depot_system_discrepancy(self):
@@ -601,14 +611,11 @@ class BostonCity(gym.Env):
                 bike = self.outside_system_bikes.pop(next(iter(self.outside_system_bikes)))
                 self.depot[bike.get_bike_id()] = bike
 
+
     def _check_bikes_in_system(self):
         for bike_id, bike in self.system_bikes.items():
             if bike.get_station() is None:
                 print(f"Error: Bike {bike_id} is not in a station.")
-
-    def close(self):
-        """Clean up resources."""
-        self.background_thread.join()
 
 
     def save(self):
@@ -626,7 +633,6 @@ class BostonCity(gym.Env):
             "event_buffer": self.event_buffer,
             "next_event_buffer": self.next_event_buffer,
             "env_time": self.env_time,
-            "energy_cost_per_time": self.energy_cost_per_time,
             "timeslot": self.timeslot,
             "day": self.day,
             "cell_subgraph": self.cell_subgraph,
@@ -653,7 +659,6 @@ class BostonCity(gym.Env):
         self.event_buffer = state["event_buffer"]
         self.next_event_buffer = state["next_event_buffer"]
         self.env_time = state["env_time"]
-        self.energy_cost_per_time = state["energy_cost_per_time"]
         self.timeslot = state["timeslot"]
         self.day = state["day"]
         self.cell_subgraph = state["cell_subgraph"]

@@ -85,3 +85,6 @@ class Cell:
 
     def get_capacity(self) -> int:
         return self.capacity
+
+    def reset(self):
+        self.total_bikes = 0

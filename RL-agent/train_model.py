@@ -36,20 +36,18 @@ np.random.seed(seed)
 torch.manual_seed(seed)
 
 params = {
-    "num_episodes": 1,                  # Total number of training episodes
-    "batch_size": 32,                   # Batch size for replay buffer sampling
-    "replay_buffer_capacity": 10000,    # Capacity of replay buffer
+    "num_episodes": 24,                 # Total number of training episodes
+    "batch_size": 256,                  # Batch size for replay buffer sampling
+    "replay_buffer_capacity": 1e6,      # Capacity of replay buffer: 1 million transitions
     "gamma": 0.99,                      # Discount factor
     "epsilon_start": 1.0,               # Starting exploration rate
     "epsilon_delta": 0.05,
     "epsilon_end": 0.00,                # Minimum exploration rate
     "epsilon_decay": 500,               # Epsilon decay rate
     "lr": 1e-3,                         # Learning rate
-    "total_timeslots": 5840,            # Total number of time slots in two years
+    "total_timeslots": 224,             # Total number of time slots in two years
     "maximum_number_of_bikes": 3500,    # Maximum number of bikes in the system
 }
-
-days2num = {'monday': 0, 'tuesday': 1, 'wednesday': 2, 'thursday': 3, 'friday': 4, 'saturday': 5, 'sunday': 6}
 
 enable_telegram = False
 BOT_TOKEN = '7911945908:AAHkp-x7at3fIadrlmahcTB1G6_ni2awbt4'
@@ -61,7 +59,7 @@ enable_logging = False
 
 # ----------------------------------------------------------------------------------------------------------------------
 
-def train_dueling_dqn(agent: DQNAgent, batch_size: int) -> tuple[list, list]:
+def train_dueling_dqn(agent: DQNAgent, batch_size: int, episode: int, tbar: tqdm | tqdm_telegram) -> dict:
     """
     Trains a Dueling Deep Q-Network agent using experience replay.
 
@@ -83,24 +81,6 @@ def train_dueling_dqn(agent: DQNAgent, batch_size: int) -> tuple[list, list]:
         'logging': enable_logging
     }
 
-    print(enable_telegram, enable_logging)
-
-    # if restore_from_checkpoint:
-    #     agent, environment, state, other = restore_checkpoint(data_path + 'checkpoints/DuelingDQN.pt')
-    #     env.load(environment)
-    #
-    #     # Initialize episode metrics
-    #     timeslot = other['timeslot']
-    #     timeslots_completed = other['timeslots_completed']
-    #     rewards_per_timeslot = other['rewards_per_timeslot']
-    #     total_reward = other['total_reward']
-    #     failures_per_timeslot = other['failures_per_timeslot']
-    #     q_values_per_timeslot = other['q_values_per_timeslot']
-    #     action_per_step = other['action_per_step']
-    #     truck_path = other['truck_path']
-    #     truck_path_per_timeslot = other['truck_path_per_timeslot']
-    # else:
-
     agent_state, info = env.reset(options=options)
 
     state = convert_graph_to_data(info['cells_subgraph'])
@@ -120,26 +100,6 @@ def train_dueling_dqn(agent: DQNAgent, batch_size: int) -> tuple[list, list]:
     truck_path_per_timeslot = []
 
     not_done = True
-
-    # Progress bar for the episode
-    if enable_telegram:
-        tbar = tqdm_telegram(
-            range(params["total_timeslots"]),
-            desc="Training Year 1, Week 1, Monday at 01:00:00",
-            position=0,
-            leave=True,
-            dynamic_ncols=True,
-            token=BOT_TOKEN,
-            chat_id=CHAT_ID
-        )
-    else:
-        tbar = tqdm(
-            range(params["total_timeslots"]),
-            desc="Training Year 1, Week 1, Monday at 01:00:00",
-            position=0,
-            leave=True,
-            dynamic_ncols=True
-        )
 
     while not_done:
         # Prepare the state for the agent
@@ -207,47 +167,8 @@ def train_dueling_dqn(agent: DQNAgent, batch_size: int) -> tuple[list, list]:
                 q_values_per_timeslot.append((q_values.squeeze().cpu().numpy(), agent.epsilon))
 
             # Log progress
-            time_elapsed = info['time']
-            day = info['day']
-            week = info['week'] % 52
-            year = info['year']
-            # print(f"\rProcessing... Year {year + 1}, Week {week}, {day.capitalize()}, {convert_seconds_to_hours_minutes(time_elapsed)}",
-            #       end="", flush=True)
-            tbar.set_description(f"Year {year + 1}, Week {week}, {day.capitalize()} at {convert_seconds_to_hours_minutes(time_elapsed)}")
-
-            # Save result lists
-            results_path = '../results/training/data/'
-            with open(results_path + 'rewards_per_timeslot.pkl', 'wb') as f:
-                pickle.dump(rewards_per_timeslot, f)
-            with open(results_path + 'failures_per_timeslot.pkl', 'wb') as f:
-                pickle.dump(failures_per_timeslot, f)
-            with open(results_path + 'q_values_per_timeslot.pkl', 'wb') as f:
-                pickle.dump(q_values_per_timeslot, f)
-            with open(results_path + 'action_per_step.pkl', 'wb') as f:
-                pickle.dump(action_per_step, f)
-            with open(results_path + 'truck_path_per_timeslot.pkl', 'wb') as f:
-                pickle.dump(truck_path_per_timeslot, f)
-
-            # # Save checkpoint
-            # if enable_checkpoint:
-            #     other = {
-            #         'timeslot': timeslot,
-            #         'timeslots_completed': timeslots_completed,
-            #         'rewards_per_timeslot': rewards_per_timeslot,
-            #         'total_reward': total_reward,     # BUG!!
-            #         'failures_per_timeslot': failures_per_timeslot,
-            #         'q_values_per_timeslot': q_values_per_timeslot,
-            #         'action_per_step': action_per_step,
-            #         'truck_path': truck_path,
-            #         'truck_path_per_timeslot': truck_path_per_timeslot
-            #     }
-            #
-            #     save_checkpoint(agent=agent, environment=env.save(), state=state, other=other,
-            #                     path=data_path + 'checkpoints/DuelingDQN.pt')
-
-            # Update progress bar
-            tbar.set_postfix({'epsilon': agent.epsilon, 'failures': total_failures})
-            tbar.update(1)
+            tbar.set_description(f"Episode {episode}, Week {info['week'] % 52}, {info['day'].capitalize()} "
+                                 f"at {convert_seconds_to_hours_minutes(info['time'])}")
 
             # Reset time slot metrics
             total_reward = 0
@@ -255,56 +176,21 @@ def train_dueling_dqn(agent: DQNAgent, batch_size: int) -> tuple[list, list]:
             truck_path = []
             timeslot = 0 if timeslot == 7 else timeslot + 1
 
+            # Update progress bar
+            tbar.set_postfix({'epsilon': agent.epsilon, 'failures': failures_per_timeslot[-1][0]})
+            tbar.update(1)
+
     tbar.close()
     env.close()
 
-    return rewards_per_timeslot, failures_per_timeslot
-
-# ----------------------------------------------------------------------------------------------------------------------
-
-def save_checkpoint(agent: DQNAgent, environment: dict, state: Data, other: dict, path: str):
-    """
-    Saves the agent, replay buffer, environment, and state to a checkpoint file.
-
-    Parameters:
-        - agent (DQNAgent): The agent to save.
-        - replay_buffer (ReplayBuffer): The replay buffer to save.
-        - environment (gym.Env): The environment to save.
-        - state (Data): The state to save.
-        - path (str): The path to save the checkpoint file.
-    """
-    checkpoint = {
-        "agent": agent,
-        "environment": environment,
-        "state": state,
-        "other": other,
-        "train_model_dict": agent.train_model.state_dict(),
-        "target_model_dict": agent.target_model.state_dict(),
+    results = {
+        "rewards_per_timeslot": rewards_per_timeslot,
+        "failures_per_timeslot": failures_per_timeslot,
+        "q_values_per_timeslot": q_values_per_timeslot,
+        "action_per_step": action_per_step
     }
-    torch.save(checkpoint, path)
 
-
-def restore_checkpoint(path: str) -> tuple[DQNAgent, gymnasium_env, Data, dict]:
-    """
-    Restores the agent, replay buffer, environment, and state from a checkpoint file.
-
-    Parameters:
-        - path (str): The path to the checkpoint file.
-
-    Returns:
-        - agent (DQNAgent): The restored agent.
-        - replay_buffer (ReplayBuffer): The restored replay buffer.
-        - environment (gym.Env): The restored environment.
-        - state (Data): The restored state.
-    """
-    checkpoint = torch.load(path)
-    agent = checkpoint["agent"]
-    environment = checkpoint["environment"]
-    state = checkpoint["state"]
-    other = checkpoint["other"]
-    agent.train_model.load_state_dict(checkpoint["train_model_dict"])
-    agent.target_model.load_state_dict(checkpoint["target_model_dict"])
-    return agent, environment, state, other
+    return results
 
 # ----------------------------------------------------------------------------------------------------------------------
 
@@ -312,11 +198,6 @@ def main():
     print(f"Device in use: {device}\n")
     # Set up replay buffer
     replay_buffer = ReplayBuffer(params["replay_buffer_capacity"], device)
-
-    results_path = '../results/training/data'
-    if not os.path.exists(results_path):
-        os.makedirs(results_path)
-        print(f"Directory '{results_path}' created.")
 
     # Initialize the DQN agent
     agent = DQNAgent(
@@ -332,7 +213,43 @@ def main():
 
     # Train the agent using the training loop
     try:
-        train_dueling_dqn(agent, batch_size=params["batch_size"])
+        # Progress bar for the episode
+        if enable_telegram:
+            tbar = tqdm_telegram(
+                range(params["total_timeslots"]*params["num_episodes"]),
+                desc="Training Episode, Week 1, Monday at 01:00:00",
+                position=0,
+                leave=True,
+                dynamic_ncols=True,
+                token=BOT_TOKEN,
+                chat_id=CHAT_ID
+            )
+        else:
+            tbar = tqdm(
+                range(params["total_timeslots"]*params["num_episodes"]),
+                desc="Training Year 1, Week 1, Monday at 01:00:00",
+                position=0,
+                leave=True,
+                dynamic_ncols=True
+            )
+
+        for episode in range(params["num_episodes"]):
+            results = train_dueling_dqn(agent, params["batch_size"], episode, tbar)
+
+            # Save result lists
+            results_path = '../results/training/data/'+ str(episode).zfill(2) + '/'
+            if not os.path.exists(results_path):
+                os.makedirs(results_path)
+                print(f"Directory '{results_path}' created.")
+
+            with open(results_path + 'rewards_per_timeslot.pkl', 'wb') as f:
+                pickle.dump(results['rewards_per_timeslot'], f)
+            with open(results_path + 'failures_per_timeslot.pkl', 'wb') as f:
+                pickle.dump(results['failures_per_timeslot'], f)
+            with open(results_path + 'q_values_per_timeslot.pkl', 'wb') as f:
+                pickle.dump(results['q_values_per_timeslot'], f)
+            with open(results_path + 'action_per_step.pkl', 'wb') as f:
+                pickle.dump(results['action_per_step'], f)
     except Exception as e:
         if enable_telegram:
             send_telegram_message(f"An error occurred during training: {e}", BOT_TOKEN, CHAT_ID)
@@ -353,7 +270,8 @@ def main():
     agent.save_model(trained_models_folder + '/DuelingDQN.pt')
 
     # Print the rewards after training
-    print("Training completed.")
+    print("\nTraining completed.")
+    send_telegram_message("Training completed.", BOT_TOKEN, CHAT_ID)
 
 
 if __name__ == '__main__':

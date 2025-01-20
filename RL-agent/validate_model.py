@@ -140,7 +140,7 @@ def validate_dueling_dqn(agent: DQNAgent) -> tuple[list, list]:
         # Update the state and metrics
         state = next_state
         total_reward += reward
-        total_failures += info['failures']
+        total_failures += sum(info['failures'])
         truck_path.append((info['path'], timeslots_completed))
 
         # Check if the episode is complete

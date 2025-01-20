@@ -7,10 +7,10 @@ from utils import plot_data_online, plot_confusion_matrix
 from collections import defaultdict
 
 # CHANGE THIS VARIABLE TO 'train' OR 'validate'
-MODE = 'validate'
+MODE = 'train'
 
 action_bin_labels = ['STAY', 'RIGHT', 'UP', 'LEFT', 'DOWN', 'DROP_BIKE', 'PICK_UP_BIKE', 'CHARGE_BIKE']
-epsilon_threshold = 0.1
+epsilon_threshold = 1.1
 
 days2num = {'monday': 0, 'tuesday': 1, 'wednesday': 2, 'thursday': 3, 'friday': 4, 'saturday': 5, 'sunday': 6}
 num2days = {0: 'monday', 1: 'tuesday', 2: 'wednesday', 3: 'thursday', 4: 'friday', 5: 'saturday', 6: 'sunday'}

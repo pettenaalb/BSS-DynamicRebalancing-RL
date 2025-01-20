@@ -112,7 +112,7 @@ class Station:
             self.bikes[bike.get_bike_id()] = bike
             self.cell.set_total_bikes(self.cell.get_total_bikes() + 1)
         else:
-            raise ValueError("Station is full. Cannot lock bike.")
+            raise ValueError("Station is full. Cannot lock bike. Dimension: " + str(len(self.bikes)) + "/" + str(self.capacity))
 
     def get_station_id(self) -> int:
         """
