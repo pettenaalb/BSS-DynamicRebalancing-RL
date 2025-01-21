@@ -215,7 +215,7 @@ def train_dueling_dqn(agent: DQNAgent, batch_size: int, episode: int, tbar: tqdm
 def main():
     print(f"Device in use: {device}\n")
     # Set up replay buffer
-    replay_buffer = ReplayBuffer(params["replay_buffer_capacity"], device)
+    replay_buffer = ReplayBuffer(params["replay_buffer_capacity"])
 
     # Initialize the DQN agent
     agent = DQNAgent(
