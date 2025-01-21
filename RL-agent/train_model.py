@@ -156,7 +156,7 @@ def train_dueling_dqn(agent: DQNAgent, batch_size: int, episode: int, tbar: tqdm
         # Check if the episode is complete
         not_done = not done
 
-        inner_tbar.update(info['steps'])
+        inner_tbar.update(info['steps']+1)
 
         if timeslot_terminated:
             timeslots_completed += 1
@@ -185,6 +185,8 @@ def train_dueling_dqn(agent: DQNAgent, batch_size: int, episode: int, tbar: tqdm
             total_failures = 0
             truck_path = []
             timeslot = 0 if timeslot == 7 else timeslot + 1
+
+            inner_tbar.reset()
 
             # Update progress bar
             tbar.set_postfix({'epsilon': agent.epsilon, 'failures': failures_per_timeslot[-1][0]})
