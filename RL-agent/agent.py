@@ -119,33 +119,33 @@ class DQNAgent:
         loader = DataLoader(b, batch_size=batch_size, follow_batch=['x_s', 'x_t'])
         batch = next(iter(loader))
 
-        try:
-            # Compute Q-values for the current states and selected actions, Q(s, a)
-            train_q_values = self.train_model(batch, 's').gather(1, batch.actions)
+        # try:
+        # Compute Q-values for the current states and selected actions, Q(s, a)
+        train_q_values = self.train_model(batch, 's').gather(1, batch.actions)
 
-            # Compute target Q-values
-            with torch.no_grad():
-                next_q_values = self.target_model(batch, 't').max(dim=1, keepdim=True)[0]
+        # Compute target Q-values
+        with torch.no_grad():
+            next_q_values = self.target_model(batch, 't').max(dim=1, keepdim=True)[0]
 
-                # Discount factor for the terminal state
-                discount = self.gamma ** (batch.steps + 1)
+            # Discount factor for the terminal state
+            discount = self.gamma ** (batch.steps + 1)
 
-                # Final target Q-value equation
-                target_q_values = batch.reward + discount * next_q_values * (1 - batch.done.float())
+            # Final target Q-value equation
+            target_q_values = batch.reward + discount * next_q_values * (1 - batch.done.float())
 
-            # Compute loss
-            loss = F.smooth_l1_loss(train_q_values, target_q_values)
+        # Compute loss
+        loss = F.smooth_l1_loss(train_q_values, target_q_values)
 
-            # Optimize the model
-            self.optimizer.zero_grad()
-            loss.backward()
-            for param in self.train_model.parameters():
-                param.grad.data.clamp_(-1, 1)  # Gradient clipping for stability
-            self.optimizer.step()
-        finally:
-            # Explicitly free up GPU memory for the batch
-            del batch
-            torch.cuda.empty_cache()
+        # Optimize the model
+        self.optimizer.zero_grad()
+        loss.backward()
+        for param in self.train_model.parameters():
+            param.grad.data.clamp_(-1, 1)  # Gradient clipping for stability
+        self.optimizer.step()
+        # finally:
+        #     # Explicitly free up GPU memory for the batch
+        #     del batch
+        #     torch.cuda.empty_cache()
 
 
     def save_model(self, file_path):

@@ -101,6 +101,14 @@ def train_dueling_dqn(agent: DQNAgent, batch_size: int, episode: int, tbar: tqdm
 
     not_done = True
 
+    inner_tbar = tqdm(
+        range(360),
+        desc="Timeslot training",
+        position=1,
+        leave=False,
+        dynamic_ncols=True
+    )
+
     while not_done:
         # Prepare the state for the agent
         single_state = Data(
@@ -147,6 +155,8 @@ def train_dueling_dqn(agent: DQNAgent, batch_size: int, episode: int, tbar: tqdm
 
         # Check if the episode is complete
         not_done = not done
+
+        inner_tbar.update(info['steps'])
 
         if timeslot_terminated:
             timeslots_completed += 1
