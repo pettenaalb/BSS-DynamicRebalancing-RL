@@ -23,7 +23,7 @@ class PairData(Data):
 
 
 class ReplayBuffer:
-    def __init__(self, max_size=int(1e6), device='cpu'):
+    def __init__(self, max_size=int(1e6)):
         """
         Replay buffer for storing transitions with support for PairData objects.
 
@@ -33,7 +33,7 @@ class ReplayBuffer:
         """
         self.buffer = []
         self.buffer_size = max_size
-        self.device = device
+        self.device = 'cpu'
 
     def push(self, state, action, reward, next_state, done):
         """
@@ -48,17 +48,19 @@ class ReplayBuffer:
         """
         # Create a PairData transition
         transition = PairData(
-            x_s=state.x, edge_index_s=state.edge_index, edge_attr_s=state.edge_attr, edge_type_s=state.edge_type,
-            x_t=next_state.x, edge_index_t=next_state.edge_index, edge_attr_t=next_state.edge_attr, edge_type_t=next_state.edge_type
+            x_s=state.x.cpu().detach(), edge_index_s=state.edge_index.cpu().detach(),
+            edge_attr_s=state.edge_attr.cpu().detach(), edge_type_s=state.edge_type.cpu().detach(),
+            x_t=next_state.x.cpu().detach(), edge_index_t=next_state.edge_index.cpu().detach(),
+            edge_attr_t=next_state.edge_attr.cpu().detach(), edge_type_t=next_state.edge_type.cpu().detach()
         )
 
         # Add additional attributes to the transition
-        transition.agent_state = torch.tensor(state.agent_state, dtype=torch.float32).unsqueeze(dim=0)
-        transition.actions = torch.tensor([action]).unsqueeze(dim=1)
-        transition.reward = torch.tensor([reward], dtype=torch.float32).unsqueeze(dim=1)
-        transition.agent_next_state = torch.tensor(next_state.agent_state, dtype=torch.float32).unsqueeze(dim=0)
-        transition.done = torch.tensor([done]).unsqueeze(dim=1)
-        transition.steps = torch.tensor([state.steps]).unsqueeze(dim=1)
+        transition.agent_state = torch.tensor(state.agent_state, dtype=torch.float32, device=self.device).unsqueeze(dim=0)
+        transition.actions = torch.tensor([action], device=self.device).unsqueeze(dim=1)
+        transition.reward = torch.tensor([reward], dtype=torch.float32, device=self.device).unsqueeze(dim=1)
+        transition.agent_next_state = torch.tensor(next_state.agent_state, dtype=torch.float32, device=self.device).unsqueeze(dim=0)
+        transition.done = torch.tensor([done], device=self.device).unsqueeze(dim=1)
+        transition.steps = torch.tensor([state.steps], device=self.device).unsqueeze(dim=1)
 
         # Maintain buffer size by removing oldest transition if full
         if len(self.buffer) >= self.buffer_size:

@@ -344,7 +344,7 @@ class BostonCity(gym.Env):
         if self.timeslots_completed == self.total_timeslots:   # 2 years
             done = True
             # Print the total number of bikes in the environment
-            print(f"Total number of bikes in the environment: {len(self.system_bikes)}")
+            # print(f"Total number of bikes in the environment: {len(self.system_bikes)}")
         else:
             done = False
 

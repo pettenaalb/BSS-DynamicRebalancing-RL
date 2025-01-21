@@ -2,6 +2,7 @@ import os
 import pickle
 import torch
 import argparse
+import gc
 
 import gymnasium_env.register_env
 
@@ -194,10 +195,11 @@ def train_dueling_dqn(agent: DQNAgent, batch_size: int, episode: int, tbar: tqdm
 
         # Explicitly delete single_state and free up GPU memory
         del single_state
+        gc.collect()
         torch.cuda.empty_cache()
 
-    tbar.close()
     env.close()
+    inner_tbar.close()
 
     results = {
         "rewards_per_timeslot": rewards_per_timeslot,
@@ -266,6 +268,8 @@ def main():
                 pickle.dump(results['q_values_per_timeslot'], f)
             with open(results_path + 'action_per_step.pkl', 'wb') as f:
                 pickle.dump(results['action_per_step'], f)
+
+        tbar.close()
     except Exception as e:
         if enable_telegram:
             send_telegram_message(f"An error occurred during training: {e}", BOT_TOKEN, CHAT_ID)
