@@ -133,10 +133,6 @@ def train_dueling_dqn(agent: DQNAgent, batch_size: int, episode: int, tbar: tqdm
         action = agent.select_action(single_state, avoid_action=avoid_action)
         action_per_step.append((action, agent.epsilon))
 
-        # Explicitly delete single_state and free up GPU memory
-        del single_state
-        torch.cuda.empty_cache()
-
         # Step the environment with the chosen action
         agent_state, reward, done, timeslot_terminated, info = env.step(action)
 
@@ -195,6 +191,10 @@ def train_dueling_dqn(agent: DQNAgent, batch_size: int, episode: int, tbar: tqdm
             # Update progress bar
             tbar.set_postfix({'epsilon': agent.epsilon, 'failures': failures_per_timeslot[-1][0]})
             tbar.update(1)
+
+        # Explicitly delete single_state and free up GPU memory
+        del single_state
+        torch.cuda.empty_cache()
 
     tbar.close()
     env.close()
