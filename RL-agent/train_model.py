@@ -195,7 +195,6 @@ def train_dueling_dqn(agent: DQNAgent, batch_size: int, episode: int, tbar: tqdm
 
         # Explicitly delete single_state and free up GPU memory
         del single_state
-        gc.collect()
         torch.cuda.empty_cache()
 
     env.close()
@@ -268,6 +267,8 @@ def main():
                 pickle.dump(results['q_values_per_timeslot'], f)
             with open(results_path + 'action_per_step.pkl', 'wb') as f:
                 pickle.dump(results['action_per_step'], f)
+
+            gc.collect()
 
         tbar.close()
     except Exception as e:
