@@ -53,12 +53,12 @@ class ReplayBuffer:
         )
 
         # Add additional attributes to the transition
-        transition.agent_state = torch.tensor(state.agent_state, dtype=torch.float32, device=self.device).unsqueeze(dim=0)
-        transition.actions = torch.tensor([action], device=self.device).unsqueeze(dim=1)
-        transition.reward = torch.tensor([reward], dtype=torch.float32, device=self.device).unsqueeze(dim=1)
-        transition.agent_next_state = torch.tensor(next_state.agent_state, dtype=torch.float32, device=self.device).unsqueeze(dim=0)
-        transition.done = torch.tensor([done], device=self.device).unsqueeze(dim=1)
-        transition.steps = torch.tensor([state.steps], device=self.device).unsqueeze(dim=1)
+        transition.agent_state = torch.tensor(state.agent_state, dtype=torch.float32).unsqueeze(dim=0)
+        transition.actions = torch.tensor([action]).unsqueeze(dim=1)
+        transition.reward = torch.tensor([reward], dtype=torch.float32).unsqueeze(dim=1)
+        transition.agent_next_state = torch.tensor(next_state.agent_state, dtype=torch.float32).unsqueeze(dim=0)
+        transition.done = torch.tensor([done]).unsqueeze(dim=1)
+        transition.steps = torch.tensor([state.steps]).unsqueeze(dim=1)
 
         # Maintain buffer size by removing oldest transition if full
         if len(self.buffer) >= self.buffer_size:
@@ -67,16 +67,17 @@ class ReplayBuffer:
 
     def sample(self, batch_size):
         """
-        Samples a batch of transitions from the buffer.
+        Samples a batch of transitions from the buffer and moves them to the device.
 
         Parameters:
             - batch_size (int): Number of transitions to sample.
 
         Returns:
-            - List of transitions sampled from the buffer.
+            - List of transitions sampled from the buffer (on the specified device).
         """
         indices = np.random.randint(0, len(self.buffer), size=batch_size)
-        batch = [self.buffer[i].to(self.device) for i in indices]
+        batch = [self.buffer[i] for i in indices]
+
         return batch
 
     def __len__(self):
