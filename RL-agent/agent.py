@@ -117,9 +117,9 @@ class DQNAgent:
 
         # Sample a batch from the replay buffer
         b = self.replay_buffer.sample(batch_size)
-        b = [transition.to(self.device) for transition in b]
         loader = DataLoader(b, batch_size=batch_size, follow_batch=['x_s', 'x_t'], pin_memory=True)
         batch = next(iter(loader))
+        batch = batch.to(self.device)
 
         try:
             # Compute Q-values for the current states and selected actions, Q(s, a)
