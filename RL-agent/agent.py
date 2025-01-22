@@ -1,6 +1,7 @@
 import torch
 import numpy as np
 import random
+import os
 
 from torch.nn import functional as F
 
@@ -59,11 +60,13 @@ class DQNAgent:
         # Select the greedy action
         with torch.no_grad():
             # Get sorted indices of Q-values
-            sorted_q_values = self.get_q_values(state).squeeze(0).detach().argsort(dim=-1, descending=True)
+            q_values = self.get_q_values(state)
+            sorted_q_values = q_values.squeeze(0).detach().argsort(dim=-1, descending=True)
             action = sorted_q_values[0].item()
             if avoid_action is not None:
                 if action == avoid_action:
                     action = sorted_q_values[1].item()
+            del q_values, sorted_q_values
 
         return action
 
@@ -115,7 +118,7 @@ class DQNAgent:
         # Sample a batch from the replay buffer
         b = self.replay_buffer.sample(batch_size)
         b = [transition.to(self.device) for transition in b]
-        loader = DataLoader(b, batch_size=batch_size, follow_batch=['x_s', 'x_t'])
+        loader = DataLoader(b, batch_size=batch_size, follow_batch=['x_s', 'x_t'], pin_memory=True)
         batch = next(iter(loader))
 
         try:
@@ -143,8 +146,7 @@ class DQNAgent:
             self.optimizer.step()
         finally:
             # Explicitly free up GPU memory for the batch
-            del batch
-            torch.cuda.empty_cache()
+            del train_q_values, next_q_values, target_q_values, loss, batch
 
 
     def save_model(self, file_path):

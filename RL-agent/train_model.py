@@ -74,6 +74,26 @@ def train_dueling_dqn(agent: DQNAgent, batch_size: int, episode: int, tbar: tqdm
         - failures_per_timeslot (list): The failures per time slot during training.
     """
 
+    # Initialize episode metrics
+    timeslot = 0
+    timeslots_completed = 0
+    rewards_per_timeslot = []
+    total_reward = 0
+    failures_per_timeslot = []
+    total_failures = 0
+    q_values_per_timeslot = []
+    action_per_step = []
+    truck_path = []
+    truck_path_per_timeslot = []
+
+    inner_tbar = tqdm(
+        range(360),
+        desc="Timeslot training",
+        position=1,
+        leave=False,
+        dynamic_ncols=True
+    )
+
     # Reset environment and agent state
     options ={
         'total_timeslots': params["total_timeslots"],
@@ -88,27 +108,7 @@ def train_dueling_dqn(agent: DQNAgent, batch_size: int, episode: int, tbar: tqdm
     state.agent_state = np.concatenate([info['agent_position'], agent_state])
     state.steps = info['steps']
 
-    # Initialize episode metrics
-    timeslot = 0
-    timeslots_completed = 0
-    rewards_per_timeslot = []
-    total_reward = 0
-    failures_per_timeslot = []
-    total_failures = 0
-    q_values_per_timeslot = []
-    action_per_step = []
-    truck_path = []
-    truck_path_per_timeslot = []
-
     not_done = True
-
-    inner_tbar = tqdm(
-        range(360),
-        desc="Timeslot training",
-        position=1,
-        leave=False,
-        dynamic_ncols=True
-    )
 
     while not_done:
         # Prepare the state for the agent
@@ -157,8 +157,6 @@ def train_dueling_dqn(agent: DQNAgent, batch_size: int, episode: int, tbar: tqdm
         # Check if the episode is complete
         not_done = not done
 
-        inner_tbar.update(info['steps']+1)
-
         if timeslot_terminated:
             timeslots_completed += 1
 
@@ -176,6 +174,7 @@ def train_dueling_dqn(agent: DQNAgent, batch_size: int, episode: int, tbar: tqdm
             with torch.no_grad():
                 q_values = agent.get_q_values(single_state)
                 q_values_per_timeslot.append((q_values.squeeze().cpu().numpy(), agent.epsilon))
+                del q_values
 
             # Log progress
             tbar.set_description(f"Episode {episode}, Week {info['week'] % 52}, {info['day'].capitalize()} "
@@ -193,12 +192,14 @@ def train_dueling_dqn(agent: DQNAgent, batch_size: int, episode: int, tbar: tqdm
             tbar.set_postfix({'epsilon': agent.epsilon, 'failures': failures_per_timeslot[-1][0]})
             tbar.update(1)
 
-        # Explicitly delete single_state and free up GPU memory
+        # Explicitly delete single_state
         del single_state
-        torch.cuda.empty_cache()
+
+        inner_tbar.update(info['steps']+1)
 
     env.close()
     inner_tbar.close()
+    torch.cuda.empty_cache()
 
     results = {
         "rewards_per_timeslot": rewards_per_timeslot,
