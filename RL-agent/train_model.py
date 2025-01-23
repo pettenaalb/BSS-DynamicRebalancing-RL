@@ -62,12 +62,10 @@ restore_from_checkpoint = False
 enable_logging = False
 debug_memory = False
 
-memory_background_thread = threading.Thread()
-checkpoint_background_thread = threading.Thread()
-
 # ----------------------------------------------------------------------------------------------------------------------
 
-def train_dueling_dqn(agent: DQNAgent, batch_size: int, episode: int, tbar: tqdm | tqdm_telegram) -> dict:
+def train_dueling_dqn(agent: DQNAgent, batch_size: int, episode: int, tbar: tqdm | tqdm_telegram,
+                      memory_background_thread) -> dict:
     """
     Trains a Dueling Deep Q-Network agent using experience replay.
 
@@ -202,9 +200,8 @@ def train_dueling_dqn(agent: DQNAgent, batch_size: int, episode: int, tbar: tqdm
 
             # Save memory snapshot
             if debug_memory:
-                global memory_background_thread
-                background_thread = threading.Thread(target=save_memory_snapshot)
-                background_thread.start()
+                memory_background_thread = threading.Thread(target=save_memory_snapshot)
+                memory_background_thread.start()
 
         # Explicitly delete single_state
         del single_state
@@ -265,6 +262,10 @@ def main():
     # Set up replay buffer
     replay_buffer = ReplayBuffer(params["replay_buffer_capacity"])
 
+    # Create background thread for saving memory snapshots and checkpointing
+    memory_background_thread = None
+    checkpoint_background_thread = None
+
     # Initialize the DQN agent
     agent = DQNAgent(
         replay_buffer=replay_buffer,
@@ -307,7 +308,7 @@ def main():
             tbar.update(main_variables['tbar_progress'])
 
         for episode in range(starting_episode, params["num_episodes"]):
-            results = train_dueling_dqn(agent, params["batch_size"], episode, tbar)
+            results = train_dueling_dqn(agent, params["batch_size"], episode, tbar, memory_background_thread)
 
             # Save result lists
             results_path = '../results/training/data/'+ str(episode).zfill(2) + '/'
@@ -330,7 +331,6 @@ def main():
                     'episode': episode,
                     'tbar_progress': tbar.n,
                 }
-                global checkpoint_background_thread
                 checkpoint_background_thread = threading.Thread(target=save_checkpoint, args=(main_variables, agent, replay_buffer))
 
             gc.collect()
@@ -356,9 +356,10 @@ def main():
     agent.save_model(trained_models_folder + '/DuelingDQN.pt')
 
     # Wait for the background threads to finish
-    global memory_background_thread, checkpoint_background_thread
-    memory_background_thread.join()
-    checkpoint_background_thread.join()
+    if memory_background_thread is not None:
+        memory_background_thread.join()
+    if checkpoint_background_thread is not None:
+        checkpoint_background_thread.join()
 
     # Print the rewards after training
     print("\nTraining completed.")
