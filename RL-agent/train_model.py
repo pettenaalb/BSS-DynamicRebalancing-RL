@@ -212,6 +212,32 @@ def train_dueling_dqn(agent: DQNAgent, batch_size: int, episode: int, tbar: tqdm
 
 # ----------------------------------------------------------------------------------------------------------------------
 
+def save_checkpoint(main_variables: dict, agent: DQNAgent, buffer: ReplayBuffer):
+    checkpoint_path = data_path + 'checkpoints/'
+    if not os.path.exists(checkpoint_path):
+        os.makedirs(checkpoint_path)
+        print(f"Directory '{checkpoint_path}' created.")
+
+    with open(checkpoint_path + 'main_variables.pkl', 'wb') as f:
+        pickle.dump(main_variables, f)
+    agent.save_checkpoint(checkpoint_path + 'agent.pt')
+    buffer.save_to_files(checkpoint_path + 'replay_buffer/')
+
+    pass
+
+
+def restore_checkpoint(agent: DQNAgent, buffer: ReplayBuffer) -> dict:
+    checkpoint_path = data_path + 'checkpoints/'
+
+    with open(checkpoint_path + 'main_variables.pkl', 'rb') as f:
+        main_variables = pickle.load(f)
+    agent.load_checkpoint(checkpoint_path + 'agent.pt')
+    buffer.load_from_files(checkpoint_path + 'replay_buffer/')
+
+    return main_variables
+
+# ----------------------------------------------------------------------------------------------------------------------
+
 def main():
     print(f"Device in use: {device}\n")
     # Set up replay buffer
@@ -251,7 +277,14 @@ def main():
                 dynamic_ncols=True
             )
 
-        for episode in range(params["num_episodes"]):
+        # Restore from checkpoint
+        starting_episode = 0
+        if restore_from_checkpoint:
+            main_variables = restore_checkpoint(agent, replay_buffer)
+            starting_episode = main_variables['episode'] + 1
+            tbar = main_variables['tbar']
+
+        for episode in range(starting_episode, params["num_episodes"]):
             results = train_dueling_dqn(agent, params["batch_size"], episode, tbar)
 
             # Save result lists
@@ -268,6 +301,14 @@ def main():
                 pickle.dump(results['q_values_per_timeslot'], f)
             with open(results_path + 'action_per_step.pkl', 'wb') as f:
                 pickle.dump(results['action_per_step'], f)
+
+            # Save checkpoint
+            if enable_checkpoint:
+                main_variables = {
+                    'episode': episode,
+                    'tbar': tbar,
+                }
+                save_checkpoint(main_variables, agent, replay_buffer)
 
             gc.collect()
 
@@ -302,6 +343,8 @@ if __name__ == '__main__':
     parser.add_argument('--data_path', type=str, default='../data/', help='Path to the data folder.')
     parser.add_argument('--cuda_device', type=int, default=0, help='CUDA device to use.')
     parser.add_argument('--enable_logging', action='store_true', help='Enable logging.')
+    parser.add_argument('--enable_checkpoint', action='store_true', help='Enable checkpointing.')
+    parser.add_argument('--restore_from_checkpoint', action='store_true', help='Restore from checkpoint.')
 
     args = parser.parse_args()
 
@@ -316,5 +359,11 @@ if __name__ == '__main__':
 
     if args.enable_logging:
         enable_logging = True
+
+    if args.enable_checkpoint:
+        enable_checkpoint = True
+
+    if args.restore_from_checkpoint:
+        restore_from_checkpoint = True
 
     main()

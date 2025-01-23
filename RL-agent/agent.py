@@ -168,3 +168,35 @@ class DQNAgent:
         """
 
         self.train_model.load_state_dict(torch.load(file_path, map_location=self.device, weights_only=True))
+
+
+    def save_checkpoint(self, file_path):
+        """
+        Save the complete state of the agent for checkpointing.
+
+        Parameters:
+            - file_path (str): Path to save the checkpoint.
+        """
+        checkpoint = {
+            'train_model': self.train_model.state_dict(),
+            'target_model': self.target_model.state_dict(),
+            'optimizer': self.optimizer.state_dict(),
+            'epsilon': self.epsilon,
+            'steps_done': self.steps_done,
+        }
+        torch.save(checkpoint, file_path)
+
+
+    def load_checkpoint(self, file_path):
+        """
+        Load the state of the agent from a checkpoint.
+
+        Parameters:
+            - file_path (str): Path to the checkpoint file.
+        """
+        checkpoint = torch.load(file_path, map_location=self.device)
+        self.train_model.load_state_dict(checkpoint['train_model'])
+        self.target_model.load_state_dict(checkpoint['target_model'])
+        self.optimizer.load_state_dict(checkpoint['optimizer'])
+        self.epsilon = checkpoint['epsilon']
+        self.steps_done = checkpoint['steps_done']
