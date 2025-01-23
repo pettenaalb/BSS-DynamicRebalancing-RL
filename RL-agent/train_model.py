@@ -64,8 +64,7 @@ debug_memory = False
 
 # ----------------------------------------------------------------------------------------------------------------------
 
-def train_dueling_dqn(agent: DQNAgent, batch_size: int, episode: int, tbar: tqdm | tqdm_telegram,
-                      memory_background_thread) -> dict:
+def train_dueling_dqn(agent: DQNAgent, batch_size: int, episode: int, tbar: tqdm | tqdm_telegram) -> dict:
     """
     Trains a Dueling Deep Q-Network agent using experience replay.
 
@@ -262,8 +261,7 @@ def main():
     # Set up replay buffer
     replay_buffer = ReplayBuffer(params["replay_buffer_capacity"])
 
-    # Create background thread for saving memory snapshots and checkpointing
-    memory_background_thread = None
+    # Create background thread for checkpointing
     checkpoint_background_thread = None
 
     # Initialize the DQN agent
@@ -308,7 +306,7 @@ def main():
             tbar.update(main_variables['tbar_progress'])
 
         for episode in range(starting_episode, params["num_episodes"]):
-            results = train_dueling_dqn(agent, params["batch_size"], episode, tbar, memory_background_thread)
+            results = train_dueling_dqn(agent, params["batch_size"], episode, tbar)
 
             # Save result lists
             results_path = '../results/training/data/'+ str(episode).zfill(2) + '/'
@@ -356,8 +354,6 @@ def main():
     agent.save_model(trained_models_folder + '/DuelingDQN.pt')
 
     # Wait for the background threads to finish
-    if memory_background_thread is not None:
-        memory_background_thread.join()
     if checkpoint_background_thread is not None:
         checkpoint_background_thread.join()
 
