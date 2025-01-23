@@ -3,6 +3,7 @@ import pickle
 import torch
 import argparse
 import gc
+import warnings
 
 import gymnasium_env.register_env
 
@@ -254,6 +255,7 @@ def save_memory_snapshot(file_name):
 # ----------------------------------------------------------------------------------------------------------------------
 
 def main():
+    warnings.filterwarnings("ignore")
     print(f"Device in use: {device}\n")
     # Set up replay buffer
     replay_buffer = ReplayBuffer(params["replay_buffer_capacity"])
