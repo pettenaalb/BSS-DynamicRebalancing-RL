@@ -1,5 +1,6 @@
 import os
 import pickle
+import threading
 import torch
 import argparse
 import gc
@@ -60,6 +61,9 @@ enable_checkpoint = False
 restore_from_checkpoint = False
 enable_logging = False
 debug_memory = False
+
+memory_background_thread = threading.Thread()
+checkpoint_background_thread = threading.Thread()
 
 # ----------------------------------------------------------------------------------------------------------------------
 
@@ -198,7 +202,9 @@ def train_dueling_dqn(agent: DQNAgent, batch_size: int, episode: int, tbar: tqdm
 
             # Save memory snapshot
             if debug_memory:
-                save_memory_snapshot(data_path + 'memory_snapshot.txt')
+                global memory_background_thread
+                background_thread = threading.Thread(target=save_memory_snapshot)
+                background_thread.start()
 
         # Explicitly delete single_state
         del single_state
@@ -231,8 +237,6 @@ def save_checkpoint(main_variables: dict, agent: DQNAgent, buffer: ReplayBuffer)
     agent.save_checkpoint(checkpoint_path + 'agent.pt')
     buffer.save_to_files(checkpoint_path + 'replay_buffer/')
 
-    pass
-
 
 def restore_checkpoint(agent: DQNAgent, buffer: ReplayBuffer) -> dict:
     checkpoint_path = data_path + 'checkpoints/'
@@ -245,7 +249,8 @@ def restore_checkpoint(agent: DQNAgent, buffer: ReplayBuffer) -> dict:
     return main_variables
 
 
-def save_memory_snapshot(file_name):
+def save_memory_snapshot():
+    file_name = data_path + 'memory_snapshot.txt'
     all_objects = muppy.get_objects()
     memory_summary = summary.summarize(all_objects)
     with open(file_name, "w") as file:
@@ -325,7 +330,8 @@ def main():
                     'episode': episode,
                     'tbar_progress': tbar.n,
                 }
-                save_checkpoint(main_variables, agent, replay_buffer)
+                global checkpoint_background_thread
+                checkpoint_background_thread = threading.Thread(target=save_checkpoint, args=(main_variables, agent, replay_buffer))
 
             gc.collect()
 
@@ -348,6 +354,11 @@ def main():
         print(f"Directory '{trained_models_folder}' created.")
 
     agent.save_model(trained_models_folder + '/DuelingDQN.pt')
+
+    # Wait for the background threads to finish
+    global memory_background_thread, checkpoint_background_thread
+    memory_background_thread.join()
+    checkpoint_background_thread.join()
 
     # Print the rewards after training
     print("\nTraining completed.")
