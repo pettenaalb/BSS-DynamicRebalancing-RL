@@ -128,6 +128,7 @@ class BostonCity(gym.Env):
         # Initialize the depot
         self.next_bike_id = 0
         self.depot_node = self.cells.get(491).get_center_node()
+        del self.depot
         self.depot, self.next_bike_id = initialize_bikes(n=self.maximum_number_of_bikes, next_bike_id=self.next_bike_id)
 
         #Enabling the logging
@@ -144,18 +145,20 @@ class BostonCity(gym.Env):
         self.timeslots_completed = 0
         self.days_completed = 0
 
+        del self.event_buffer, self.next_event_buffer
         self.event_buffer = None
         self.next_event_buffer = None
 
         # Create stations dictionary
         from gymnasium_env.simulator.station import Station
         gdf_nodes = ox.graph_to_gdfs(self.graph, edges=False)
-        stations = {}
+        stns = {}
         for index, row in gdf_nodes.iterrows():
             station = Station(index, row['y'], row['x'])
-            stations[index] = station
-        stations[10000] = Station(10000, 0, 0)
-        self.stations = stations
+            stns[index] = station
+        stns[10000] = Station(10000, 0, 0)
+        del self.stations
+        self.stations = stns
 
         # Set the cell for each station
         for cell in self.cells.values():
@@ -169,9 +172,11 @@ class BostonCity(gym.Env):
 
         # Pop out 15 bikes from the depot and load them into the truck
         bikes = {key: self.depot.pop(key) for key in list(self.depot.keys())[:15]}
+        del self.truck
         self.truck = Truck(cell.center_node, cell, bikes=bikes, max_load=max_truck_load)
 
         # Load the PMF matrix and global rate for the current day and time slot
+        del self.pmf_matrix, self.global_rate
         self.pmf_matrix, self.global_rate = self._load_pmf_matrix_global_rate(self.day, self.timeslot)
 
         # Initialize stations and system bikes
@@ -192,6 +197,7 @@ class BostonCity(gym.Env):
             bikes_per_station = {stn_id: int(bikes * scale_factor) for stn_id, bikes in bikes_per_station.items()}
 
         # Initialize the system bikes
+        del self.system_bikes, self.outside_system_bikes
         self.system_bikes, self.outside_system_bikes, self.next_bike_id = initialize_stations(
             stations=self.stations,
             depot=self.depot,
@@ -200,6 +206,7 @@ class BostonCity(gym.Env):
         )
 
         # Initialize the cell subgraph
+        del self.cell_subgraph
         self.cell_subgraph = initialize_cells_subgraph(self.cells, self.nodes_dict, self.distance_matrix)
 
         # Update the graph with regional metrics
@@ -390,6 +397,7 @@ class BostonCity(gym.Env):
 
     def _initialize_day_timeslot(self, residual_event_buffer: list = None, handle_first_events = False) -> int:
         # Load PMF matrix and global rate for the current day and time slot
+        del self.pmf_matrix, self.global_rate
         self.pmf_matrix, self.global_rate = self._load_pmf_matrix_global_rate(self.day, self.timeslot)
 
         for stn_id, stn in self.stations.items():
@@ -397,6 +405,7 @@ class BostonCity(gym.Env):
 
         # Simulate the environment for the time slot
         if self.next_event_buffer is not None:
+            del self.event_buffer
             self.event_buffer = self.next_event_buffer
             self.next_event_buffer = None
             if residual_event_buffer is not None:
@@ -416,6 +425,7 @@ class BostonCity(gym.Env):
                 stations=self.stations,
                 distance_matrix=self.distance_matrix,
             )
+            del flattened_pmf
             if residual_event_buffer is not None:
                 for event in residual_event_buffer:
                     bisect.insort(self.event_buffer, event, key=lambda x: x.time)
