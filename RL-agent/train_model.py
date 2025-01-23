@@ -292,7 +292,7 @@ def main():
         if restore_from_checkpoint:
             main_variables = restore_checkpoint(agent, replay_buffer)
             starting_episode = main_variables['episode'] + 1
-            tbar = main_variables['tbar']
+            tbar.update(main_variables['tbar_progress'])
 
         for episode in range(starting_episode, params["num_episodes"]):
             results = train_dueling_dqn(agent, params["batch_size"], episode, tbar)
@@ -316,7 +316,7 @@ def main():
             if enable_checkpoint:
                 main_variables = {
                     'episode': episode,
-                    'tbar': tbar,
+                    'tbar_progress': tbar.n,
                 }
                 save_checkpoint(main_variables, agent, replay_buffer)
 
