@@ -11,6 +11,7 @@ import numpy as np
 
 from tqdm.contrib.telegram import tqdm as tqdm_telegram
 from tqdm import tqdm
+from pympler import muppy, summary
 from agent import DQNAgent
 from utils import convert_graph_to_data, convert_seconds_to_hours_minutes, send_telegram_message, Actions
 from replay_memory import ReplayBuffer
@@ -91,7 +92,8 @@ def train_dueling_dqn(agent: DQNAgent, batch_size: int, episode: int, tbar: tqdm
         desc="Timeslot training",
         position=1,
         leave=False,
-        dynamic_ncols=True
+        dynamic_ncols=True,
+        disable=True
     )
 
     # Reset environment and agent state
@@ -236,6 +238,14 @@ def restore_checkpoint(agent: DQNAgent, buffer: ReplayBuffer) -> dict:
 
     return main_variables
 
+
+def save_memory_snapshot(file_name):
+    all_objects = muppy.get_objects()
+    memory_summary = summary.summarize(all_objects)
+    with open(file_name, "w") as file:
+        for line in summary.format_(memory_summary):
+            file.write(line + "\n")
+
 # ----------------------------------------------------------------------------------------------------------------------
 
 def main():
@@ -309,6 +319,9 @@ def main():
                     'tbar': tbar,
                 }
                 save_checkpoint(main_variables, agent, replay_buffer)
+
+            # Save memory snapshot
+            save_memory_snapshot(data_path + 'memory_snapshot.txt')
 
             gc.collect()
 
