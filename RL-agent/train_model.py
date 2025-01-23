@@ -58,6 +58,7 @@ CHAT_ID = '16830298'
 enable_checkpoint = False
 restore_from_checkpoint = False
 enable_logging = False
+debug_memory = False
 
 # ----------------------------------------------------------------------------------------------------------------------
 
@@ -194,6 +195,10 @@ def train_dueling_dqn(agent: DQNAgent, batch_size: int, episode: int, tbar: tqdm
             tbar.set_postfix({'epsilon': agent.epsilon, 'failures': failures_per_timeslot[-1][0]})
             tbar.update(1)
 
+            # Save memory snapshot
+            if debug_memory:
+                save_memory_snapshot(data_path + 'memory_snapshot.txt')
+
         # Explicitly delete single_state
         del single_state
 
@@ -320,9 +325,6 @@ def main():
                 }
                 save_checkpoint(main_variables, agent, replay_buffer)
 
-            # Save memory snapshot
-            save_memory_snapshot(data_path + 'memory_snapshot.txt')
-
             gc.collect()
 
         tbar.close()
@@ -358,6 +360,7 @@ if __name__ == '__main__':
     parser.add_argument('--enable_logging', action='store_true', help='Enable logging.')
     parser.add_argument('--enable_checkpoint', action='store_true', help='Enable checkpointing.')
     parser.add_argument('--restore_from_checkpoint', action='store_true', help='Restore from checkpoint.')
+    parser.add_argument('--debug_memory', action='store_true', help='Debug memory usage.')
 
     args = parser.parse_args()
 
@@ -378,5 +381,8 @@ if __name__ == '__main__':
 
     if args.restore_from_checkpoint:
         restore_from_checkpoint = True
+
+    if args.debug_memory:
+        debug_memory = True
 
     main()
