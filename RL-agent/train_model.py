@@ -22,9 +22,6 @@ from torch_geometric.data import Data
 
 data_path = "../data/"
 
-env = gym.make('gymnasium_env/BostonCity-v0', data_path=data_path)
-action_size = env.action_space.n
-
 # if GPU is to be used
 device = torch.device(
     "cuda" if torch.cuda.is_available() else
@@ -34,7 +31,6 @@ device = torch.device(
 
 # set seed
 seed = 31
-env.unwrapped.seed(seed)
 np.random.seed(seed)
 torch.manual_seed(seed)
 
@@ -62,7 +58,7 @@ enable_logging = False
 
 # ----------------------------------------------------------------------------------------------------------------------
 
-def train_dueling_dqn(agent: DQNAgent, batch_size: int, episode: int, tbar: tqdm | tqdm_telegram, memory_log: list) -> dict:
+def train_dueling_dqn(env: gym, agent: DQNAgent, batch_size: int, episode: int, tbar: tqdm | tqdm_telegram, memory_log: list) -> dict:
     """
     Trains a Dueling Deep Q-Network agent using experience replay.
 
@@ -282,6 +278,10 @@ def main():
     warnings.filterwarnings("ignore")
 
     print(f"Device in use: {device}\n")
+
+    # Create the environment
+    env = gym.make('gymnasium_env/BostonCity-v0', data_path=data_path)
+    env.unwrapped.seed(seed)
     # Set up replay buffer
     replay_buffer = ReplayBuffer(params["replay_buffer_capacity"])
 
@@ -332,7 +332,7 @@ def main():
             tbar.update(main_variables['tbar_progress'])
 
         for episode in range(starting_episode, params["num_episodes"]):
-            results = train_dueling_dqn(agent, params["batch_size"], episode, tbar, memory_log)
+            results = train_dueling_dqn(env, agent, params["batch_size"], episode, tbar, memory_log)
 
             # Save result lists
             results_path = '../results/training/data/'+ str(episode).zfill(2) + '/'
@@ -403,6 +403,7 @@ if __name__ == '__main__':
     # Assign variables based on the parsed arguments
     enable_telegram = args.enable_telegram
     data_path = args.data_path
+    print(data_path)
     enable_logging = args.enable_logging
     enable_checkpoint = args.enable_checkpoint
     restore_from_checkpoint = args.restore_from_checkpoint
