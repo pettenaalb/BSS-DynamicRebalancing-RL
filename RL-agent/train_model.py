@@ -14,7 +14,7 @@ import numpy as np
 from tqdm.contrib.telegram import tqdm as tqdm_telegram
 from tqdm import tqdm
 from agent import DQNAgent
-from utils import convert_graph_to_data, convert_seconds_to_hours_minutes, send_telegram_message, Actions
+from utils import convert_graph_to_data, convert_seconds_to_hours_minutes, send_telegram_message, Actions, memory_usage
 from replay_memory import ReplayBuffer
 from torch_geometric.data import Data
 
@@ -62,7 +62,7 @@ enable_logging = False
 
 # ----------------------------------------------------------------------------------------------------------------------
 
-def train_dueling_dqn(agent: DQNAgent, batch_size: int, episode: int, tbar: tqdm | tqdm_telegram) -> dict:
+def train_dueling_dqn(agent: DQNAgent, batch_size: int, episode: int, tbar: tqdm | tqdm_telegram, memory_log: list) -> dict:
     """
     Trains a Dueling Deep Q-Network agent using experience replay.
 
@@ -113,8 +113,11 @@ def train_dueling_dqn(agent: DQNAgent, batch_size: int, episode: int, tbar: tqdm
 
     not_done = True
 
+
     while not_done:
         # Prepare the state for the agent
+
+        mem_usage = memory_usage()
 
         single_state = Data(
             x=state.x.to(device),
@@ -123,6 +126,10 @@ def train_dueling_dqn(agent: DQNAgent, batch_size: int, episode: int, tbar: tqdm
             agent_state=torch.tensor(state.agent_state, dtype=torch.float32).unsqueeze(dim=0).to(device),
             batch=torch.zeros(state.x.size(0), dtype=torch.long).to(device),
         )
+
+        mem_usage_after = memory_usage()
+        memory_log.append((131, mem_usage - mem_usage_after))
+        mem_usage = mem_usage_after
 
         # Select an action using the agent
         avoid_action = None
@@ -138,6 +145,10 @@ def train_dueling_dqn(agent: DQNAgent, batch_size: int, episode: int, tbar: tqdm
         action = agent.select_action(single_state, avoid_action=avoid_action)
         action_per_step.append((action, agent.epsilon))
 
+        mem_usage_after = memory_usage()
+        memory_log.append((149, mem_usage - mem_usage_after))
+        mem_usage = mem_usage_after
+
         # Step the environment with the chosen action
         agent_state, reward, done, timeslot_terminated, info = env.step(action)
 
@@ -149,8 +160,16 @@ def train_dueling_dqn(agent: DQNAgent, batch_size: int, episode: int, tbar: tqdm
         # Store the transition in the replay buffer
         agent.replay_buffer.push(state, action, reward, next_state, done)
 
+        mem_usage_after = memory_usage()
+        memory_log.append((164, mem_usage - mem_usage_after))
+        mem_usage = mem_usage_after
+
         # Train the agent with a batch from the replay buffer
-        agent.train_step(batch_size)
+        agent.train_step(batch_size, memory_log)
+
+        mem_usage_after = memory_usage()
+        memory_log.append((171, mem_usage - mem_usage_after))
+        mem_usage = mem_usage_after
 
         # Update the state and metrics
         state = next_state
@@ -168,6 +187,10 @@ def train_dueling_dqn(agent: DQNAgent, batch_size: int, episode: int, tbar: tqdm
             agent.update_target_network()
             if timeslots_completed % 200 == 0: # every 30 days
                 agent.update_epsilon(delta_epsilon=params["epsilon_delta"])
+
+            mem_usage_after = memory_usage()
+            memory_log.append((192, mem_usage - mem_usage_after))
+            mem_usage = mem_usage_after
 
             # Record metrics for the current time slot
             rewards_per_timeslot.append((total_reward/360, agent.epsilon))
@@ -192,12 +215,18 @@ def train_dueling_dqn(agent: DQNAgent, batch_size: int, episode: int, tbar: tqdm
 
             inner_tbar.reset()
 
+            memory_log_thread = threading.Thread(target=save_memory_log, args=(memory_log,))
+            memory_log_thread.start()
+
             # Update progress bar
             tbar.set_postfix({'epsilon': agent.epsilon, 'failures': failures_per_timeslot[-1][0]})
             tbar.update(1)
 
         # Explicitly delete single_state
         del single_state
+
+        mem_usage_after = memory_usage()
+        memory_log.append((226, mem_usage - mem_usage_after))
 
         inner_tbar.update(info['steps']+1)
 
@@ -240,6 +269,13 @@ def restore_checkpoint(agent: DQNAgent, buffer: ReplayBuffer) -> dict:
 
     return main_variables
 
+
+def save_memory_log(memory_log: list):
+    memory_log_path = data_path + 'memory_log.pkl'
+
+    with open(memory_log_path, 'wb') as f:
+        pickle.dump(memory_log, f)
+
 # ----------------------------------------------------------------------------------------------------------------------
 
 def main():
@@ -248,6 +284,8 @@ def main():
     print(f"Device in use: {device}\n")
     # Set up replay buffer
     replay_buffer = ReplayBuffer(params["replay_buffer_capacity"])
+
+    memory_log = []
 
     # Create background thread for checkpointing
     checkpoint_background_thread = None
@@ -294,7 +332,7 @@ def main():
             tbar.update(main_variables['tbar_progress'])
 
         for episode in range(starting_episode, params["num_episodes"]):
-            results = train_dueling_dqn(agent, params["batch_size"], episode, tbar)
+            results = train_dueling_dqn(agent, params["batch_size"], episode, tbar, memory_log)
 
             # Save result lists
             results_path = '../results/training/data/'+ str(episode).zfill(2) + '/'

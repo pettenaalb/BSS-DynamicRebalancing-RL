@@ -5,6 +5,7 @@ import networkx as nx
 import osmnx as ox
 import numpy as np
 import geopandas as gpd
+import psutil, os
 
 from torch_geometric.utils import from_networkx
 from matplotlib import pyplot as plt
@@ -243,3 +244,8 @@ def send_telegram_message(message: str, BOT_TOKEN: str, CHAT_ID: str):
             print(f"Failed to send message. Status code: {response.status_code}")
     except requests.exceptions.RequestException as e:
         print(f"Failed to send Telegram message: {e}")
+
+
+def memory_usage():
+    process = psutil.Process(os.getpid())
+    return process.memory_info().rss / (1024 * 1024)  # MB
