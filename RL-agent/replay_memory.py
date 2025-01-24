@@ -1,5 +1,7 @@
 import torch
 import numpy as np
+import os
+import pickle
 
 from torch_geometric.data import Data
 
@@ -89,3 +91,35 @@ class ReplayBuffer:
             - Size of the buffer.
         """
         return len(self.buffer)
+
+    def save_to_files(self, folder_path, chunk_size=10000):
+        """
+        Saves the replay buffer to multiple files in chunks.
+
+        Parameters:
+            - folder_path: Directory to save the buffer files.
+            - chunk_size: Number of transitions per file.
+        """
+        os.makedirs(folder_path, exist_ok=True)
+        num_chunks = (len(self.buffer) + chunk_size - 1) // chunk_size
+
+        for i in range(num_chunks):
+            chunk = self.buffer[i * chunk_size : (i + 1) * chunk_size]
+            file_path = os.path.join(folder_path, f"buffer_chunk_{i}.pkl")
+            with open(file_path, "wb") as f:
+                pickle.dump(chunk, f)
+
+    def load_from_files(self, folder_path):
+        """
+        Loads the replay buffer from files in a folder.
+
+        Parameters:
+            - folder_path: Directory containing the buffer files.
+        """
+        self.buffer = []
+        for file_name in sorted(os.listdir(folder_path)):
+            if file_name.startswith("buffer_chunk_") and file_name.endswith(".pkl"):
+                file_path = os.path.join(folder_path, file_name)
+                with open(file_path, "rb") as f:
+                    chunk = pickle.load(f)
+                    self.buffer.extend(chunk)

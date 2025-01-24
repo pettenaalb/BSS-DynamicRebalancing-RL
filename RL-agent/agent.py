@@ -1,7 +1,6 @@
 import torch
 import numpy as np
 import random
-import os
 
 from torch.nn import functional as F
 
@@ -117,7 +116,7 @@ class DQNAgent:
 
         # Sample a batch from the replay buffer
         b = self.replay_buffer.sample(batch_size)
-        loader = DataLoader(b, batch_size=batch_size, follow_batch=['x_s', 'x_t'], pin_memory=True)
+        loader = DataLoader(b, batch_size=batch_size, follow_batch=['x_s', 'x_t'])
         batch = next(iter(loader))
         batch = batch.to(self.device)
 
@@ -139,7 +138,7 @@ class DQNAgent:
             loss = F.smooth_l1_loss(train_q_values, target_q_values)
 
             # Optimize the model
-            self.optimizer.zero_grad()
+            self.optimizer.zero_grad(set_to_none=True)
             loss.backward()
             for param in self.train_model.parameters():
                 param.grad.data.clamp_(-1, 1)  # Gradient clipping for stability
@@ -147,6 +146,7 @@ class DQNAgent:
         finally:
             # Explicitly free up GPU memory for the batch
             del train_q_values, next_q_values, target_q_values, loss, batch
+            torch.cuda.empty_cache()
 
 
     def save_model(self, file_path):
@@ -168,3 +168,35 @@ class DQNAgent:
         """
 
         self.train_model.load_state_dict(torch.load(file_path, map_location=self.device, weights_only=True))
+
+
+    def save_checkpoint(self, file_path):
+        """
+        Save the complete state of the agent for checkpointing.
+
+        Parameters:
+            - file_path (str): Path to save the checkpoint.
+        """
+        checkpoint = {
+            'train_model': self.train_model.state_dict(),
+            'target_model': self.target_model.state_dict(),
+            'optimizer': self.optimizer.state_dict(),
+            'epsilon': self.epsilon,
+            'steps_done': self.steps_done,
+        }
+        torch.save(checkpoint, file_path)
+
+
+    def load_checkpoint(self, file_path):
+        """
+        Load the state of the agent from a checkpoint.
+
+        Parameters:
+            - file_path (str): Path to the checkpoint file.
+        """
+        checkpoint = torch.load(file_path, map_location=self.device)
+        self.train_model.load_state_dict(checkpoint['train_model'])
+        self.target_model.load_state_dict(checkpoint['target_model'])
+        self.optimizer.load_state_dict(checkpoint['optimizer'])
+        self.epsilon = checkpoint['epsilon']
+        self.steps_done = checkpoint['steps_done']
