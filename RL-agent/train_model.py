@@ -400,22 +400,18 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
 
-    if args.enable_telegram:
-        enable_telegram = True
+    # Assign variables based on the parsed arguments
+    enable_telegram = args.enable_telegram
+    data_path = args.data_path
+    enable_logging = args.enable_logging
+    enable_checkpoint = args.enable_checkpoint
+    restore_from_checkpoint = args.restore_from_checkpoint
 
-    if args.data_path:
-        data_path = args.data_path
+    # Ensure the data path exists
+    if not os.path.exists(data_path):
+        raise FileNotFoundError(f"The specified data path does not exist: {data_path}")
 
-    if args.cuda_device and torch.cuda.is_available():
-        device = torch.device(f"cuda:{args.cuda_device}")
-
-    if args.enable_logging:
-        enable_logging = True
-
-    if args.enable_checkpoint:
-        enable_checkpoint = True
-
-    if args.restore_from_checkpoint:
-        restore_from_checkpoint = True
+    # Set up the device
+    device = torch.device(f"cuda:{args.cuda_device}" if torch.cuda.is_available() else "cpu")
 
     main()
