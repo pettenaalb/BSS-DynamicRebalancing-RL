@@ -5,7 +5,6 @@ import torch
 import argparse
 import gc
 import warnings
-import tracemalloc
 
 import gymnasium_env.register_env
 
@@ -14,7 +13,6 @@ import numpy as np
 
 from tqdm.contrib.telegram import tqdm as tqdm_telegram
 from tqdm import tqdm
-from pympler import muppy, summary
 from agent import DQNAgent
 from utils import convert_graph_to_data, convert_seconds_to_hours_minutes, send_telegram_message, Actions
 from replay_memory import ReplayBuffer
@@ -61,7 +59,6 @@ CHAT_ID = '16830298'
 enable_checkpoint = False
 restore_from_checkpoint = False
 enable_logging = False
-debug_memory = False
 
 # ----------------------------------------------------------------------------------------------------------------------
 
@@ -118,6 +115,7 @@ def train_dueling_dqn(agent: DQNAgent, batch_size: int, episode: int, tbar: tqdm
 
     while not_done:
         # Prepare the state for the agent
+
         single_state = Data(
             x=state.x.to(device),
             edge_index=state.edge_index.to(device),
@@ -242,31 +240,9 @@ def restore_checkpoint(agent: DQNAgent, buffer: ReplayBuffer) -> dict:
 
     return main_variables
 
-
-def save_memory_snapshot():
-    # Get memory snapshot
-    all_objects = muppy.get_objects()
-    memory_summary = summary.summarize(all_objects)
-    
-    snapshot = tracemalloc.take_snapshot()
-    top_stats = snapshot.statistics('lineno')
-
-    # Save memory snapshot to file
-    file_name_muppy = data_path + 'memory_snapshot_muppy.txt'
-    file_name_malloc = data_path + 'memory_snapshot_malloc.txt'
-    with open(file_name_muppy, "w") as file:
-        for line in summary.format_(memory_summary):
-            file.write(line + "\n")
-    with open(file_name_malloc, "w") as file:
-        for stat in top_stats:
-            file.write(str(stat) + "\n")
-
-
 # ----------------------------------------------------------------------------------------------------------------------
 
 def main():
-    # Initialize memory profiler
-    tracemalloc.start()
     warnings.filterwarnings("ignore")
 
     print(f"Device in use: {device}\n")
@@ -335,11 +311,6 @@ def main():
             with open(results_path + 'action_per_step.pkl', 'wb') as f:
                 pickle.dump(results['action_per_step'], f)
 
-            # Memory snapshot
-            if debug_memory:
-                memory_background_thread = threading.Thread(target=save_memory_snapshot)
-                memory_background_thread.start()
-
             # Save checkpoint
             if enable_checkpoint:
                 main_variables = {
@@ -388,7 +359,6 @@ if __name__ == '__main__':
     parser.add_argument('--enable_logging', action='store_true', help='Enable logging.')
     parser.add_argument('--enable_checkpoint', action='store_true', help='Enable checkpointing.')
     parser.add_argument('--restore_from_checkpoint', action='store_true', help='Restore from checkpoint.')
-    parser.add_argument('--debug_memory', action='store_true', help='Debug memory usage.')
 
     args = parser.parse_args()
 
@@ -409,8 +379,5 @@ if __name__ == '__main__':
 
     if args.restore_from_checkpoint:
         restore_from_checkpoint = True
-
-    if args.debug_memory:
-        debug_memory = True
 
     main()
