@@ -124,7 +124,7 @@ class DQNAgent:
         batch = batch.to(self.device)
 
         mem_usage_after = memory_usage()
-        memory_log.append((1127, mem_usage - mem_usage_after))
+        memory_log.append((1127, mem_usage_after - mem_usage))
         mem_usage = mem_usage_after
 
         try:
@@ -132,7 +132,7 @@ class DQNAgent:
             train_q_values = self.train_model(batch, 's').gather(1, batch.actions)
 
             mem_usage_after = memory_usage()
-            memory_log.append((1135, mem_usage - mem_usage_after))
+            memory_log.append((1135, mem_usage_after - mem_usage))
             mem_usage = mem_usage_after
 
             # Compute target Q-values
@@ -140,7 +140,7 @@ class DQNAgent:
                 next_q_values = self.target_model(batch, 't').max(dim=1, keepdim=True)[0]
 
                 mem_usage_after = memory_usage()
-                memory_log.append((1143, mem_usage - mem_usage_after))
+                memory_log.append((1143, mem_usage_after - mem_usage))
                 mem_usage = mem_usage_after
 
                 # Discount factor for the terminal state
@@ -150,14 +150,14 @@ class DQNAgent:
                 target_q_values = batch.reward + discount * next_q_values * (1 - batch.done.float())
 
             mem_usage_after = memory_usage()
-            memory_log.append((1153, mem_usage - mem_usage_after))
+            memory_log.append((1153, mem_usage_after - mem_usage))
             mem_usage = mem_usage_after
 
             # Compute loss
             loss = F.smooth_l1_loss(train_q_values, target_q_values)
 
             mem_usage_after = memory_usage()
-            memory_log.append((1160, mem_usage - mem_usage_after))
+            memory_log.append((1160, mem_usage_after - mem_usage))
             mem_usage = mem_usage_after
 
             # Optimize the model
@@ -173,7 +173,7 @@ class DQNAgent:
 
 
         mem_usage_after = memory_usage()
-        memory_log.append((1176, mem_usage - mem_usage_after))
+        memory_log.append((1176, mem_usage_after - mem_usage))
 
 
     def save_model(self, file_path):

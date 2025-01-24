@@ -124,7 +124,7 @@ def train_dueling_dqn(env: gym, agent: DQNAgent, batch_size: int, episode: int, 
         )
 
         mem_usage_after = memory_usage()
-        memory_log.append((131, mem_usage - mem_usage_after))
+        memory_log.append((131, mem_usage_after - mem_usage))
         mem_usage = mem_usage_after
 
         # Select an action using the agent
@@ -142,7 +142,7 @@ def train_dueling_dqn(env: gym, agent: DQNAgent, batch_size: int, episode: int, 
         action_per_step.append((action, agent.epsilon))
 
         mem_usage_after = memory_usage()
-        memory_log.append((149, mem_usage - mem_usage_after))
+        memory_log.append((149, mem_usage_after - mem_usage))
         mem_usage = mem_usage_after
 
         # Step the environment with the chosen action
@@ -157,14 +157,14 @@ def train_dueling_dqn(env: gym, agent: DQNAgent, batch_size: int, episode: int, 
         agent.replay_buffer.push(state, action, reward, next_state, done)
 
         mem_usage_after = memory_usage()
-        memory_log.append((164, mem_usage - mem_usage_after))
+        memory_log.append((164, mem_usage_after - mem_usage))
         mem_usage = mem_usage_after
 
         # Train the agent with a batch from the replay buffer
         agent.train_step(batch_size, memory_log)
 
         mem_usage_after = memory_usage()
-        memory_log.append((171, mem_usage - mem_usage_after))
+        memory_log.append((171, mem_usage_after - mem_usage))
         mem_usage = mem_usage_after
 
         # Update the state and metrics
@@ -185,7 +185,7 @@ def train_dueling_dqn(env: gym, agent: DQNAgent, batch_size: int, episode: int, 
                 agent.update_epsilon(delta_epsilon=params["epsilon_delta"])
 
             mem_usage_after = memory_usage()
-            memory_log.append((192, mem_usage - mem_usage_after))
+            memory_log.append((192, mem_usage_after - mem_usage))
             mem_usage = mem_usage_after
 
             # Record metrics for the current time slot
@@ -222,7 +222,7 @@ def train_dueling_dqn(env: gym, agent: DQNAgent, batch_size: int, episode: int, 
         del single_state
 
         mem_usage_after = memory_usage()
-        memory_log.append((226, mem_usage - mem_usage_after))
+        memory_log.append((226, mem_usage_after - mem_usage))
 
         inner_tbar.update(info['steps']+1)
 
@@ -403,7 +403,6 @@ if __name__ == '__main__':
     # Assign variables based on the parsed arguments
     enable_telegram = args.enable_telegram
     data_path = args.data_path
-    print(data_path)
     enable_logging = args.enable_logging
     enable_checkpoint = args.enable_checkpoint
     restore_from_checkpoint = args.restore_from_checkpoint
