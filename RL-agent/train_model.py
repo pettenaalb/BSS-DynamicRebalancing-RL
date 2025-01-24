@@ -5,6 +5,7 @@ import torch
 import argparse
 import gc
 import warnings
+import tracemalloc
 
 import gymnasium_env.register_env
 
@@ -197,11 +198,6 @@ def train_dueling_dqn(agent: DQNAgent, batch_size: int, episode: int, tbar: tqdm
             tbar.set_postfix({'epsilon': agent.epsilon, 'failures': failures_per_timeslot[-1][0]})
             tbar.update(1)
 
-            # Save memory snapshot
-            if debug_memory:
-                memory_background_thread = threading.Thread(target=save_memory_snapshot)
-                memory_background_thread.start()
-
         # Explicitly delete single_state
         del single_state
 
@@ -233,6 +229,8 @@ def save_checkpoint(main_variables: dict, agent: DQNAgent, buffer: ReplayBuffer)
     agent.save_checkpoint(checkpoint_path + 'agent.pt')
     buffer.save_to_files(checkpoint_path + 'replay_buffer/')
 
+    print("Checkpoint saved.")
+
 
 def restore_checkpoint(agent: DQNAgent, buffer: ReplayBuffer) -> dict:
     checkpoint_path = data_path + 'checkpoints/'
@@ -246,17 +244,31 @@ def restore_checkpoint(agent: DQNAgent, buffer: ReplayBuffer) -> dict:
 
 
 def save_memory_snapshot():
-    file_name = data_path + 'memory_snapshot.txt'
+    # Get memory snapshot
     all_objects = muppy.get_objects()
     memory_summary = summary.summarize(all_objects)
-    with open(file_name, "w") as file:
+    
+    snapshot = tracemalloc.take_snapshot()
+    top_stats = snapshot.statistics('lineno')
+
+    # Save memory snapshot to file
+    file_name_muppy = data_path + 'memory_snapshot_muppy.txt'
+    file_name_malloc = data_path + 'memory_snapshot_malloc.txt'
+    with open(file_name_muppy, "w") as file:
         for line in summary.format_(memory_summary):
             file.write(line + "\n")
+    with open(file_name_malloc, "w") as file:
+        for stat in top_stats:
+            file.write(str(stat) + "\n")
+
 
 # ----------------------------------------------------------------------------------------------------------------------
 
 def main():
+    # Initialize memory profiler
+    tracemalloc.start()
     warnings.filterwarnings("ignore")
+
     print(f"Device in use: {device}\n")
     # Set up replay buffer
     replay_buffer = ReplayBuffer(params["replay_buffer_capacity"])
@@ -323,6 +335,11 @@ def main():
             with open(results_path + 'action_per_step.pkl', 'wb') as f:
                 pickle.dump(results['action_per_step'], f)
 
+            # Memory snapshot
+            if debug_memory:
+                memory_background_thread = threading.Thread(target=save_memory_snapshot)
+                memory_background_thread.start()
+
             # Save checkpoint
             if enable_checkpoint:
                 main_variables = {
@@ -330,6 +347,7 @@ def main():
                     'tbar_progress': tbar.n,
                 }
                 checkpoint_background_thread = threading.Thread(target=save_checkpoint, args=(main_variables, agent, replay_buffer))
+                checkpoint_background_thread.start()
 
             gc.collect()
 
