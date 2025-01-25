@@ -227,12 +227,16 @@ def save_checkpoint(main_variables: dict, agent: DQNAgent, buffer: ReplayBuffer)
 
 
 def restore_checkpoint(agent: DQNAgent, buffer: ReplayBuffer) -> dict:
+    print("Restoring checkpoint...", end=' ')
     checkpoint_path = data_path + 'checkpoints/'
 
     with open(checkpoint_path + 'main_variables.pkl', 'rb') as f:
         main_variables = pickle.load(f)
+    print("Main variables loaded.", end=' ')
     agent.load_checkpoint(checkpoint_path + 'agent.pt')
+    print("Agent loaded.", end=' ')
     buffer.load_from_files(checkpoint_path + 'replay_buffer/')
+    print("Replay buffer loaded.")
 
     return main_variables
 

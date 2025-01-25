@@ -116,10 +116,13 @@ class ReplayBuffer:
         Parameters:
             - folder_path: Directory containing the buffer files.
         """
+        from tqdm import tqdm
         self.buffer = []
+        tbar = tqdm(total=len(os.listdir(folder_path)), desc="Loading buffer files")
         for file_name in sorted(os.listdir(folder_path)):
             if file_name.startswith("buffer_chunk_") and file_name.endswith(".pkl"):
                 file_path = os.path.join(folder_path, file_name)
                 with open(file_path, "rb") as f:
                     chunk = pickle.load(f)
                     self.buffer.extend(chunk)
+            tbar.update(1)
