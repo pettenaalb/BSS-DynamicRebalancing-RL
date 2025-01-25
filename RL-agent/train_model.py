@@ -264,6 +264,12 @@ def main():
         lr=params["lr"],
         device=device,
     )
+    # Restore from checkpoint
+    starting_episode = 0
+    if restore_from_checkpoint:
+        main_variables = restore_checkpoint(agent, replay_buffer)
+        starting_episode = main_variables['episode'] + 1
+        print(f"Restored from checkpoint. Resuming training from episode {starting_episode}.")
 
     # Train the agent using the training loop
     try:
@@ -271,7 +277,8 @@ def main():
         if enable_telegram:
             tbar = tqdm_telegram(
                 range(params["total_timeslots"]*params["num_episodes"]),
-                desc="Training Episode, Week 1, Monday at 01:00:00",
+                desc="Training Episode 1, Week 1, Monday at 01:00:00",
+                initial=starting_episode,
                 position=0,
                 leave=True,
                 dynamic_ncols=True,
@@ -281,18 +288,12 @@ def main():
         else:
             tbar = tqdm(
                 range(params["total_timeslots"]*params["num_episodes"]),
-                desc="Training Year 1, Week 1, Monday at 01:00:00",
+                desc="Training Episode 1, Week 1, Monday at 01:00:00",
+                initial=starting_episode,
                 position=0,
                 leave=True,
                 dynamic_ncols=True
             )
-
-        # Restore from checkpoint
-        starting_episode = 0
-        if restore_from_checkpoint:
-            main_variables = restore_checkpoint(agent, replay_buffer)
-            starting_episode = main_variables['episode'] + 1
-            tbar.update(main_variables['tbar_progress'])
 
         for episode in range(starting_episode, params["num_episodes"]):
             results = train_dueling_dqn(env, agent, params["batch_size"], episode, tbar)
