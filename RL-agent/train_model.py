@@ -282,7 +282,7 @@ def main():
             tbar = tqdm_telegram(
                 range(params["total_timeslots"]*params["num_episodes"]),
                 desc="Training Episode 1, Week 1, Monday at 01:00:00",
-                initial=starting_episode,
+                initial=starting_episode*params["total_timeslots"],
                 position=0,
                 leave=True,
                 dynamic_ncols=True,
@@ -293,7 +293,7 @@ def main():
             tbar = tqdm(
                 range(params["total_timeslots"]*params["num_episodes"]),
                 desc="Training Episode 1, Week 1, Monday at 01:00:00",
-                initial=starting_episode,
+                initial=starting_episode*params["total_timeslots"],
                 position=0,
                 leave=True,
                 dynamic_ncols=True
