@@ -6,7 +6,6 @@ from torch.nn import functional as F
 
 from DuelingDQN import DuelingDQN
 from torch_geometric.loader import DataLoader
-from utils import memory_usage
 
 class DQNAgent:
 
@@ -102,7 +101,7 @@ class DQNAgent:
         self.target_model.load_state_dict(self.train_model.state_dict())
 
 
-    def train_step(self, batch_size, memory_log: list):
+    def train_step(self, batch_size):
         """
         Performs a single training step using a batch sampled from the replay buffer.
 
@@ -115,33 +114,19 @@ class DQNAgent:
         if len(self.replay_buffer) < batch_size:
             return
 
-        mem_usage = memory_usage()
-
         # Sample a batch from the replay buffer
         b = self.replay_buffer.sample(batch_size)
         loader = DataLoader(b, batch_size=batch_size, follow_batch=['x_s', 'x_t'])
         batch = next(iter(loader))
         batch = batch.to(self.device)
 
-        mem_usage_after = memory_usage()
-        memory_log.append((1127, mem_usage_after - mem_usage))
-        mem_usage = mem_usage_after
-
         try:
             # Compute Q-values for the current states and selected actions, Q(s, a)
             train_q_values = self.train_model(batch, 's').gather(1, batch.actions)
 
-            mem_usage_after = memory_usage()
-            memory_log.append((1135, mem_usage_after - mem_usage))
-            mem_usage = mem_usage_after
-
             # Compute target Q-values
             with torch.no_grad():
                 next_q_values = self.target_model(batch, 't').max(dim=1, keepdim=True)[0]
-
-                mem_usage_after = memory_usage()
-                memory_log.append((1143, mem_usage_after - mem_usage))
-                mem_usage = mem_usage_after
 
                 # Discount factor for the terminal state
                 discount = self.gamma ** (batch.steps + 1)
@@ -149,16 +134,8 @@ class DQNAgent:
                 # Final target Q-value equation
                 target_q_values = batch.reward + discount * next_q_values * (1 - batch.done.float())
 
-            mem_usage_after = memory_usage()
-            memory_log.append((1153, mem_usage_after - mem_usage))
-            mem_usage = mem_usage_after
-
             # Compute loss
             loss = F.smooth_l1_loss(train_q_values, target_q_values)
-
-            mem_usage_after = memory_usage()
-            memory_log.append((1160, mem_usage_after - mem_usage))
-            mem_usage = mem_usage_after
 
             # Optimize the model
             self.optimizer.zero_grad(set_to_none=True)
@@ -170,10 +147,6 @@ class DQNAgent:
             # Explicitly free up GPU memory for the batch
             del train_q_values, next_q_values, target_q_values, loss, batch
             torch.cuda.empty_cache()
-
-
-        mem_usage_after = memory_usage()
-        memory_log.append((1176, mem_usage_after - mem_usage))
 
 
     def save_model(self, file_path):
