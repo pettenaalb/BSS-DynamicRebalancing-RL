@@ -127,10 +127,10 @@ class DQNAgent:
             # Compute target Q-values
             with torch.no_grad():
                 # Actions are selected using the train model
-                next_actions = self.train_model(batch, 't').argmax(dim=1, keepdim=True)
+                next_actions = self.train_model(batch, 't').argmax(dim=1, keepdim=True).detach()
 
                 # Target Q-values are computed using the target model
-                next_q_values = self.target_model(batch, 't').gather(1, next_actions)
+                next_q_values = self.target_model(batch, 't').gather(1, next_actions).detach()
 
                 # Discount factor for the terminal state
                 discount = self.gamma ** (batch.steps + 1)
