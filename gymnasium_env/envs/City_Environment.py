@@ -394,6 +394,7 @@ class BostonCity(gym.Env):
 
         for stn_id, stn in self.stations.items():
             stn.set_request_rate(self.pmf_matrix.loc[stn_id, :].sum()*self.global_rate)
+            stn.set_arrival_rate(self.pmf_matrix.loc[:, stn_id].sum()*self.global_rate)
 
         # Simulate the environment for the time slot
         if self.next_event_buffer is not None:
@@ -528,6 +529,11 @@ class BostonCity(gym.Env):
         # Maximum 2500 bikes in the system
         # total_bikes_cost = logistic_penalty_function(M=1, k=0.03, b=self.maximum_number_of_bikes, x=len(self.system_bikes))
 
+        # TODO: penalità per il tempo in cui una zona sta a zero proporzionale alla domanda
+        # TODO: piccola penalità se il numero di bici in una zona è sotto una certa soglia
+        # TODO: bonus se va in zone critiche (proporzionale alla probabilità di fallimento)
+        # TODO: bonus se va in zone non esplorate
+
         # Reward for each step
         reward = - steps - failures[0] - distance_cost - bike_per_region_cost
         for i, failure in enumerate(failures[1:]):
@@ -557,7 +563,7 @@ class BostonCity(gym.Env):
             center_node = cell.get_center_node()
 
             # Initialize regional metrics
-            demand_rate, bike_load = 0.0, cell.get_total_bikes()/500
+            demand_rate, arrival_rate, bike_load = 0.0, 0.0, cell.get_total_bikes()/500
             average_battery_level, low_battery_ratio, variance_battery_level = 0.0, 0.0, 0.0
 
             # Aggregate metrics for nodes in the cell
@@ -567,6 +573,7 @@ class BostonCity(gym.Env):
 
                 # Update regional metrics
                 demand_rate += self.stations[node].get_request_rate()
+                arrival_rate += self.stations[node].get_arrival_rate()
                 if battery_levels:
                     average_battery_level += np.mean(battery_levels)
                     variance_battery_level += np.var(battery_levels)
@@ -577,13 +584,17 @@ class BostonCity(gym.Env):
             # Avoid division by zero by ensuring at least one node
             num_nodes = max(1, len(cell.nodes))
             demand_rate /= self.global_rate
+            arrival_rate /= self.global_rate
             average_battery_level /= num_nodes
             low_battery_ratio /= num_nodes
             variance_battery_level /= num_nodes
 
+            # TODO: aggiungere quanto sono visitate le zone
+
             # Update attributes in the subgraph
             if center_node in self.cell_subgraph:
                 self.cell_subgraph.nodes[center_node]['demand_rate'] = demand_rate
+                self.cell_subgraph.nodes[center_node]['arrival_rate'] = arrival_rate
                 self.cell_subgraph.nodes[center_node]['average_battery_level'] = average_battery_level
                 self.cell_subgraph.nodes[center_node]['low_battery_ratio'] = low_battery_ratio
                 self.cell_subgraph.nodes[center_node]['variance_battery_level'] = variance_battery_level

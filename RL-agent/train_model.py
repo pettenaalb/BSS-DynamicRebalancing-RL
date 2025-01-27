@@ -37,7 +37,7 @@ torch.manual_seed(seed)
 params = {
     "num_episodes": 24,                 # Total number of training episodes
     "batch_size": 256,                  # Batch size for replay buffer sampling
-    "replay_buffer_capacity": 1e6,      # Capacity of replay buffer: 1 million transitions
+    "replay_buffer_capacity": 1e5,      # Capacity of replay buffer: 1 million transitions
     "gamma": 0.99,                      # Discount factor
     "epsilon_start": 1.0,               # Starting exploration rate
     "epsilon_delta": 0.05,
@@ -161,7 +161,7 @@ def train_dueling_dqn(env: gym, agent: DQNAgent, batch_size: int, episode: int, 
             timeslots_completed += 1
 
             # Update target network periodically
-            agent.update_target_network()
+            # agent.update_target_network()
             if timeslots_completed % 200 == 0: # every 30 days
                 agent.update_epsilon(delta_epsilon=params["epsilon_delta"])
 

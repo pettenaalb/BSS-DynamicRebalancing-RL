@@ -9,7 +9,8 @@ from torch_geometric.loader import DataLoader
 
 class DQNAgent:
 
-    def __init__(self, num_actions, replay_buffer =  None, gamma=0.99, epsilon_start=1.0, epsilon_end=0.01, epsilon_decay=500, lr=0.1, device='cpu'):
+    def __init__(self, num_actions, replay_buffer =  None, gamma=0.99, epsilon_start=1.0, epsilon_end=0.01,
+                 epsilon_decay=500, lr=0.1, device='cpu', tau=0.005):
         """
         Initializes the DQNAgent.
 
@@ -35,6 +36,7 @@ class DQNAgent:
         self.epsilon_decay = epsilon_decay
         self.steps_done = 0
         self.device = device
+        self.tau = 0.005
 
 
     def select_action(self, state, greedy=False, avoid_action: int = None):
@@ -101,6 +103,11 @@ class DQNAgent:
         self.target_model.load_state_dict(self.train_model.state_dict())
 
 
+    def soft_update_target_network(self, tau=0.005):
+        for target_param, train_param in zip(self.target_model.parameters(), self.train_model.parameters()):
+            target_param.data.copy_(tau * train_param.data + (1 - tau) * target_param.data)
+
+
     def train_step(self, batch_size):
         """
         Performs a single training step using a batch sampled from the replay buffer.
@@ -151,6 +158,8 @@ class DQNAgent:
             # Explicitly free up GPU memory for the batch
             del train_q_values, next_q_values, target_q_values, loss, batch
             torch.cuda.empty_cache()
+
+        self.soft_update_target_network()
 
 
     def save_model(self, file_path):

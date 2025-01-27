@@ -45,6 +45,7 @@ def convert_graph_to_data(graph: nx.MultiDiGraph):
     # Extract node attributes
     node_attrs = [
         'demand_rate',
+        'arrival_rate',
         'average_battery_level',
         'low_battery_ratio',
         'variance_battery_level',
