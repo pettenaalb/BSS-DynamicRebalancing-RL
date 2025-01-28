@@ -88,6 +88,33 @@ def count_specific_day(year: int, month: int, day_name: str) -> int:
 
 # ----------------------------------------------------------------------------------------------------------------------
 
+def plot_graph(graph: nx.MultiDiGraph):
+    """
+    Plot the OSMnx graph with nodes colored based on total request rates.
+
+    Parameters:
+        - graph: The OSMnx graph.
+        - rate_matrix: A matrix containing request rates for each node.
+    """
+
+    # Plot the graph using OSMnx
+    nodes, edges = ox.graph_to_gdfs(graph, nodes=True, edges=True)
+    fig, ax = plt.subplots(figsize=(15, 12), facecolor='black')
+    plt.subplots_adjust(left=0, top=1.02, right=1.2, bottom=0, wspace=0, hspace=0)
+
+    # Plot the graph edges in geographic coordinates
+    edges.plot(ax=ax, linewidth=0.5, edgecolor="darkgrey", alpha=1, zorder=1)
+    # Plot the graph nodes
+    nodes.plot(ax=ax, markersize=15, color='white', alpha=1, zorder=2)
+
+    # Plot specific node
+    node = 64
+    node_coords = (graph.nodes[node]['y'], graph.nodes[node]['x'])
+    ax.plot(node_coords[1], node_coords[0], marker='o', color='red', markersize=4, label=f"Node {node}")
+
+    plt.axis('off')
+    plt.show()
+
 def plot_graph_with_colored_nodes(graph: nx.MultiDiGraph, rate_matrix: pd.DataFrame, axis: int = 0, colormap: str = None):
     """
     Plot the OSMnx graph with nodes colored based on total request rates.

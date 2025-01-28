@@ -259,7 +259,8 @@ def initialize_cells_subgraph(cells: dict[int, "Cell"], nodes_dict: dict[int, tu
             low_battery_ratio=0.0,
             demand_rate=0.0,
             arrival_rate=0.0,
-            bike_load = 0.0
+            bike_load = 0.0,
+            visits = 0.0
         )
 
     max_length = 0

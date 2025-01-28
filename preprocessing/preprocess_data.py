@@ -3,9 +3,10 @@ import argparse
 import pandas as pd
 import osmnx as ox
 import networkx as nx
+from geopy.distance import geodesic
 
 from tqdm import tqdm
-from utils import count_specific_day, connect_disconnected_neighbors
+from utils import count_specific_day, connect_disconnected_neighbors, plot_graph
 
 params = {
     'place': ["Cambridge, Massachusetts, USA"],
@@ -23,7 +24,7 @@ params = {
 # ----------------------------------------------------------------------------------------------------------------------
 
 def initialize_graph(places: [str], network_type: str, graph_path: str = None, simplify_network: bool = False,
-                     remove_isolated_nodes: bool = False, nodes_to_remove: list[tuple] = None) -> nx.MultiDiGraph:
+                     remove_isolated_nodes: bool = False, nodes_to_remove: list[tuple] = None, bbox = None) -> nx.MultiDiGraph:
     """
     Initialize the graph representing the road network.
 
@@ -46,6 +47,16 @@ def initialize_graph(places: [str], network_type: str, graph_path: str = None, s
         # Download the network data if the file does not exist
         print("Network file does not exist. Downloading the network data... ")
         graph = ox.graph_from_place(places[0], network_type=network_type)
+        if bbox is not None:
+            graph = ox.truncate.truncate_graph_bbox(
+                G=graph,
+                north=bbox[0],
+                south=bbox[1],
+                east=bbox[2],
+                west=bbox[3],
+            )
+
+
         graph = ox.add_edge_speeds(graph)
         graph = ox.add_edge_travel_times(graph)
 
@@ -73,10 +84,6 @@ def initialize_graph(places: [str], network_type: str, graph_path: str = None, s
             for node in nodes_to_remove:
                 nearest_node = ox.distance.nearest_nodes(graph, X=node[1], Y=node[0])
                 graph.remove_node(nearest_node)
-
-        if not os.path.exists(graph_path):
-            os.makedirs(graph_path)
-            print(f"Directory '{graph_path}' created.")
 
         ox.save_graphml(graph, graph_path)
         print("Network data downloaded and saved successfully.")
@@ -251,13 +258,35 @@ def initialize_rate_matrix(G: nx.MultiDiGraph, rate_df: pd.DataFrame) -> pd.Data
 
 def main():
     # Initialize the graph
-    if not os.path.exists(params['data_path']):
-        os.makedirs(params['data_path'])
-        print(f"Directory '{params['data_path']}' created.")
+    if not os.path.exists(params['data_path'] + 'utils/'):
+        os.makedirs(params['data_path'] + 'utils/')
+        print(f"Directory '{params['data_path'] + 'utils/'}' created.")
 
     print("Initializing the graph... ")
+
+    # <-- SECTION TO CONSTRAIN THE GRAPH TO A SPECIFIC AREA -->
+    # Center of MIT
+    center_lat, center_lon = 42.3601, -71.0942
+
+    # Half of the dimensions (350 meters each way)
+    half_side = 350  # in meters
+
+    # Compute the boundaries
+    south = 42.35652822088568
+    north = 42.37075665711338
+    west = -71.10220518318403
+    east = -71.08343260949403
+
+    # Bounding box
+    bbox = (north, south, east, west)
+    print(f"Bounding box: {bbox}")
+    # <-- END OF SECTION -->
+
     graph = initialize_graph(params['place'], params['network_type'], params['data_path'] + params['graph_file'],
-                             remove_isolated_nodes=True, simplify_network=True, nodes_to_remove=params['nodes_to_remove'])
+                             remove_isolated_nodes=True, simplify_network=True, nodes_to_remove=params['nodes_to_remove'],
+                             bbox=bbox)
+
+    # plot_graph(graph)
 
     print(f'\nProcessing data for year {params["year"]} and month {params["month"]}...')
     trip_df = pd.DataFrame()

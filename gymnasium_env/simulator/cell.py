@@ -17,6 +17,10 @@ class Cell:
         self.adjacent_cells = {'up': None, 'down': None, 'left': None, 'right': None}
         self.total_bikes = 0
         self.capacity = 0
+        self.request_rate = 0
+        self.visits = 0
+        self.critic_score = 0
+        self.is_critical = False
 
     def set_center_node(self, graph: nx.MultiDiGraph):
         center_coords = self.boundary.centroid.coords[0]
@@ -62,6 +66,19 @@ class Cell:
     def set_capacity(self, capacity: int):
         self.capacity = capacity
 
+    def set_request_rate(self, request_rate: float):
+        self.request_rate = request_rate
+
+    def set_visits(self, visits: int):
+        self.visits = visits
+
+    def set_critic_score(self, critic_score: float):
+        self.critic_score = critic_score
+        if critic_score < 0.5:
+            self.is_critical = True
+        else:
+            self.is_critical = False
+
     def get_id(self) -> int:
         return self.id
 
@@ -88,3 +105,15 @@ class Cell:
 
     def reset(self):
         self.total_bikes = 0
+
+    def get_request_rate(self) -> float:
+        return self.request_rate
+
+    def get_visits(self) -> int:
+        return self.visits
+
+    def get_critic_score(self) -> float:
+        return self.critic_score
+
+    def is_critical(self) -> bool:
+        return self.is_critical

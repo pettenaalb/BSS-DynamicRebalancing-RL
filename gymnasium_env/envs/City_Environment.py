@@ -112,6 +112,11 @@ class BostonCity(gym.Env):
         self.background_thread = None
         self.discount_factor = 0.99
 
+        # DEBUGGING PURPOSE
+        self.zero_bikes_penalty = []
+        self.recent_visited_cells = {}
+        self.total_visits = 0
+
         # Set logging options
         self.logging = False
         self.logger.set_logging(self.logging)
@@ -127,7 +132,8 @@ class BostonCity(gym.Env):
 
         # Initialize the depot
         self.next_bike_id = 0
-        self.depot_node = self.cells.get(491).get_center_node()
+        depot_id = options.get('depot_id', 491) if options else 491
+        self.depot_node = self.cells.get(depot_id).get_center_node()
         self.depot, self.next_bike_id = initialize_bikes(n=self.maximum_number_of_bikes, next_bike_id=self.next_bike_id)
 
         #Enabling the logging
@@ -275,6 +281,8 @@ class BostonCity(gym.Env):
             time=convert_seconds_to_hours_minutes((self.timeslot * 3 + 1) * 3600 + self.env_time)
         )
 
+        self.zero_bikes_penalty = []
+
         # Check if the environment time exceeds the maximum time
         remaining_steps = 0
         if self.env_time + steps*30 >= 3600*3:
@@ -318,13 +326,24 @@ class BostonCity(gym.Env):
         # Perform a final state update after the last action
         # print("Entering in last state update")
         failures.extend(self._jump_to_next_state(steps=1))
+        steps += 1
+
+        # Update the last visited cells
+        for cell_id in self.recent_visited_cells.keys():
+            last_visit = self.recent_visited_cells[cell_id]
+            if last_visit > 3600*2:
+                self.recent_visited_cells.pop(cell_id)
+        if action in {Actions.UP.value, Actions.DOWN.value, Actions.LEFT.value, Actions.RIGHT.value}:
+            truck_cell = self.truck.get_cell()
+            truck_cell.set_visits(truck_cell.get_visits() + 1)
+            self.recent_visited_cells[truck_cell.get_id()] = 0
 
         # Log truck state
         self.logger.log_truck(self.truck)
 
         # Compute the outputs
         observation = self._get_obs()
-        reward = self._get_reward(steps+remaining_steps, failures, distance)
+        reward = self._get_reward(steps+remaining_steps, failures, distance, action)
         self._update_graph()
         path = (prev_position, self.truck.get_position())
 
@@ -395,6 +414,13 @@ class BostonCity(gym.Env):
         for stn_id, stn in self.stations.items():
             stn.set_request_rate(self.pmf_matrix.loc[stn_id, :].sum()*self.global_rate)
             stn.set_arrival_rate(self.pmf_matrix.loc[:, stn_id].sum()*self.global_rate)
+
+        # Update the request rate for each cell
+        for cell in self.cells:
+            total_request_rate = 0
+            for node in cell.nodes:
+                total_request_rate += self.stations[node].get_request_rate()
+            cell.set_request_rate(total_request_rate)
 
         # Simulate the environment for the time slot
         if self.next_event_buffer is not None:
@@ -468,10 +494,19 @@ class BostonCity(gym.Env):
         failures = []
 
         # Iterate through each step
-        for _ in range(0, steps):
-            # print("Entering in for")
+        for step in range(0, steps):
             # Increment the environment time by 30 seconds
             self.env_time += 30
+
+            zbp = 0
+            for cell in self.cells.values():
+                if cell.get_total_bikes() == 0:
+                    zbp -= 1*cell.get_request_rate()
+
+            self.zero_bikes_penalty.append(zbp)
+
+            for cell_id in self.recent_visited_cells.keys():
+                self.recent_visited_cells[cell_id] += 30
 
             total_failures = 0
             # Process all events that occurred before the updated environment time
@@ -518,13 +553,13 @@ class BostonCity(gym.Env):
         return observation.astype(np.float32)
 
 
-    def _get_reward(self, steps: int, failures: list, distance: int) -> float:
+    def _get_reward(self, steps: int, failures: list, distance: int, action: int) -> float:
         # Cost per distance traveled
-        hour = divmod((self.timeslot * 3 + 1) * 3600 + self.env_time, 3600)[0] % 24
-        distance_cost = (distance/1000)*self.consumption_matrix.loc[hour, self.day]
+        # hour = divmod((self.timeslot * 3 + 1) * 3600 + self.env_time, 3600)[0] % 24
+        # distance_cost = (distance/1000)*self.consumption_matrix.loc[hour, self.day]
 
         # Maximum 100 bikes per region
-        bike_per_region_cost = self._compute_bike_per_region_cost()
+        # bike_per_region_cost = self._compute_bike_per_region_cost()
 
         # Maximum 2500 bikes in the system
         # total_bikes_cost = logistic_penalty_function(M=1, k=0.03, b=self.maximum_number_of_bikes, x=len(self.system_bikes))
@@ -535,9 +570,40 @@ class BostonCity(gym.Env):
         # TODO: bonus se va in zone non esplorate
 
         # Reward for each step
-        reward = - steps - failures[0] - distance_cost - bike_per_region_cost
-        for i, failure in enumerate(failures[1:]):
-            reward -= failure*(self.discount_factor**i)
+        # reward = - steps - failures[0] - distance_cost - bike_per_region_cost
+        # for i, failure in enumerate(failures[1:]):
+        #     reward -= failure*(self.discount_factor**i)
+
+        # Compute the expected number of departures per cell
+        expected_departures_per_cell = {}
+        for event in self.event_buffer:
+            if event.is_departure():
+                cell = event.get_trip().get_start_location().get_cell()
+                expected_departures_per_cell[cell.get_id()] += 1
+
+        # Check how much a zone is critical (bikes in the cell / expected departures)
+        critic_zone_penalty = 0
+        for cell_id, cell in self.cells.items():
+            if cell_id in expected_departures_per_cell:
+                critic_score = cell.get_total_bikes() / expected_departures_per_cell[cell_id]
+                cell.set_critic_score(critic_score)
+                if critic_score < 0.5:
+                    critic_zone_penalty -= 0.1
+
+        # Check if visiting a critical cell and a non explored cell
+        critical_zone_bonus = 0
+        non_visited_bonus = 0
+        if action in {Actions.UP.value, Actions.DOWN.value, Actions.LEFT.value, Actions.RIGHT.value}:
+            truck_cell = self.truck.get_cell()
+            if truck_cell.is_critical():
+                critical_zone_bonus = 1 - truck_cell.get_critic_score()
+            if truck_cell not in self.recent_visited_cells:
+                non_visited_bonus = 0.5
+
+        # Reward for each step, penalizing if a cell is empty, penalizing if a cell is critical, rewarding if critical a cell is visited
+        reward = - steps + self.zero_bikes_penalty[0] + critic_zone_penalty + critical_zone_bonus + non_visited_bonus
+        for i in range(1, steps + 1):
+            reward -= self.zero_bikes_penalty[i]*(self.discount_factor**i)
 
         return reward
 
@@ -599,6 +665,7 @@ class BostonCity(gym.Env):
                 self.cell_subgraph.nodes[center_node]['low_battery_ratio'] = low_battery_ratio
                 self.cell_subgraph.nodes[center_node]['variance_battery_level'] = variance_battery_level
                 self.cell_subgraph.nodes[center_node]['total_bikes'] = cell.get_total_bikes() / num_nodes
+                self.cell_subgraph.nodes[center_node]['visits'] = cell.get_visits() / self.total_visits
 
 
     def _get_truck_position(self) -> tuple[float, float]:
