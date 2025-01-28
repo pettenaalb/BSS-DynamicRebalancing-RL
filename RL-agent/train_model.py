@@ -114,26 +114,26 @@ def train_dueling_dqn(env: gym, agent: DQNAgent, batch_size: int, episode: int, 
 
     while not_done:
         # Prepare the state for the agent
-        # single_state = Data(
-        #     x=state.x.to(device),
-        #     edge_index=state.edge_index.to(device),
-        #     edge_attr=state.edge_attr.to(device),
-        #     agent_state=torch.tensor(state.agent_state, dtype=torch.float32).unsqueeze(dim=0).to(device),
-        #     batch=torch.zeros(state.x.size(0), dtype=torch.long).to(device),
-        # )
+        single_state = Data(
+            x=state.x.to(device),
+            edge_index=state.edge_index.to(device),
+            edge_attr=state.edge_attr.to(device),
+            agent_state=torch.tensor(state.agent_state, dtype=torch.float32).unsqueeze(dim=0).to(device),
+            batch=torch.zeros(state.x.size(0), dtype=torch.long).to(device),
+        )
 
-        # # Select an action using the agent
-        # avoid_action = None
-        #
-        # if info['number_of_system_bikes'] > params["maximum_number_of_bikes"] - 50:
-        #     # Avoid dropping bikes if the system is almost full
-        #     avoid_action = Actions.DROP_BIKE.value
-        #
-        # if info['number_of_system_bikes'] < 50:
-        #     # Avoid picking up bikes if the system is almost empty
-        #     avoid_action = Actions.PICK_UP_BIKE.value
-        #
-        # action = agent.select_action(single_state, avoid_action=avoid_action)
+        # Select an action using the agent
+        avoid_action = None
+
+        if info['number_of_system_bikes'] > params["maximum_number_of_bikes"] - 50:
+            # Avoid dropping bikes if the system is almost full
+            avoid_action = Actions.DROP_BIKE.value
+
+        if info['number_of_system_bikes'] < 50:
+            # Avoid picking up bikes if the system is almost empty
+            avoid_action = Actions.PICK_UP_BIKE.value
+
+        action = agent.select_action(single_state, avoid_action=avoid_action)
         action = Actions.STAY.value
         action_per_step.append((action, agent.epsilon))
 
@@ -141,18 +141,18 @@ def train_dueling_dqn(env: gym, agent: DQNAgent, batch_size: int, episode: int, 
         agent_state, reward, done, timeslot_terminated, info = env.step(action)
 
         # Update state with new information
-        # next_state = convert_graph_to_data(info['cells_subgraph'])
-        # next_state.agent_state = np.concatenate([info['agent_position'], agent_state])
-        # next_state.steps = info['steps']
-        #
-        # # Store the transition in the replay buffer
-        # agent.replay_buffer.push(state, action, reward, next_state, done)
-        #
-        # # Train the agent with a batch from the replay buffer
-        # agent.train_step(batch_size)
+        next_state = convert_graph_to_data(info['cells_subgraph'])
+        next_state.agent_state = np.concatenate([info['agent_position'], agent_state])
+        next_state.steps = info['steps']
+
+        # Store the transition in the replay buffer
+        agent.replay_buffer.push(state, action, reward, next_state, done)
+
+        # Train the agent with a batch from the replay buffer
+        agent.train_step(batch_size)
 
         # Update the state and metrics
-        # state = next_state
+        state = next_state
         total_reward += reward
         total_failures += sum(info['failures'])
         truck_path.append(info['path'])
@@ -174,10 +174,10 @@ def train_dueling_dqn(env: gym, agent: DQNAgent, batch_size: int, episode: int, 
             truck_path_per_timeslot.append(truck_path)
 
             # Get Q-values for the current state
-            # with torch.no_grad():
-            #     q_values = agent.get_q_values(single_state)
-            #     q_values_per_timeslot.append((q_values.squeeze().cpu().numpy(), agent.epsilon))
-            #     del q_values
+            with torch.no_grad():
+                q_values = agent.get_q_values(single_state)
+                q_values_per_timeslot.append((q_values.squeeze().cpu().numpy(), agent.epsilon))
+                del q_values
 
             # Log progress
             tbar.set_description(f"Episode {episode}, Week {info['week'] % 52}, {info['day'].capitalize()} "
@@ -196,7 +196,7 @@ def train_dueling_dqn(env: gym, agent: DQNAgent, batch_size: int, episode: int, 
             tbar.update(1)
 
         # Explicitly delete single_state
-        # del single_state
+        del single_state
 
         inner_tbar.update(info['steps']+1)
 
