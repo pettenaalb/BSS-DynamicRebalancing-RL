@@ -582,11 +582,13 @@ class BostonCity(gym.Env):
         expected_departures_per_cell = {}
         for event in self.event_buffer:
             if event.is_departure():
-                cell = event.get_trip().get_start_location().get_cell()
-                if cell.get_id() not in expected_departures_per_cell:
-                    expected_departures_per_cell[cell.get_id()] = 1
-                else:
-                    expected_departures_per_cell[cell.get_id()] += 1
+                start_location = event.get_trip().get_start_location()
+                if start_location.get_station_id() != 10000:
+                    cell = start_location.get_cell()
+                    if cell.get_id() not in expected_departures_per_cell:
+                        expected_departures_per_cell[cell.get_id()] = 1
+                    else:
+                        expected_departures_per_cell[cell.get_id()] += 1
 
         # Check how much a zone is critical (bikes in the cell / expected departures)
         critic_zone_penalty = 0
