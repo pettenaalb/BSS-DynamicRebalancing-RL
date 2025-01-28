@@ -227,12 +227,16 @@ def save_checkpoint(main_variables: dict, agent: DQNAgent, buffer: ReplayBuffer)
 
 
 def restore_checkpoint(agent: DQNAgent, buffer: ReplayBuffer) -> dict:
+    print("Restoring checkpoint...", end=' ')
     checkpoint_path = data_path + 'checkpoints/'
 
     with open(checkpoint_path + 'main_variables.pkl', 'rb') as f:
         main_variables = pickle.load(f)
+    print("Main variables loaded.", end=' ')
     agent.load_checkpoint(checkpoint_path + 'agent.pt')
+    print("Agent loaded.", end=' ')
     buffer.load_from_files(checkpoint_path + 'replay_buffer/')
+    print("Replay buffer loaded.")
 
     return main_variables
 
@@ -264,6 +268,12 @@ def main():
         lr=params["lr"],
         device=device,
     )
+    # Restore from checkpoint
+    starting_episode = 0
+    if restore_from_checkpoint:
+        main_variables = restore_checkpoint(agent, replay_buffer)
+        starting_episode = main_variables['episode'] + 1
+        print(f"Restored from checkpoint. Resuming training from episode {starting_episode}.")
 
     # Train the agent using the training loop
     try:
@@ -271,7 +281,8 @@ def main():
         if enable_telegram:
             tbar = tqdm_telegram(
                 range(params["total_timeslots"]*params["num_episodes"]),
-                desc="Training Episode, Week 1, Monday at 01:00:00",
+                desc="Training Episode 1, Week 1, Monday at 01:00:00",
+                initial=starting_episode*params["total_timeslots"],
                 position=0,
                 leave=True,
                 dynamic_ncols=True,
@@ -281,18 +292,12 @@ def main():
         else:
             tbar = tqdm(
                 range(params["total_timeslots"]*params["num_episodes"]),
-                desc="Training Year 1, Week 1, Monday at 01:00:00",
+                desc="Training Episode 1, Week 1, Monday at 01:00:00",
+                initial=starting_episode*params["total_timeslots"],
                 position=0,
                 leave=True,
                 dynamic_ncols=True
             )
-
-        # Restore from checkpoint
-        starting_episode = 0
-        if restore_from_checkpoint:
-            main_variables = restore_checkpoint(agent, replay_buffer)
-            starting_episode = main_variables['episode'] + 1
-            tbar.update(main_variables['tbar_progress'])
 
         for episode in range(starting_episode, params["num_episodes"]):
             results = train_dueling_dqn(env, agent, params["batch_size"], episode, tbar)

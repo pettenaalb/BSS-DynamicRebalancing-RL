@@ -116,10 +116,21 @@ class ReplayBuffer:
         Parameters:
             - folder_path: Directory containing the buffer files.
         """
+        from tqdm import tqdm
         self.buffer = []
-        for file_name in sorted(os.listdir(folder_path)):
-            if file_name.startswith("buffer_chunk_") and file_name.endswith(".pkl"):
-                file_path = os.path.join(folder_path, file_name)
+        buffer_files = [f for f in os.listdir(folder_path)
+                        if f.startswith("buffer_chunk_") and f.endswith(".pkl")]
+        buffer_files = sorted(buffer_files)
+
+        tbar = tqdm(total=len(buffer_files), desc="Loading buffer files")
+        for file_name in buffer_files:
+            file_path = os.path.join(folder_path, file_name)
+            try:
                 with open(file_path, "rb") as f:
                     chunk = pickle.load(f)
                     self.buffer.extend(chunk)
+            except EOFError:
+                print(f"Warning: Skipping file {file_name} due to EOFError.")
+            except Exception as e:
+                print(f"Error: Failed to load file {file_name} due to {e}.")
+            tbar.update(1)

@@ -5,6 +5,7 @@ import pandas as pd
 
 from utils import plot_data_online, plot_confusion_matrix
 from collections import defaultdict
+from tqdm import tqdm
 
 # CHANGE THIS VARIABLE TO 'train' OR 'validate'
 MODE = 'train'
@@ -24,50 +25,74 @@ def find_index(lst, eps_thr):
 
 
 def load_data(base_path: str):
-    with open(base_path + 'data/rewards_per_timeslot.pkl', 'rb') as f:
+    with open(os.path.join(base_path, 'rewards_per_timeslot.pkl'), 'rb') as f:
         rewards_per_timeslot = pickle.load(f)
-    with open(base_path + 'data/failures_per_timeslot.pkl', 'rb') as f:
+    with open(os.path.join(base_path, 'failures_per_timeslot.pkl'), 'rb') as f:
         failures_per_timeslot = pickle.load(f)
-    with open(base_path + 'data/action_per_step.pkl', 'rb') as f:
+    with open(os.path.join(base_path, 'action_per_step.pkl'), 'rb') as f:
         action_per_step = pickle.load(f)
     return rewards_per_timeslot, failures_per_timeslot, action_per_step
 
 # ----------------------------------------------------------------------------------------------------------------------
 
 def process_training_results(base_path: str):
-    rewards_per_timeslot, failures_per_timeslot, action_per_step = load_data(base_path)
-    with open(base_path + 'data/q_values_per_timeslot.pkl', 'rb') as f:
-        q_values_per_timeslot = pickle.load(f)
+    data_path = os.path.join(base_path, 'data')
 
-    rewards_index = find_index(rewards_per_timeslot, epsilon_threshold)
-    failures_index = find_index(failures_per_timeslot, epsilon_threshold)
-    action_index = find_index(action_per_step, epsilon_threshold)
-    q_values_index = find_index(q_values_per_timeslot, epsilon_threshold)
+    # Get all subfolders in the 'data' directory
+    timeslot_folders = [folder for folder in os.listdir(data_path) if os.path.isdir(os.path.join(data_path, folder))]
 
-    epsilons = [e for _, e in rewards_per_timeslot[rewards_index:]]
+    q_values_tuple = []
+    total_failures = []
 
-    rewards = [r for r, _ in rewards_per_timeslot[rewards_index:]]
-    failures = [f for f, _ in failures_per_timeslot[failures_index:]]
-    action_bins = [0]*len(action_bin_labels)
-    for action, _ in action_per_step[action_index:]:
-        action_bins[action] += 1
-    q_values = [q for q, _ in q_values_per_timeslot[q_values_index:]]
+    tbar = tqdm(total=len(timeslot_folders), desc="Processing data per time slot")
 
-    if not os.path.exists(base_path + 'plots'):
-        os.makedirs(base_path + 'plots')
-        print(f"Directory '{base_path}plots' created.")
+    for timeslot_folder in timeslot_folders:
+        timeslot_path = os.path.join(data_path, timeslot_folder)
 
-    plot_data_online(rewards, idx=1, xlabel='Time Slot', ylabel='Reward',
-                     save_path=base_path + 'plots/rewards_per_timeslot.png')
-    plot_data_online(failures, idx=2, xlabel='Time Slot', ylabel='Failures',
-                     save_path=base_path + 'plots/failures_per_timeslot.png')
-    plot_data_online(action_bins, idx=4, xlabel='Action', ylabel='Frequency', show_histogram=True,
-                     bin_labels=action_bin_labels, save_path=base_path + 'plots/action_bins.png')
+        # Load data
+        rewards_per_timeslot, failures_per_timeslot, action_per_step = load_data(timeslot_path)
+        with open(os.path.join(timeslot_path, 'q_values_per_timeslot.pkl'), 'rb') as f:
+            q_values_per_timeslot = pickle.load(f)
+            q_values_tuple.extend(q_values_per_timeslot)
+
+        epsilons = [e for _, e in rewards_per_timeslot]
+        rewards = [r for r, _ in rewards_per_timeslot]
+        failures = [f for f, _ in failures_per_timeslot]
+        total_failures.extend(failures)
+
+        # Action bins
+        action_bins = [0] * len(action_bin_labels)
+        for action, _ in action_per_step:
+            action_bins[action] += 1
+
+        # Create plots directory if it doesn't exist
+        plots_path = os.path.join(base_path, 'plots')
+        plots_timeslot_path = os.path.join(plots_path, timeslot_folder)
+        if not os.path.exists(plots_timeslot_path):
+            os.makedirs(plots_timeslot_path, exist_ok=True)
+            print(f"Directory '{plots_timeslot_path}' created.")
+        os.makedirs(plots_path, exist_ok=True)
+
+        # Generate plots
+        plot_data_online(rewards, idx=1, xlabel='Time Slot', ylabel='Reward',
+                         save_path=os.path.join(plots_timeslot_path, 'rewards_per_timeslot.png'))
+        plot_data_online(failures, idx=2, xlabel='Time Slot', ylabel='Failures',
+                         save_path=os.path.join(plots_timeslot_path, 'failures_per_timeslot.png'))
+        plot_data_online(action_bins, idx=4, xlabel='Action', ylabel='Frequency', show_histogram=True,
+                         bin_labels=action_bin_labels, save_path=os.path.join(plots_timeslot_path, 'action_bins.png'))
+        plot_data_online(epsilons, idx=5, xlabel='Time Slot', ylabel='Epsilon',
+                         save_path=os.path.join(plots_timeslot_path, 'epsilon.png'), mean=False)
+
+        tbar.update(1)
+
+    q_values_index = find_index(q_values_tuple, epsilon_threshold)
+    q_values = [q for q, _ in q_values_tuple[q_values_index:]]
     mean_q_values = [np.mean(q) for q in q_values]
+    plots_path = os.path.join(base_path, 'plots')
     plot_data_online(mean_q_values, idx=3, xlabel='Time Slot', ylabel='Q-Value',
-                     save_path=base_path + 'plots/q_values_per_timeslot.png')
-    plot_data_online(epsilons, idx=5, xlabel='Time Slot', ylabel='Epsilon', save_path=base_path + 'plots/epsilon.png',
-                     mean=False)
+                     save_path=os.path.join(plots_path, 'q_values_per_timeslot.png'))
+    plot_data_online(total_failures, idx=6, xlabel='Time Slot', ylabel='Total Failures',
+                     save_path=os.path.join(plots_path, 'total_failures.png'))
 
 
 def process_validation_results(base_path: str):
@@ -124,10 +149,10 @@ def process_validation_results(base_path: str):
 
 def main():
     if MODE == 'train':
-        base_path = 'training/'
+        base_path = 'training'
         process_training_results(base_path)
     elif MODE == 'validate':
-        base_path = 'validation/'
+        base_path = 'validation'
         process_validation_results(base_path)
     else:
         raise ValueError("Invalid mode. Choose 'train' or 'validate'.")
