@@ -105,6 +105,10 @@ class Cell:
 
     def reset(self):
         self.total_bikes = 0
+        self.request_rate = 0
+        self.visits = 0
+        self.critic_score = 0
+        self.is_critical = False
 
     def get_request_rate(self) -> float:
         return self.request_rate
@@ -114,6 +118,3 @@ class Cell:
 
     def get_critic_score(self) -> float:
         return self.critic_score
-
-    def is_critical(self) -> bool:
-        return self.is_critical

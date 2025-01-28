@@ -130,6 +130,10 @@ class BostonCity(gym.Env):
         for cell in self.cells.values():
             cell.reset()
 
+        self.zero_bikes_penalty = []
+        self.recent_visited_cells = {}
+        self.total_visits = 1
+
         # Initialize the depot
         self.next_bike_id = 0
         depot_id = options.get('depot_id', 491) if options else 491
@@ -329,7 +333,7 @@ class BostonCity(gym.Env):
         steps += 1
 
         # Update the last visited cells
-        for cell_id in self.recent_visited_cells.keys():
+        for cell_id in list(self.recent_visited_cells.keys()):
             last_visit = self.recent_visited_cells[cell_id]
             if last_visit > 3600*2:
                 self.recent_visited_cells.pop(cell_id)
@@ -416,9 +420,9 @@ class BostonCity(gym.Env):
             stn.set_arrival_rate(self.pmf_matrix.loc[:, stn_id].sum()*self.global_rate)
 
         # Update the request rate for each cell
-        for cell in self.cells:
+        for cell in self.cells.values():
             total_request_rate = 0
-            for node in cell.nodes:
+            for node in cell.get_nodes():
                 total_request_rate += self.stations[node].get_request_rate()
             cell.set_request_rate(total_request_rate)
 
@@ -579,7 +583,10 @@ class BostonCity(gym.Env):
         for event in self.event_buffer:
             if event.is_departure():
                 cell = event.get_trip().get_start_location().get_cell()
-                expected_departures_per_cell[cell.get_id()] += 1
+                if cell.get_id() not in expected_departures_per_cell:
+                    expected_departures_per_cell[cell.get_id()] = 1
+                else:
+                    expected_departures_per_cell[cell.get_id()] += 1
 
         # Check how much a zone is critical (bikes in the cell / expected departures)
         critic_zone_penalty = 0
@@ -595,14 +602,14 @@ class BostonCity(gym.Env):
         non_visited_bonus = 0
         if action in {Actions.UP.value, Actions.DOWN.value, Actions.LEFT.value, Actions.RIGHT.value}:
             truck_cell = self.truck.get_cell()
-            if truck_cell.is_critical():
+            if truck_cell.is_critical:
                 critical_zone_bonus = 1 - truck_cell.get_critic_score()
             if truck_cell not in self.recent_visited_cells:
                 non_visited_bonus = 0.5
 
         # Reward for each step, penalizing if a cell is empty, penalizing if a cell is critical, rewarding if critical a cell is visited
         reward = - steps + self.zero_bikes_penalty[0] + critic_zone_penalty + critical_zone_bonus + non_visited_bonus
-        for i in range(1, steps + 1):
+        for i in range(1, steps):
             reward -= self.zero_bikes_penalty[i]*(self.discount_factor**i)
 
         return reward

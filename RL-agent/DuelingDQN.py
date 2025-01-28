@@ -15,7 +15,7 @@ class DuelingDQN(nn.Module):
         super(DuelingDQN, self).__init__()
 
         # Graph feature extractor using Graph Attention Network (GAT)
-        self.gat1 = GATConv(in_channels=5, out_channels=64, edge_dim=1)
+        self.gat1 = GATConv(in_channels=8, out_channels=64, edge_dim=1)
         self.gat2 = GATConv(in_channels=64, out_channels=64, edge_dim=1)
 
         # Fully connected layers for graph features

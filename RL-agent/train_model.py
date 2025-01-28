@@ -111,7 +111,6 @@ def train_dueling_dqn(env: gym, agent: DQNAgent, batch_size: int, episode: int, 
 
     not_done = True
 
-
     while not_done:
         # Prepare the state for the agent
         single_state = Data(
@@ -134,7 +133,6 @@ def train_dueling_dqn(env: gym, agent: DQNAgent, batch_size: int, episode: int, 
             avoid_action = Actions.PICK_UP_BIKE.value
 
         action = agent.select_action(single_state, avoid_action=avoid_action)
-        action = Actions.STAY.value
         action_per_step.append((action, agent.epsilon))
 
         # Step the environment with the chosen action
