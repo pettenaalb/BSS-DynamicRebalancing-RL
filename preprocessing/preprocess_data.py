@@ -272,10 +272,10 @@ def main():
     half_side = 350  # in meters
 
     # Compute the boundaries
-    south = 42.35652822088568
-    north = 42.37075665711338
-    west = -71.10220518318403
-    east = -71.08343260949403
+    south = 42.3646
+    north = 42.3556
+    west = -71.1001
+    east = -71.0883
 
     # Bounding box
     bbox = (north, south, east, west)
