@@ -126,30 +126,39 @@ class BostonCity(gym.Env):
         # Call parent class reset
         super().reset(seed=seed)
 
+        #Enabling the logging
+        self.logging = options.get('logging', False) if options else False
+        self.logger.set_logging(self.logging)
+
+        # Day and time slot options
+        self.day = options.get('day', 'monday') if options else 'monday'
+        self.timeslot = options.get('timeslot', 0) if options else 0
+        self.total_timeslots = options.get('total_timeslots', 2*365*8) if options else 2*365*8
+
+        # Bike options
+        self.maximum_number_of_bikes = options.get('maximum_number_of_bikes', self.maximum_number_of_bikes) if options else self.maximum_number_of_bikes
+        depot_id = options.get('depot_id', 491) if options else 491
+
+        # Truck options
+        self.current_cell_id = options.get('initial_cell', 185) if options else 185
+        max_truck_load = options.get('max_truck_load', 30) if options else 30
+
+        # Discount factor option
+        self.discount_factor = options.get('discount_factor', 0.99) if options else 0.99
+
         # Reset the cells
         for cell in self.cells.values():
             cell.reset()
 
+        # Reset reward items
         self.zero_bikes_penalty = []
         self.recent_visited_cells = {}
         self.total_visits = 1
 
         # Initialize the depot
         self.next_bike_id = 0
-        depot_id = options.get('depot_id', 491) if options else 491
         self.depot_node = self.cells.get(depot_id).get_center_node()
         self.depot, self.next_bike_id = initialize_bikes(n=self.maximum_number_of_bikes, next_bike_id=self.next_bike_id)
-
-        #Enabling the logging
-        self.logging = options.get('logging', False) if options else False
-
-        # Update day and time slot if provided in options
-        self.day = options.get('day', 'monday') if options else 'monday'
-        self.timeslot = options.get('timeslot', 0) if options else 0
-        self.discount_factor = options.get('discount_factor', 0.99) if options else 0.99
-
-        self.total_timeslots = options.get('total_timeslots', 2*365*8) if options else 2*365*8
-        self.maximum_number_of_bikes = options.get('maximum_number_of_bikes', self.maximum_number_of_bikes) if options else self.maximum_number_of_bikes
 
         self.timeslots_completed = 0
         self.days_completed = 0
@@ -173,13 +182,10 @@ class BostonCity(gym.Env):
                 self.stations[node].set_cell(cell)
 
         # Initialize the truck
-        self.current_cell_id = options.get('initial_cell', 185) if options else 185
         cell = self.cells[self.current_cell_id]
-        max_truck_load = options.get('max_truck_load', 30) if options else 30
-
-        # Pop out 15 bikes from the depot and load them into the truck
         bikes = {key: self.depot.pop(key) for key in list(self.depot.keys())[:15]}
         self.truck = Truck(cell.center_node, cell, bikes=bikes, max_load=max_truck_load)
+        self.recent_visited_cells[self.current_cell_id] = 0
 
         # Load the PMF matrix and global rate for the current day and time slot
         self.pmf_matrix, self.global_rate = self._load_pmf_matrix_global_rate(self.day, self.timeslot)
@@ -209,14 +215,14 @@ class BostonCity(gym.Env):
             next_bike_id=self.next_bike_id,
         )
 
+        # Initialize the day and time slot
+        self._initialize_day_timeslot(handle_first_events=True)
+
         # Initialize the cell subgraph
         self.cell_subgraph = initialize_cells_subgraph(self.cells, self.nodes_dict, self.distance_matrix)
 
         # Update the graph with regional metrics
         self._update_graph()
-
-        # Initialize the day and time slot
-        self._initialize_day_timeslot(handle_first_events=True)
 
         # Return the initial observation and an optional info dictionary
         observation = self._get_obs()
@@ -245,7 +251,7 @@ class BostonCity(gym.Env):
         distance = 0
 
         hours = divmod((self.timeslot * 3 + 1) * 3600 + self.env_time, 3600)[0] % 24
-        mean_velocity = self.velocity_matrix.loc[hours, self.day]
+        mean_truck_velocity = self.velocity_matrix.loc[hours, self.day]
 
         prev_position = self.truck.get_position()
         bike_picked_up = False
@@ -255,26 +261,26 @@ class BostonCity(gym.Env):
             t = stay()
             self.logger.log_starting_action('STAY', t)
         elif action == Actions.RIGHT.value:
-            t, distance = move_right(self.truck, self.distance_matrix, self.cells, mean_velocity)
+            t, distance = move_right(self.truck, self.distance_matrix, self.cells, mean_truck_velocity)
             self.logger.log_starting_action('RIGHT', t)
         elif action == Actions.UP.value:
-            t, distance = move_up(self.truck, self.distance_matrix, self.cells, mean_velocity)
+            t, distance = move_up(self.truck, self.distance_matrix, self.cells, mean_truck_velocity)
             self.logger.log_starting_action('UP', t)
         elif action == Actions.LEFT.value:
-            t, distance = move_left(self.truck, self.distance_matrix, self.cells, mean_velocity)
+            t, distance = move_left(self.truck, self.distance_matrix, self.cells, mean_truck_velocity)
             self.logger.log_starting_action('LEFT', t)
         elif action == Actions.DOWN.value:
-            t, distance = move_down(self.truck, self.distance_matrix, self.cells, mean_velocity)
+            t, distance = move_down(self.truck, self.distance_matrix, self.cells, mean_truck_velocity)
             self.logger.log_starting_action('DOWN', t)
         elif action == Actions.DROP_BIKE.value:
-            t, distance = drop_bike(self.truck, self.distance_matrix, mean_velocity, self.depot_node, self.depot)
+            t, distance = drop_bike(self.truck, self.distance_matrix, mean_truck_velocity, self.depot_node, self.depot)
             self.logger.log_starting_action('DROP_BIKE', t)
         elif action == Actions.PICK_UP_BIKE.value:
-            t, distance, _ = pick_up_bike(self.truck, self.stations, self.distance_matrix, mean_velocity, self.depot_node,
-                                       self.depot, self.system_bikes)
+            t, distance, _ = pick_up_bike(self.truck, self.stations, self.distance_matrix, mean_truck_velocity,
+                                          self.depot_node, self.depot, self.system_bikes)
             self.logger.log_starting_action('PICK_UP_BIKE', t)
         elif action == Actions.CHARGE_BIKE.value:
-            t, distance, bike_picked_up = charge_bike(self.truck, self.stations, self.distance_matrix, mean_velocity,
+            t, distance, bike_picked_up = charge_bike(self.truck, self.stations, self.distance_matrix, mean_truck_velocity,
                                                       self.depot_node, self.depot, self.system_bikes)
             self.logger.log_starting_action('CHARGE_BIKE', t)
 
@@ -287,32 +293,8 @@ class BostonCity(gym.Env):
 
         self.zero_bikes_penalty = []
 
-        # Check if the environment time exceeds the maximum time
-        remaining_steps = 0
-        if self.env_time + steps*30 >= 3600*3:
-            steps = math.ceil((3600*3 - self.env_time) / 30)
-            remaining_steps = math.ceil((t - steps*30) / 30)
-
         # Update the environment state
         failures = self._jump_to_next_state(steps)
-
-        terminated = False
-        if self.env_time >= 3600*3:
-            residual_event_buffer = self.event_buffer
-            for event in residual_event_buffer:
-                event.time -= 3600*3
-            if self.timeslot == 7:
-                self.timeslot = 0
-                self.day = num2days[(days2num[self.day] + 1) % 7]
-                self.days_completed += 1
-            else:
-                self.timeslot += 1
-            self._initialize_day_timeslot(residual_event_buffer)
-            self.timeslots_completed += 1
-            terminated = True
-
-        if remaining_steps > 0:
-            failures.extend(self._jump_to_next_state(remaining_steps))
 
         # Handle specific actions post-environment update
         if action in {Actions.DROP_BIKE.value, Actions.CHARGE_BIKE.value}:
@@ -347,7 +329,7 @@ class BostonCity(gym.Env):
 
         # Compute the outputs
         observation = self._get_obs()
-        reward = self._get_reward(steps+remaining_steps, failures, distance, action)
+        reward = self._get_reward(steps, failures, distance, action)
         self._update_graph()
         path = (prev_position, self.truck.get_position())
 
@@ -361,8 +343,23 @@ class BostonCity(gym.Env):
             'failures': failures,
             'path': path,
             'number_of_system_bikes': len(self.system_bikes),
-            'steps': steps+remaining_steps,
+            'steps': steps,
         }
+
+        terminated = False
+        if self.env_time >= 3600*3:
+            residual_event_buffer = self.event_buffer
+            for event in residual_event_buffer:
+                event.time -= 3600*3
+            if self.timeslot == 7:
+                self.timeslot = 0
+                self.day = num2days[(days2num[self.day] + 1) % 7]
+                self.days_completed += 1
+            else:
+                self.timeslot += 1
+            self._initialize_day_timeslot(residual_event_buffer=residual_event_buffer)
+            self.timeslots_completed += 1
+            terminated = True
 
         if self.timeslots_completed == self.total_timeslots:   # 2 years
             done = True
@@ -543,15 +540,15 @@ class BostonCity(gym.Env):
     def _get_obs(self) -> np.array:
         # FIXME: Fix the observation space
         # Encode time slot and day
-        h, _ = divmod((self.timeslot * 3 + 1) * 3600 + self.env_time, 3600)
-        hour = [1 if h == i else 0 for i in range(24)]
-        day = [1 if self.day == d else 0 for d in days2num.keys()]
+        hour = divmod((self.timeslot * 3 + 1) * 3600 + self.env_time, 3600)[0]
+        ohe_hour = [1 if hour == i else 0 for i in range(24)]
+        ohe_day = [1 if self.day == d else 0 for d in days2num.keys()]
 
         # Combine all features into a single observation array
         observation = np.array(
             [self.truck.get_load() / self.truck.max_load]
-            + day
-            + hour
+            + ohe_day
+            + ohe_hour
         )
 
         return observation.astype(np.float32)
@@ -592,12 +589,15 @@ class BostonCity(gym.Env):
 
         # Check how much a zone is critical (bikes in the cell / expected departures)
         critic_zone_penalty = 0
-        for cell_id, cell in self.cells.items():
-            if cell_id in expected_departures_per_cell:
-                critic_score = cell.get_total_bikes() / expected_departures_per_cell[cell_id]
-                cell.set_critic_score(critic_score)
-                if critic_score < 0.5:
-                    critic_zone_penalty -= 0.1
+        for cell_id, expected_departures in expected_departures_per_cell.items():
+            cell = self.cells[cell_id]
+            cell_bikes = cell.get_total_bikes()
+            critic_score = 0.0
+            if cell_bikes < expected_departures:
+                critic_score = 1.0 - (cell_bikes / expected_departures)
+            cell.set_critic_score(critic_score)
+            if critic_score > 0.5:
+                critic_zone_penalty -= 0.1
 
         # Check if visiting a critical cell and a non explored cell
         critical_zone_bonus = 0
@@ -605,7 +605,7 @@ class BostonCity(gym.Env):
         if action in {Actions.UP.value, Actions.DOWN.value, Actions.LEFT.value, Actions.RIGHT.value}:
             truck_cell = self.truck.get_cell()
             if truck_cell.is_critical:
-                critical_zone_bonus = 1 - truck_cell.get_critic_score()
+                critical_zone_bonus = truck_cell.get_critic_score()
             if truck_cell not in self.recent_visited_cells:
                 non_visited_bonus = 0.5
 
@@ -639,30 +639,23 @@ class BostonCity(gym.Env):
 
             # Initialize regional metrics
             demand_rate, arrival_rate, bike_load = 0.0, 0.0, cell.get_total_bikes()/500
-            average_battery_level, low_battery_ratio, variance_battery_level = 0.0, 0.0, 0.0
 
             # Aggregate metrics for nodes in the cell
+            battery_levels = []
             for node in cell.nodes:
                 bikes = self.stations[node].get_bikes()
-                battery_levels = [bike.get_battery() / bike.get_max_battery() for bike in bikes.values()]
+                battery_levels.extend([bike.get_battery() / bike.get_max_battery() for bike in bikes.values()])
 
                 # Update regional metrics
                 demand_rate += self.stations[node].get_request_rate()
                 arrival_rate += self.stations[node].get_arrival_rate()
-                if battery_levels:
-                    average_battery_level += np.mean(battery_levels)
-                    variance_battery_level += np.var(battery_levels)
-                    low_battery_ratio += np.mean(
-                        [level < 0.2 for level in battery_levels]
-                    )
 
             # Avoid division by zero by ensuring at least one node
-            num_nodes = max(1, len(cell.nodes))
             demand_rate /= self.global_rate
             arrival_rate /= self.global_rate
-            average_battery_level /= num_nodes
-            low_battery_ratio /= num_nodes
-            variance_battery_level /= num_nodes
+            average_battery_level = np.mean(battery_levels) if battery_levels else 0.0
+            low_battery_ratio = sum([1 for level in battery_levels if level < 0.2]) / len(battery_levels) if battery_levels else 0.0
+            variance_battery_level = np.var(battery_levels) if battery_levels else 0.0
 
             # TODO: aggiungere quanto sono visitate le zone
 
@@ -673,8 +666,9 @@ class BostonCity(gym.Env):
                 self.cell_subgraph.nodes[center_node]['average_battery_level'] = average_battery_level
                 self.cell_subgraph.nodes[center_node]['low_battery_ratio'] = low_battery_ratio
                 self.cell_subgraph.nodes[center_node]['variance_battery_level'] = variance_battery_level
-                self.cell_subgraph.nodes[center_node]['total_bikes'] = cell.get_total_bikes() / num_nodes
+                self.cell_subgraph.nodes[center_node]['total_bikes'] = cell.get_total_bikes() / 500
                 self.cell_subgraph.nodes[center_node]['visits'] = cell.get_visits() / self.total_visits
+                self.cell_subgraph.nodes[center_node]['critic_score'] = cell.get_critic_score()
 
 
     def _get_truck_position(self) -> tuple[float, float]:

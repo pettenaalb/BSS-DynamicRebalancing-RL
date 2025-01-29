@@ -15,8 +15,8 @@ class DuelingDQN(nn.Module):
         super(DuelingDQN, self).__init__()
 
         # Graph feature extractor using Graph Attention Network (GAT)
-        self.gat1 = GATConv(in_channels=8, out_channels=64, edge_dim=1)
-        self.gat2 = GATConv(in_channels=64, out_channels=64, edge_dim=1)
+        self.gat1 = GATConv(in_channels=9, out_channels=64, edge_dim=1)
+        # self.gat2 = GATConv(in_channels=64, out_channels=64, edge_dim=1)
 
         # Fully connected layers for graph features
         self.fc_input1 = nn.Sequential(
@@ -71,7 +71,7 @@ class DuelingDQN(nn.Module):
 
         # Compute node embeddings using GAT and apply the first fully connected layer
         x = self.gat1(x, edge_index, edge_attr)
-        x = self.gat2(x, edge_index, edge_attr)
+        # x = self.gat2(x, edge_index, edge_attr)
         x = self.fc_input1(x)
         x = gnn.global_mean_pool(x, pool_batch)
 

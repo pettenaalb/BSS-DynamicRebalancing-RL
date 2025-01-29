@@ -37,7 +37,7 @@ class Station:
         Returns:
         str: A string describing the station with its ID, name, latitude, and longitude.
         """
-        return f"Station {self.station_id}: ({self.lat}, {self.lon})"
+        return f"Station {self.station_id}: Position ({self.lat}, {self.lon}), Locked Bikes: {len(self.bikes)}"
 
     def set_bikes(self, bikes: {"Bike"}):
         """

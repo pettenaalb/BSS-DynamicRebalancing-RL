@@ -61,7 +61,7 @@ class Logger:
         if self.is_logging:
             self.logger.info(f"\nTRUCK:"
                              f"\n - CELL: {truck.cell.get_id()} - {truck.cell.get_center_node()}"
-                             f"\n - NODE: {truck.position}"
+                             f"\n - POSITION: {truck.position}"
                              f"\n - LOAD: {truck.current_load} bikes")
 
     def log_no_available_bikes(self, start_station: int, end_station: int):
@@ -71,6 +71,10 @@ class Logger:
     def log_trip(self, trip: "Trip"):
         if self.is_logging:
             self.logger.info("Trip scheduled %s", trip)
+
+    def log(self, message: str):
+        if self.is_logging:
+            self.logger.info(f"\n{message}\n")
 
     def set_logging(self, is_logging: bool):
         self.is_logging = is_logging
@@ -260,7 +264,8 @@ def initialize_cells_subgraph(cells: dict[int, "Cell"], nodes_dict: dict[int, tu
             demand_rate=0.0,
             arrival_rate=0.0,
             bike_load = 0.0,
-            visits = 0.0
+            visits = 0.0,
+            critic_score = 0.0,
         )
 
     max_length = 0

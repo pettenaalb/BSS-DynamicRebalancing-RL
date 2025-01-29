@@ -51,7 +51,8 @@ def convert_graph_to_data(graph: nx.MultiDiGraph):
         'variance_battery_level',
         'total_bikes',
         'bike_load',
-        'visits'
+        'visits',
+        'critic_score',
     ]
     data.x = torch.cat([
         torch.tensor(
