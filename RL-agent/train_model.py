@@ -99,8 +99,8 @@ def train_dueling_dqn(env: gym, agent: DQNAgent, batch_size: int, episode: int, 
         'maximum_number_of_bikes': params["maximum_number_of_bikes"],
         'discount_factor': params["gamma"],
         'logging': enable_logging,
-        'depot_id': 33,         # 491 back
-        'initial_cell': 33,     # 185 back
+        'depot_id': 83,         # 491 back
+        'initial_cell': 10,     # 185 back
     }
 
     agent_state, info = env.reset(options=options)
