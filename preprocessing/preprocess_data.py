@@ -278,7 +278,7 @@ def main():
     east = -71.0883
 
     # Bounding box
-    bbox = (north, south, east, west)
+    bbox = (west, south, east, north)
     print(f"Bounding box: {bbox}")
     # <-- END OF SECTION -->
 
