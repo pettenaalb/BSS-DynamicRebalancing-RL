@@ -1,6 +1,7 @@
 import torch
 import argparse
 import pickle
+import os
 
 import gymnasium as gym
 import numpy as np
@@ -28,7 +29,7 @@ np.random.seed(seed)
 torch.manual_seed(seed)
 
 params = {
-    "num_episodes": 24,                 # Total number of training episodes
+    "num_episodes": 4,                 # Total number of training episodes
     "batch_size": 256,                  # Batch size for replay buffer sampling
     "replay_buffer_capacity": 1e5,      # Capacity of replay buffer: 1 million transitions
     "gamma": 0.99,                      # Discount factor
@@ -37,7 +38,7 @@ params = {
     "epsilon_end": 0.00,                # Minimum exploration rate
     "epsilon_decay": 500,               # Epsilon decay rate
     "lr": 1e-3,                         # Learning rate
-    "total_timeslots": 224,             # Total number of time slots in one episode (1 month)
+    "total_timeslots": 56,             # Total number of time slots in one episode (1 month)
     "maximum_number_of_bikes": 300,     # Maximum number of bikes in the system
 }
 
@@ -137,6 +138,9 @@ def main():
         total_failures.extend(results['failures'])
 
     tbar.close()
+
+    if not os.path.exists('../results/training'):
+        os.makedirs('../results/training')
 
     with open('../results/training/total_failures_baseline.pkl', 'wb') as f:
         pickle.dump(total_failures, f)
