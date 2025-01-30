@@ -556,11 +556,11 @@ class BostonCity(gym.Env):
 
     def _get_reward(self, steps: int, failures: list, distance: int, action: int) -> float:
         # Cost per distance traveled
-        # hour = divmod((self.timeslot * 3 + 1) * 3600 + self.env_time, 3600)[0] % 24
-        # distance_cost = (distance/1000)*self.consumption_matrix.loc[hour, self.day]
+        hour = divmod((self.timeslot * 3 + 1) * 3600 + self.env_time, 3600)[0] % 24
+        distance_cost = (distance/1000)*self.consumption_matrix.loc[hour, self.day]
 
         # Maximum 100 bikes per region
-        # bike_per_region_cost = self._compute_bike_per_region_cost()
+        bike_per_region_cost = self._compute_bike_per_region_cost()
 
         # Maximum 2500 bikes in the system
         # total_bikes_cost = logistic_penalty_function(M=1, k=0.03, b=self.maximum_number_of_bikes, x=len(self.system_bikes))
@@ -571,48 +571,48 @@ class BostonCity(gym.Env):
         # TODO: bonus se va in zone non esplorate
 
         # Reward for each step
-        # reward = - steps - failures[0] - distance_cost - bike_per_region_cost
-        # for i, failure in enumerate(failures[1:]):
-        #     reward -= failure*(self.discount_factor**i)
+        reward = - steps - failures[0] - distance_cost - bike_per_region_cost
+        for i, failure in enumerate(failures[1:]):
+            reward -= failure*(self.discount_factor**i)
 
         # Compute the expected number of departures per cell
-        expected_departures_per_cell = {}
-        for event in self.event_buffer:
-            if event.is_departure():
-                start_location = event.get_trip().get_start_location()
-                if start_location.get_station_id() != 10000:
-                    cell = start_location.get_cell()
-                    if cell.get_id() not in expected_departures_per_cell:
-                        expected_departures_per_cell[cell.get_id()] = 1
-                    else:
-                        expected_departures_per_cell[cell.get_id()] += 1
-
-        # Check how much a zone is critical (bikes in the cell / expected departures)
-        critic_zone_penalty = 0
-        for cell_id, expected_departures in expected_departures_per_cell.items():
-            cell = self.cells[cell_id]
-            cell_bikes = cell.get_total_bikes()
-            critic_score = 0.0
-            if cell_bikes < expected_departures:
-                critic_score = 1.0 - (cell_bikes / expected_departures)
-            cell.set_critic_score(critic_score)
-            if critic_score > 0.5:
-                critic_zone_penalty -= 0.1
-
-        # Check if visiting a critical cell and a non explored cell
-        critical_zone_bonus = 0
-        non_visited_bonus = 0
-        if action in {Actions.UP.value, Actions.DOWN.value, Actions.LEFT.value, Actions.RIGHT.value}:
-            truck_cell = self.truck.get_cell()
-            if truck_cell.is_critical:
-                critical_zone_bonus = truck_cell.get_critic_score()
-            if truck_cell not in self.recent_visited_cells:
-                non_visited_bonus = 0.5
-
-        # Reward for each step, penalizing if a cell is empty, penalizing if a cell is critical, rewarding if critical a cell is visited
-        reward = - steps + self.zero_bikes_penalty[0] + critic_zone_penalty + critical_zone_bonus + non_visited_bonus
-        for i in range(1, steps):
-            reward -= self.zero_bikes_penalty[i]*(self.discount_factor**i)
+        # expected_departures_per_cell = {}
+        # for event in self.event_buffer:
+        #     if event.is_departure():
+        #         start_location = event.get_trip().get_start_location()
+        #         if start_location.get_station_id() != 10000:
+        #             cell = start_location.get_cell()
+        #             if cell.get_id() not in expected_departures_per_cell:
+        #                 expected_departures_per_cell[cell.get_id()] = 1
+        #             else:
+        #                 expected_departures_per_cell[cell.get_id()] += 1
+        #
+        # # Check how much a zone is critical (bikes in the cell / expected departures)
+        # critic_zone_penalty = 0
+        # for cell_id, expected_departures in expected_departures_per_cell.items():
+        #     cell = self.cells[cell_id]
+        #     cell_bikes = cell.get_total_bikes()
+        #     critic_score = 0.0
+        #     if cell_bikes < expected_departures:
+        #         critic_score = 1.0 - (cell_bikes / expected_departures)
+        #     cell.set_critic_score(critic_score)
+        #     if critic_score > 0.5:
+        #         critic_zone_penalty -= 0.1
+        #
+        # # Check if visiting a critical cell and a non explored cell
+        # critical_zone_bonus = 0
+        # non_visited_bonus = 0
+        # if action in {Actions.UP.value, Actions.DOWN.value, Actions.LEFT.value, Actions.RIGHT.value}:
+        #     truck_cell = self.truck.get_cell()
+        #     if truck_cell.is_critical:
+        #         critical_zone_bonus = truck_cell.get_critic_score()
+        #     if truck_cell not in self.recent_visited_cells:
+        #         non_visited_bonus = 0.5
+        #
+        # # Reward for each step, penalizing if a cell is empty, penalizing if a cell is critical, rewarding if critical a cell is visited
+        # reward = - steps + self.zero_bikes_penalty[0] + critic_zone_penalty + critical_zone_bonus + non_visited_bonus
+        # for i in range(1, steps):
+        #     reward -= self.zero_bikes_penalty[i]*(self.discount_factor**i)
 
         return reward
 

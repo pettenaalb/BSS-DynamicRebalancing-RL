@@ -35,17 +35,17 @@ np.random.seed(seed)
 torch.manual_seed(seed)
 
 params = {
-    "num_episodes": 24,                 # Total number of training episodes
+    "num_episodes": 4,                 # Total number of training episodes
     "batch_size": 256,                  # Batch size for replay buffer sampling
-    "replay_buffer_capacity": 1e5,      # Capacity of replay buffer: 1 million transitions
-    "gamma": 0.99,                      # Discount factor
+    "replay_buffer_capacity": 1e5,      # Capacity of replay buffer: 0.1 million transitions
+    "gamma": 0.999,                      # Discount factor
     "epsilon_start": 1.0,               # Starting exploration rate
     "epsilon_delta": 0.05,
     "epsilon_end": 0.00,                # Minimum exploration rate
     "epsilon_decay": 500,               # Epsilon decay rate
-    "lr": 1e-3,                         # Learning rate
-    "total_timeslots": 224,             # Total number of time slots in two years
-    "maximum_number_of_bikes": 3500,    # Maximum number of bikes in the system
+    "lr": 1e-2,                         # Learning rate
+    "total_timeslots": 56,             # Total number of time slots in one episode (1 month)
+    "maximum_number_of_bikes": 250,    # Maximum number of bikes in the system
 }
 
 enable_telegram = False
@@ -124,13 +124,13 @@ def train_dueling_dqn(env: gym, agent: DQNAgent, batch_size: int, episode: int, 
         # Select an action using the agent
         avoid_action = None
 
-        if info['number_of_system_bikes'] > params["maximum_number_of_bikes"] - 50:
+        if info['number_of_system_bikes'] > params["maximum_number_of_bikes"]*0.95:
             # Avoid dropping bikes if the system is almost full
             avoid_action = Actions.DROP_BIKE.value
 
-        if info['number_of_system_bikes'] < 50:
-            # Avoid picking up bikes if the system is almost empty
-            avoid_action = Actions.PICK_UP_BIKE.value
+        # if info['number_of_system_bikes'] < params["maximum_number_of_bikes"]*0.1:
+        #     # Avoid picking up bikes if the system is almost empty
+        #     avoid_action = Actions.PICK_UP_BIKE.value
 
         action = agent.select_action(single_state, avoid_action=avoid_action)
         action_per_step.append((action, agent.epsilon))
@@ -163,7 +163,7 @@ def train_dueling_dqn(env: gym, agent: DQNAgent, batch_size: int, episode: int, 
 
             # Update target network periodically
             # agent.update_target_network()
-            if timeslots_completed % 200 == 0: # every 30 days
+            if timeslots_completed % 9 == 0: # every 30 days
                 agent.update_epsilon(delta_epsilon=params["epsilon_delta"])
 
             # Record metrics for the current time slot

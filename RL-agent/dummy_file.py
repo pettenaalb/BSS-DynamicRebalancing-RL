@@ -1,5 +1,6 @@
 import torch
 import argparse
+import pickle
 
 import gymnasium as gym
 import numpy as np
@@ -27,7 +28,7 @@ np.random.seed(seed)
 torch.manual_seed(seed)
 
 params = {
-    "num_episodes": 1,                  # Total number of training episodes
+    "num_episodes": 24,                 # Total number of training episodes
     "batch_size": 256,                  # Batch size for replay buffer sampling
     "replay_buffer_capacity": 1e5,      # Capacity of replay buffer: 1 million transitions
     "gamma": 0.99,                      # Discount factor
@@ -36,8 +37,8 @@ params = {
     "epsilon_end": 0.00,                # Minimum exploration rate
     "epsilon_decay": 500,               # Epsilon decay rate
     "lr": 1e-3,                         # Learning rate
-    "total_timeslots": 224,             # Total number of time slots in two years
-    "maximum_number_of_bikes": 3500,    # Maximum number of bikes in the system
+    "total_timeslots": 224,             # Total number of time slots in one episode (1 month)
+    "maximum_number_of_bikes": 300,     # Maximum number of bikes in the system
 }
 
 enable_telegram = False
@@ -69,9 +70,9 @@ def train_dueling_dqn(env: gym, episode: int, tbar: tqdm | tqdm_telegram) -> dic
         'total_timeslots': params["total_timeslots"],
         'maximum_number_of_bikes': params["maximum_number_of_bikes"],
         'discount_factor': params["gamma"],
-        'logging': True,
-        'depot_id': 33,         # 491 back
-        'initial_cell': 33,     # 185 back
+        'logging': False,
+        'depot_id': 10,         # 491 back
+        'initial_cell': 10,     # 185 back
     }
 
     agent_state, info = env.reset(options=options)
@@ -82,7 +83,7 @@ def train_dueling_dqn(env: gym, episode: int, tbar: tqdm | tqdm_telegram) -> dic
     while not_done:
 
         # loop from 0 to 7
-        action = past_action
+        action = Actions.STAY.value
         past_action = (past_action + 1) % 8
 
         # Step the environment with the chosen action
@@ -107,10 +108,12 @@ def train_dueling_dqn(env: gym, episode: int, tbar: tqdm | tqdm_telegram) -> dic
             tbar.set_postfix({'failures': failures_per_timeslot[-1][0]})
             tbar.update(1)
 
+            total_failures = 0
+
     env.close()
     torch.cuda.empty_cache()
 
-    return {}
+    return {'failures': failures_per_timeslot}
 
 # ----------------------------------------------------------------------------------------------------------------------
 
@@ -127,9 +130,16 @@ def main():
         dynamic_ncols=True
     )
 
+    total_failures = []
+
     for episode in range(0, params["num_episodes"]):
-        train_dueling_dqn(env, episode, tbar)
-        tbar.close()
+        results = train_dueling_dqn(env, episode, tbar)
+        total_failures.extend(results['failures'])
+
+    tbar.close()
+
+    with open('../results/training/total_failures_baseline.pkl', 'wb') as f:
+        pickle.dump(total_failures, f)
 
     # Print the rewards after training
     print("\nTraining completed.")
