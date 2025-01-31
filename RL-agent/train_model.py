@@ -35,17 +35,19 @@ np.random.seed(seed)
 torch.manual_seed(seed)
 
 params = {
-    "num_episodes": 4,                 # Total number of training episodes
-    "batch_size": 256,                  # Batch size for replay buffer sampling
-    "replay_buffer_capacity": 1e5,      # Capacity of replay buffer: 0.1 million transitions
-    "gamma": 0.999,                      # Discount factor
-    "epsilon_start": 1.0,               # Starting exploration rate
-    "epsilon_delta": 0.05,
-    "epsilon_end": 0.00,                # Minimum exploration rate
-    "epsilon_decay": 500,               # Epsilon decay rate
-    "lr": 1e-2,                         # Learning rate
-    "total_timeslots": 56,             # Total number of time slots in one episode (1 month)
-    "maximum_number_of_bikes": 250,    # Maximum number of bikes in the system
+    "num_episodes": 4,                              # Total number of training episodes
+    "batch_size": 256,                              # Batch size for replay buffer sampling
+    "replay_buffer_capacity": 1e5,                  # Capacity of replay buffer: 0.1 million transitions
+    "gamma": 0.999,                                 # Discount factor
+    "epsilon_start": 1.0,                           # Starting exploration rate
+    "epsilon_delta": 0.05,                          # Epsilon decay rate
+    "epsilon_end": 0.00,                            # Minimum exploration rate
+    "epsilon_decay": 1e-5,                          # Epsilon decay constant
+    "lr": 1e-2,                                     # Learning rate
+    "total_timeslots": 56,                          # Total number of time slots in one episode (1 month)
+    "maximum_number_of_bikes": 300,                 # Maximum number of bikes in the system
+    "standard_reward": True,                        # Use standard reward function
+    "results_path": "../results/training/",         # Path to save results
 }
 
 enable_telegram = False
@@ -83,6 +85,7 @@ def train_dueling_dqn(env: gym, agent: DQNAgent, batch_size: int, episode: int, 
     action_per_step = []
     truck_path = []
     truck_path_per_timeslot = []
+    losses = []
 
     inner_tbar = tqdm(
         range(360),
@@ -101,6 +104,7 @@ def train_dueling_dqn(env: gym, agent: DQNAgent, batch_size: int, episode: int, 
         'logging': enable_logging,
         'depot_id': 10,         # 491 back
         'initial_cell': 10,     # 185 back
+        'standard_reward': params["standard_reward"],
     }
 
     agent_state, info = env.reset(options=options)
@@ -147,7 +151,8 @@ def train_dueling_dqn(env: gym, agent: DQNAgent, batch_size: int, episode: int, 
         agent.replay_buffer.push(state, action, reward, next_state, done)
 
         # Train the agent with a batch from the replay buffer
-        agent.train_step(batch_size)
+        loss = agent.train_step(batch_size)
+        losses.append(loss)
 
         # Update the state and metrics
         state = next_state
@@ -163,7 +168,7 @@ def train_dueling_dqn(env: gym, agent: DQNAgent, batch_size: int, episode: int, 
 
             # Update target network periodically
             # agent.update_target_network()
-            if timeslots_completed % 9 == 0: # every 30 days
+            if timeslots_completed % 10 == 0:
                 agent.update_epsilon(delta_epsilon=params["epsilon_delta"])
 
             # Record metrics for the current time slot
@@ -206,7 +211,8 @@ def train_dueling_dqn(env: gym, agent: DQNAgent, batch_size: int, episode: int, 
         "rewards_per_timeslot": rewards_per_timeslot,
         "failures_per_timeslot": failures_per_timeslot,
         "q_values_per_timeslot": q_values_per_timeslot,
-        "action_per_step": action_per_step
+        "action_per_step": action_per_step,
+        "losses": losses,
     }
 
     return results
@@ -247,6 +253,7 @@ def main():
     warnings.filterwarnings("ignore")
 
     print(f"Device in use: {device}\n")
+    print("Standard reward function is used." if params["standard_reward"] else "New reward function is used.")
 
     # Create the environment
     env = gym.make('gymnasium_env/BostonCity-v0', data_path=data_path)
@@ -301,14 +308,15 @@ def main():
             )
 
         for episode in range(starting_episode, params["num_episodes"]):
+            # Train the agent for one episode
             results = train_dueling_dqn(env, agent, params["batch_size"], episode, tbar)
 
             # Save result lists
-            results_path = '../results/training/data/'+ str(episode).zfill(2) + '/'
+            results_path = str(params['results_path']) + 'data/'+ str(episode).zfill(2) + '/'
+            # print(results_path)
             if not os.path.exists(results_path):
                 os.makedirs(results_path)
                 print(f"Directory '{results_path}' created.")
-
             with open(results_path + 'rewards_per_timeslot.pkl', 'wb') as f:
                 pickle.dump(results['rewards_per_timeslot'], f)
             with open(results_path + 'failures_per_timeslot.pkl', 'wb') as f:
@@ -317,6 +325,8 @@ def main():
                 pickle.dump(results['q_values_per_timeslot'], f)
             with open(results_path + 'action_per_step.pkl', 'wb') as f:
                 pickle.dump(results['action_per_step'], f)
+            with open(results_path + 'losses.pkl', 'wb') as f:
+                pickle.dump(results['losses'], f)
 
             # Save checkpoint
             if enable_checkpoint:
@@ -355,7 +365,8 @@ def main():
 
     # Print the rewards after training
     print("\nTraining completed.")
-    send_telegram_message("Training completed.", BOT_TOKEN, CHAT_ID)
+    if enable_telegram:
+        send_telegram_message("Training completed.", BOT_TOKEN, CHAT_ID)
 
 
 if __name__ == '__main__':
@@ -366,6 +377,9 @@ if __name__ == '__main__':
     parser.add_argument('--enable_logging', action='store_true', help='Enable logging.')
     parser.add_argument('--enable_checkpoint', action='store_true', help='Enable checkpointing.')
     parser.add_argument('--restore_from_checkpoint', action='store_true', help='Restore from checkpoint.')
+    parser.add_argument('--new_reward', action='store_true', help='Use new reward function.')
+    parser.add_argument('--num_episodes', type=int, default=10, help='Number of episodes to train.')
+    parser.add_argument('--results_path', type=str, default='../results/training/', help='Path to save results.')
 
     args = parser.parse_args()
 
@@ -375,6 +389,9 @@ if __name__ == '__main__':
     enable_logging = args.enable_logging
     enable_checkpoint = args.enable_checkpoint
     restore_from_checkpoint = args.restore_from_checkpoint
+    params["standard_reward"] = not args.new_reward
+    params["num_episodes"] = args.num_episodes
+    params["results_path"] = args.results_path
 
     # Ensure the data path exists
     if not os.path.exists(data_path):

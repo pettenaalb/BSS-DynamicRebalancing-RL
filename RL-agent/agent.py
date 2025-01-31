@@ -108,7 +108,7 @@ class DQNAgent:
             target_param.data.copy_(tau * train_param.data + (1 - tau) * target_param.data)
 
 
-    def train_step(self, batch_size):
+    def train_step(self, batch_size) -> float:
         """
         Performs a single training step using a batch sampled from the replay buffer.
 
@@ -154,12 +154,16 @@ class DQNAgent:
             for param in self.train_model.parameters():
                 param.grad.data.clamp_(-1, 1)  # Gradient clipping for stability
             self.optimizer.step()
+
+            loss_value = loss.item()
         finally:
             # Explicitly free up GPU memory for the batch
             del train_q_values, next_q_values, target_q_values, loss, batch
             torch.cuda.empty_cache()
 
         self.soft_update_target_network()
+
+        return loss_value
 
 
     def save_model(self, file_path):

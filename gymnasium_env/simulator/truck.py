@@ -15,6 +15,7 @@ class Truck:
         self.max_load = max_load
         self.bikes = bikes.copy()
         self.current_load = len(bikes) if bikes is not None else 0
+        self.leaving_cell = cell
 
         Truck.truck_id += 1
 
@@ -25,6 +26,7 @@ class Truck:
         self.position = position
 
     def set_cell(self, cell: "Cell"):
+        self.leaving_cell = self.cell
         self.cell = cell
 
     def set_range(self, r: float):
@@ -57,6 +59,9 @@ class Truck:
 
     def get_cell(self) -> "Cell":
         return self.cell
+
+    def get_leaving_cell(self) -> "Cell":
+        return self.leaving_cell
 
     def get_range(self) -> float:
         return self.range

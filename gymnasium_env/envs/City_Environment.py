@@ -117,6 +117,8 @@ class BostonCity(gym.Env):
         self.recent_visited_cells = {}
         self.total_visits = 0
 
+        self.standard_reward = True
+
         # Set logging options
         self.logging = False
         self.logger.set_logging(self.logging)
@@ -125,6 +127,8 @@ class BostonCity(gym.Env):
     def reset(self, seed=None, options=None) -> tuple[np.array, dict]:
         # Call parent class reset
         super().reset(seed=seed)
+
+        self.standard_reward = options.get('standard_reward', True) if options else True
 
         #Enabling the logging
         self.logging = options.get('logging', False) if options else False
@@ -194,7 +198,7 @@ class BostonCity(gym.Env):
         bikes_per_station = {}
         std_dev = 0.0
         for stn_id, stn in self.stations.items():
-            base_bikes = int(self.pmf_matrix.loc[stn_id, :].sum() * int(self.maximum_number_of_bikes*0.8))
+            base_bikes = int(self.pmf_matrix.loc[stn_id, :].sum() * int(self.maximum_number_of_bikes-15))
             noise = random.gauss(0, std_dev) * base_bikes
             noisy_bikes = max(0, int(base_bikes + noise))
             noisy_bikes = min(noisy_bikes, stn.get_capacity())
@@ -328,8 +332,8 @@ class BostonCity(gym.Env):
         self.logger.log_truck(self.truck)
 
         # Compute the outputs
-        observation = self._get_obs()
         reward = self._get_reward(steps, failures, distance, action)
+        observation = self._get_obs()
         self._update_graph()
         path = (prev_position, self.truck.get_position())
 
@@ -502,7 +506,7 @@ class BostonCity(gym.Env):
             zbp = 0
             for cell in self.cells.values():
                 if cell.get_total_bikes() == 0:
-                    zbp -= 1*cell.get_request_rate()
+                    zbp = cell.get_request_rate()
 
             self.zero_bikes_penalty.append(zbp)
 
@@ -569,50 +573,81 @@ class BostonCity(gym.Env):
         # TODO: piccola penalità se il numero di bici in una zona è sotto una certa soglia
         # TODO: bonus se va in zone critiche (proporzionale alla probabilità di fallimento)
         # TODO: bonus se va in zone non esplorate
+        # TODO: malus se se ne va da una zona critica
 
         # Reward for each step
-        # reward = - steps - failures[0] - distance_cost - bike_per_region_cost
-        # for i, failure in enumerate(failures[1:]):
-        #     reward -= failure*(self.discount_factor**i)
+        if self.standard_reward:
+            reward = - steps - failures[0] - distance_cost - bike_per_region_cost
+            for i, failure in enumerate(failures[1:]):
+                reward -= failure*(self.discount_factor**i)
+        else:
+            # Compute the expected number of departures per cell
+            expected_departures_per_cell = {}
+            for event in self.event_buffer:
+                if event.is_departure():
+                    start_location = event.get_trip().get_start_location()
+                    if start_location.get_station_id() != 10000:
+                        cell = start_location.get_cell()
+                        if cell.get_id() not in expected_departures_per_cell:
+                            expected_departures_per_cell[cell.get_id()] = 1
+                        else:
+                            expected_departures_per_cell[cell.get_id()] += 1
 
-        # Compute the expected number of departures per cell
-        expected_departures_per_cell = {}
-        for event in self.event_buffer:
-            if event.is_departure():
-                start_location = event.get_trip().get_start_location()
-                if start_location.get_station_id() != 10000:
-                    cell = start_location.get_cell()
-                    if cell.get_id() not in expected_departures_per_cell:
-                        expected_departures_per_cell[cell.get_id()] = 1
-                    else:
-                        expected_departures_per_cell[cell.get_id()] += 1
+            # Store previous critic score before computing new values
+            prev_critic_score = self.truck.get_cell().get_critic_score()
 
-        # Check how much a zone is critical (bikes in the cell / expected departures)
-        critic_zone_penalty = 0
-        for cell_id, expected_departures in expected_departures_per_cell.items():
-            cell = self.cells[cell_id]
-            cell_bikes = cell.get_total_bikes()
-            critic_score = 0.0
-            if cell_bikes < expected_departures:
-                critic_score = 1.0 - (cell_bikes / expected_departures)
-            cell.set_critic_score(critic_score)
-            if critic_score > 0.5:
-                critic_zone_penalty -= 0.1
+            # Compute new critic scores
+            critic_zone_penalty = 0
+            for cell_id, cell in self.cells.items():
+                critic_score = 0.0
+                if cell_id in expected_departures_per_cell:
+                    cell_bikes = cell.get_total_bikes()
+                    expected_departures = expected_departures_per_cell[cell_id]
+                    if cell_bikes < expected_departures:
+                        critic_score = 1.0 - (cell_bikes / expected_departures)
 
-        # Check if visiting a critical cell and a non explored cell
-        critical_zone_bonus = 0
-        non_visited_bonus = 0
-        if action in {Actions.UP.value, Actions.DOWN.value, Actions.LEFT.value, Actions.RIGHT.value}:
-            truck_cell = self.truck.get_cell()
-            if truck_cell.is_critical:
-                critical_zone_bonus = truck_cell.get_critic_score()
-            if truck_cell not in self.recent_visited_cells:
-                non_visited_bonus = 0.5
+                # Apply a proportional penalty if a zone is critical
+                if critic_score > 0.5:
+                    critic_zone_penalty += 0.2 * critic_score
 
-        # Reward for each step, penalizing if a cell is empty, penalizing if a cell is critical, rewarding if critical a cell is visited
-        reward = - steps + self.zero_bikes_penalty[0] + critic_zone_penalty + critical_zone_bonus + non_visited_bonus
-        for i in range(1, steps):
-            reward -= self.zero_bikes_penalty[i]*(self.discount_factor**i)
+                # Update critic score for the cell
+                cell.set_critic_score(critic_score)
+
+            # Compute the change in critic score
+            delta_critic_score = prev_critic_score - self.truck.get_cell().get_critic_score()
+
+            # Initialize bonuses
+            critical_zone_bonus = 0
+            non_visited_bonus = 0
+
+            # Apply movement-related bonuses/penalties
+            if action in {Actions.UP.value, Actions.DOWN.value, Actions.LEFT.value, Actions.RIGHT.value}:
+                truck_cell = self.truck.get_cell()
+                leaving_cell = self.truck.get_leaving_cell()
+
+                # Reward going to critical zones, penalize leaving them
+                if truck_cell.is_critical:
+                    critical_zone_bonus += 0.4 * truck_cell.get_critic_score()
+                if leaving_cell.is_critical:
+                    critical_zone_bonus -= 0.5 * leaving_cell.get_critic_score()
+
+                # Bonus for exploring new zones
+                if truck_cell not in self.recent_visited_cells:
+                    non_visited_bonus = 0.5
+
+            # Final reward calculation
+            reward = (
+                    - 0.5 * steps
+                    - 2 * self.zero_bikes_penalty[0]
+                    - critic_zone_penalty
+                    + critical_zone_bonus
+                    + non_visited_bonus
+                    + 1.5 * delta_critic_score  # Reward for improving critic score
+            )
+
+            # Decay penalties over time
+            for i in range(1, steps):
+                reward -= 2 * self.zero_bikes_penalty[i] * (self.discount_factor ** i)
 
         return reward
 
