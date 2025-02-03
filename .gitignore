@@ -13,3 +13,4 @@ simulator/
 plots/
 dummy_file.py
 data_cambridge/
+results/training/
