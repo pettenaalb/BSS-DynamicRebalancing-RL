@@ -272,13 +272,13 @@ def main():
     half_side = 350  # in meters
 
     # Compute the boundaries
-    south = 42.3646
-    north = 42.3556
+    south = 42.3556
+    north = 42.3646
     west = -71.1001
     east = -71.0883
 
     # Bounding box
-    bbox = (west, south, east, north)
+    bbox = (north, south, east, west)
     print(f"Bounding box: {bbox}")
     # <-- END OF SECTION -->
 
@@ -286,7 +286,7 @@ def main():
                              remove_isolated_nodes=True, simplify_network=True, nodes_to_remove=params['nodes_to_remove'],
                              bbox=bbox)
 
-    # plot_graph(graph)
+    plot_graph(graph)
 
     print(f'\nProcessing data for year {params["year"]} and month {params["month"]}...')
     trip_df = pd.DataFrame()

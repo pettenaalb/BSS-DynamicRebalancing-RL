@@ -96,11 +96,11 @@ class BostonCity(gym.Env):
         self.system_bikes, self.outside_system_bikes = None, None
         self.depot, self.depot_node = None, None
         self.maximum_number_of_bikes = 3500
-        self.current_cell_id = None
         self.stations = None
         self.truck = None
         self.event_buffer = None
         self.next_event_buffer = None
+        self.next_timeslot_event_buffer = None
         self.env_time = 0
         self.timeslot = 0
         self.day = 'monday'
@@ -111,11 +111,8 @@ class BostonCity(gym.Env):
         self.total_timeslots = 0
         self.background_thread = None
         self.discount_factor = 0.99
-
-        # DEBUGGING PURPOSE
+        self.eligibility_value = 0.99787
         self.zero_bikes_penalty = []
-        self.recent_visited_cells = {}
-        self.total_visits = 0
 
         self.standard_reward = True
 
@@ -144,7 +141,7 @@ class BostonCity(gym.Env):
         depot_id = options.get('depot_id', 491) if options else 491
 
         # Truck options
-        self.current_cell_id = options.get('initial_cell', 185) if options else 185
+        truck_cell_id = options.get('initial_cell', 185) if options else 185
         max_truck_load = options.get('max_truck_load', 30) if options else 30
 
         # Discount factor option
@@ -156,7 +153,6 @@ class BostonCity(gym.Env):
 
         # Reset reward items
         self.zero_bikes_penalty = []
-        self.recent_visited_cells = {}
         self.total_visits = 1
 
         # Initialize the depot
@@ -186,10 +182,10 @@ class BostonCity(gym.Env):
                 self.stations[node].set_cell(cell)
 
         # Initialize the truck
-        cell = self.cells[self.current_cell_id]
+        cell = self.cells[truck_cell_id]
+        cell.set_eligibility_trace(1.0)
         bikes = {key: self.depot.pop(key) for key in list(self.depot.keys())[:15]}
         self.truck = Truck(cell.center_node, cell, bikes=bikes, max_load=max_truck_load)
-        self.recent_visited_cells[self.current_cell_id] = 0
 
         # Load the PMF matrix and global rate for the current day and time slot
         self.pmf_matrix, self.global_rate = self._load_pmf_matrix_global_rate(self.day, self.timeslot)
@@ -238,6 +234,7 @@ class BostonCity(gym.Env):
             'agent_position': self._get_truck_position(),
             'steps': 0,
             'number_of_system_bikes': len(self.system_bikes),
+            'truck_neighbor_cells': self.truck.get_cell().get_adjacent_cells(),
         }
 
         return observation, info
@@ -319,14 +316,9 @@ class BostonCity(gym.Env):
         steps += 1
 
         # Update the last visited cells
-        for cell_id in list(self.recent_visited_cells.keys()):
-            last_visit = self.recent_visited_cells[cell_id]
-            if last_visit > 3600*2:
-                self.recent_visited_cells.pop(cell_id)
         if action in {Actions.UP.value, Actions.DOWN.value, Actions.LEFT.value, Actions.RIGHT.value}:
             truck_cell = self.truck.get_cell()
             truck_cell.set_visits(truck_cell.get_visits() + 1)
-            self.recent_visited_cells[truck_cell.get_id()] = 0
 
         # Log truck state
         self.logger.log_truck(self.truck)
@@ -348,20 +340,17 @@ class BostonCity(gym.Env):
             'path': path,
             'number_of_system_bikes': len(self.system_bikes),
             'steps': steps,
+            'truck_neighbor_cells': self.truck.get_cell().get_adjacent_cells(),
         }
 
         terminated = False
         if self.env_time >= 3600*3:
-            residual_event_buffer = self.event_buffer
-            for event in residual_event_buffer:
+            self.timeslot = (self.timeslot + 1) % 8
+            self.day = num2days[(days2num[self.day] + 1) % 7] if self.timeslot == 0 else self.day
+            self.days_completed += 1 if self.timeslot == 0 else 0
+            for event in self.event_buffer:
                 event.time -= 3600*3
-            if self.timeslot == 7:
-                self.timeslot = 0
-                self.day = num2days[(days2num[self.day] + 1) % 7]
-                self.days_completed += 1
-            else:
-                self.timeslot += 1
-            self._initialize_day_timeslot(residual_event_buffer=residual_event_buffer)
+            self._initialize_day_timeslot()
             self.timeslots_completed += 1
             terminated = True
 
@@ -388,10 +377,8 @@ class BostonCity(gym.Env):
 
     def _precompute_poisson_events(self):
         """Background thread for precomputing Poisson events."""
-        timeslot = (self.timeslot + 1) % 8
-        day = self.day
-        if timeslot == 0:
-            day = num2days[(days2num[self.day] + 1) % 7]
+        timeslot = (self.timeslot + 2) % 8
+        day = num2days[(days2num[self.day] + 1) % 7] if timeslot == 0 else self.day
 
         # Flatten the PMF matrix for event simulation
         pmf_matrix, global_rate = self._load_pmf_matrix_global_rate(day, timeslot)
@@ -411,8 +398,13 @@ class BostonCity(gym.Env):
             distance_matrix=self.distance_matrix,
         )
 
+        # Update time of each event
+        for event in self.next_event_buffer:
+            event.time += 3600 * 3
+
 
     def _initialize_day_timeslot(self, residual_event_buffer: list = None, handle_first_events = False) -> int:
+        # TODO: caricare due timeslot di dati
         # Load PMF matrix and global rate for the current day and time slot
         self.pmf_matrix, self.global_rate = self._load_pmf_matrix_global_rate(self.day, self.timeslot)
 
@@ -427,14 +419,7 @@ class BostonCity(gym.Env):
                 total_request_rate += self.stations[node].get_request_rate()
             cell.set_request_rate(total_request_rate)
 
-        # Simulate the environment for the time slot
-        if self.next_event_buffer is not None:
-            self.event_buffer = self.next_event_buffer
-            self.next_event_buffer = None
-            if residual_event_buffer is not None:
-                for event in residual_event_buffer:
-                    bisect.insort(self.event_buffer, event, key=lambda x: x.time)
-        else:
+        if self.event_buffer is None:
             # Flatten the PMF matrix for event simulation
             values = self.pmf_matrix.values.flatten()
             ids = [(row, col) for row in self.pmf_matrix.index for col in self.pmf_matrix.columns]
@@ -448,9 +433,34 @@ class BostonCity(gym.Env):
                 stations=self.stations,
                 distance_matrix=self.distance_matrix,
             )
-            if residual_event_buffer is not None:
-                for event in residual_event_buffer:
-                    bisect.insort(self.event_buffer, event, key=lambda x: x.time)
+
+        # Simulate the environment for the time slot
+        if self.next_event_buffer is None:
+            next_timeslot = (self.timeslot + 1) % 8
+            next_day = days2num[(days2num[self.day] + 1) % 7] if next_timeslot == 0 else self.day
+            next_pmf_matrix, next_global_rate = self._load_pmf_matrix_global_rate(next_day, next_timeslot)
+
+            # Flatten the PMF matrix for event simulation
+            values = next_pmf_matrix.values.flatten()
+            ids = [(row, col) for row in next_pmf_matrix.index for col in next_pmf_matrix.columns]
+            flattened_pmf = pd.DataFrame({'id': ids, 'value': values})
+            flattened_pmf['cumsum'] = np.cumsum(flattened_pmf['value'].values)
+            self.next_event_buffer = simulate_environment(
+                duration=3600 * 3,  # 3 hours
+                timeslot=next_timeslot,
+                global_rate=next_global_rate,
+                pmf=flattened_pmf,
+                stations=self.stations,
+                distance_matrix=self.distance_matrix,
+            )
+
+            # Update time of each event
+            for event in self.next_event_buffer:
+                event.time += 3600 * 3
+
+        for event in self.next_event_buffer:
+            bisect.insort(self.event_buffer, event, key=lambda x: x.time)
+        self.next_event_buffer = None
 
         self.background_thread = threading.Thread(target=self._precompute_poisson_events)
         self.background_thread.start()
@@ -505,13 +515,12 @@ class BostonCity(gym.Env):
 
             zbp = 0
             for cell in self.cells.values():
+                cell.set_eligibility_trace(cell.get_eligibility_trace() * self.eligibility_value)
                 if cell.get_total_bikes() == 0:
-                    zbp = cell.get_request_rate()
+                    zbp += cell.get_request_rate()
 
+            self.truck.get_cell().set_eligibility_trace(1.0)
             self.zero_bikes_penalty.append(zbp)
-
-            for cell_id in self.recent_visited_cells.keys():
-                self.recent_visited_cells[cell_id] += 30
 
             total_failures = 0
             # Process all events that occurred before the updated environment time
@@ -559,95 +568,143 @@ class BostonCity(gym.Env):
 
 
     def _get_reward(self, steps: int, failures: list, distance: int, action: int) -> float:
-        # Cost per distance traveled
-        hour = divmod((self.timeslot * 3 + 1) * 3600 + self.env_time, 3600)[0] % 24
-        distance_cost = (distance/1000)*self.consumption_matrix.loc[hour, self.day]
+        # ----------------------------
+        # Define tunable weight parameters
+        # ----------------------------
+        W_ZERO_BIKES = 2.0              # weight for the zero bikes penalty
+        W_CRIT_ZONE_PENALTY = 2.0       # weight for the critic zone penalty
+        W_CRIT_ZONE_BONUS = 1.0         # weight for the bonus when staying in a critical zone
+        W_EXPLORE = 1.0                 # weight for bonus on exploring non-visited zones
+        W_DELTA_CRIT = 5.0              # weight for improvements (delta in critic score)
+        W_BIKE_CHARGE = 2.0             # weight for bike charging penalty/bonus adjustments
+        W_LOGISTIC = 1.0                # weight for logistic benefit
+        W_PICK_UP_PENALTY = 1.0         # weight for pick up bike penalty
+        ACTION_COST = 0.2               # small cost per action to discourage inaction/idle behavior
 
-        # Maximum 100 bikes per region
-        bike_per_region_cost = self._compute_bike_per_region_cost()
+        # ----------------------------
+        # Compute expected departures per cell
+        # ----------------------------
+        expected_departures_per_cell = {}
+        for event in self.event_buffer:
+            if event.time > self.env_time + 3600 * 3:
+                break
+            if event.is_departure():
+                start_location = event.get_trip().get_start_location()
+                # Skip events from a specific station if needed
+                if start_location.get_station_id() != 10000:
+                    cell = start_location.get_cell()
+                    cell_id = cell.get_id()
+                    expected_departures_per_cell[cell_id] = expected_departures_per_cell.get(cell_id, 0) + 1
 
-        # Maximum 2500 bikes in the system
-        # total_bikes_cost = logistic_penalty_function(M=1, k=0.03, b=self.maximum_number_of_bikes, x=len(self.system_bikes))
+        # ----------------------------
+        # Record previous critic score sum for delta computation
+        # ----------------------------
+        prev_total_critic = sum(cell.get_critic_score() for cell in self.cells.values())
 
-        # TODO: penalità per il tempo in cui una zona sta a zero proporzionale alla domanda
-        # TODO: piccola penalità se il numero di bici in una zona è sotto una certa soglia
-        # TODO: bonus se va in zone critiche (proporzionale alla probabilità di fallimento)
-        # TODO: bonus se va in zone non esplorate
-        # TODO: malus se se ne va da una zona critica
+        # ----------------------------
+        # Compute total charged bikes in cells where departures are expected
+        # ----------------------------
+        total_charged_bikes = {}
+        for cell_id in expected_departures_per_cell:
+            charged_bikes = 0
+            for node in self.cells[cell_id].get_nodes():
+                charged_bikes += sum(
+                    1 for bike in self.stations[node].get_bikes().values() if bike.get_battery() > 0.2
+                )
+            total_charged_bikes[cell_id] = charged_bikes
 
-        # Reward for each step
-        if self.standard_reward:
-            reward = - steps - failures[0] - distance_cost - bike_per_region_cost
-            for i, failure in enumerate(failures[1:]):
-                reward -= failure*(self.discount_factor**i)
-        else:
-            # Compute the expected number of departures per cell
-            expected_departures_per_cell = {}
-            for event in self.event_buffer:
-                if event.is_departure():
-                    start_location = event.get_trip().get_start_location()
-                    if start_location.get_station_id() != 10000:
-                        cell = start_location.get_cell()
-                        if cell.get_id() not in expected_departures_per_cell:
-                            expected_departures_per_cell[cell.get_id()] = 1
-                        else:
-                            expected_departures_per_cell[cell.get_id()] += 1
+        # ----------------------------
+        # Update critic scores and compute a penalty for critical zones
+        # ----------------------------
+        critic_zone_penalty = 0.0
+        for cell_id, cell in self.cells.items():
+            critic_score = 0.0
+            if cell_id in expected_departures_per_cell:
+                expected = expected_departures_per_cell[cell_id]
+                charged = total_charged_bikes.get(cell_id, 0)
+                if charged < expected:
+                    # The lower the ratio, the higher the critic score
+                    critic_score = 1.0 - (charged / expected)
+            cell.set_critic_score(critic_score)
+            # If the cell is really critical, accumulate a penalty
+            if critic_score > 0.4:
+                critic_zone_penalty += 0.2 * critic_score
 
-            # Store previous critic score before computing new values
-            prev_critic_score = self.truck.get_cell().get_critic_score()
+        # ----------------------------
+        # Compute change in critic score (reward for improvement)
+        # ----------------------------
+        current_total_critic = sum(cell.get_critic_score() for cell in self.cells.values())
+        delta_critic_score = prev_total_critic - current_total_critic
 
-            # Compute new critic scores
-            critic_zone_penalty = 0
-            for cell_id, cell in self.cells.items():
-                critic_score = 0.0
-                if cell_id in expected_departures_per_cell:
-                    cell_bikes = cell.get_total_bikes()
-                    expected_departures = expected_departures_per_cell[cell_id]
-                    if cell_bikes < expected_departures:
-                        critic_score = 1.0 - (cell_bikes / expected_departures)
+        # ----------------------------
+        # Movement-related bonuses and penalties
+        # ----------------------------
+        critical_zone_bonus = 0.0
+        non_visited_bonus = 0.0
+        if action in {Actions.UP.value, Actions.DOWN.value, Actions.LEFT.value, Actions.RIGHT.value}:
+            truck_cell = self.truck.get_cell()
+            leaving_cell = self.truck.get_leaving_cell()
+            # Reward staying in a critical zone
+            if truck_cell.is_critical:
+                critical_zone_bonus += 0.4 * truck_cell.get_critic_score()
+            # Penalize leaving a critical zone (be careful: if too high, the agent might never leave)
+            if leaving_cell.is_critical:
+                critical_zone_bonus -= 0.5 * leaving_cell.get_critic_score()
+            # Bonus for exploring zones that haven’t been visited recently
+            if truck_cell.get_eligibility_trace() < 0.1:
+                non_visited_bonus = 0.5
 
-                # Apply a proportional penalty if a zone is critical
-                if critic_score > 0.5:
-                    critic_zone_penalty += 0.2 * critic_score
+        # ----------------------------
+        # Logistic benefit for drop/charge bike actions
+        # ----------------------------
+        logistic_benefit = 0.0
+        if action in {Actions.DROP_BIKE.value, Actions.CHARGE_BIKE.value}:
+            truck_cell = self.truck.get_cell()
+            cell_criticality = truck_cell.get_critic_score()
+            if cell_criticality < 0.2:
+                logistic_benefit = 0.0
+            elif cell_criticality < 0.8:
+                logistic_benefit = (cell_criticality - 0.2) * 0.5
+            else:
+                logistic_benefit = 0.4
 
-                # Update critic score for the cell
-                cell.set_critic_score(critic_score)
+        # ----------------------------
+        # Bike charging penalty (e.g. discourage charging a bike that isn’t sufficiently discharged)
+        # ----------------------------
+        bike_charge_penalty = 0.0
+        if action == Actions.CHARGE_BIKE.value:
+            if self.truck.last_charge < 0.8:
+                bike_charge_penalty = 0.2
 
-            # Compute the change in critic score
-            delta_critic_score = prev_critic_score - self.truck.get_cell().get_critic_score()
+        # ----------------------------
+        # Pick up bike penalty (e.g. discourage picking up a bike from a non-critical zone)
+        # ----------------------------
+        pick_up_penalty = 0.0
+        if action == Actions.PICK_UP_BIKE.value and self.truck.get_cell().get_critic_score() < 0.3:
+            pick_up_penalty = 0.2
 
-            # Initialize bonuses
-            critical_zone_bonus = 0
-            non_visited_bonus = 0
+        # ----------------------------
+        # Combine all reward components with their weights
+        # ----------------------------
+        reward = (
+                - W_ZERO_BIKES * self.zero_bikes_penalty[0]     # Penalty for zero bikes (immediate)
+                - W_CRIT_ZONE_PENALTY * critic_zone_penalty     # Penalty for critical zones
+                - W_PICK_UP_PENALTY * pick_up_penalty           # Penalty for picking up bikes in non-critical zones
+                + W_CRIT_ZONE_BONUS * critical_zone_bonus       # Bonus for being in a critical zone
+                + W_EXPLORE * non_visited_bonus                 # Bonus for exploring new zones
+                + W_DELTA_CRIT * delta_critic_score             # Reward for reducing the overall critic score
+                - W_BIKE_CHARGE * bike_charge_penalty           # Adjustment for bike charging actions
+                + W_LOGISTIC * logistic_benefit                 # Logistic benefit for drop/charge actions
+                - ACTION_COST                                   # Small cost to encourage efficient behavior
+        )
 
-            # Apply movement-related bonuses/penalties
-            if action in {Actions.UP.value, Actions.DOWN.value, Actions.LEFT.value, Actions.RIGHT.value}:
-                truck_cell = self.truck.get_cell()
-                leaving_cell = self.truck.get_leaving_cell()
+        # ----------------------------
+        # Decay additional penalties over time (if steps > 1)
+        # ----------------------------
+        for i in range(1, steps):
+            reward -= W_ZERO_BIKES * self.zero_bikes_penalty[i] * (self.discount_factor ** i)
 
-                # Reward going to critical zones, penalize leaving them
-                if truck_cell.is_critical:
-                    critical_zone_bonus += 0.4 * truck_cell.get_critic_score()
-                if leaving_cell.is_critical:
-                    critical_zone_bonus -= 0.5 * leaving_cell.get_critic_score()
-
-                # Bonus for exploring new zones
-                if truck_cell not in self.recent_visited_cells:
-                    non_visited_bonus = 0.5
-
-            # Final reward calculation
-            reward = (
-                    - 0.5 * steps
-                    - 2 * self.zero_bikes_penalty[0]
-                    - critic_zone_penalty
-                    + critical_zone_bonus
-                    + non_visited_bonus
-                    + 1.5 * delta_critic_score  # Reward for improving critic score
-            )
-
-            # Decay penalties over time
-            for i in range(1, steps):
-                reward -= 2 * self.zero_bikes_penalty[i] * (self.discount_factor ** i)
+        reward += 0.5
 
         return reward
 
@@ -701,7 +758,7 @@ class BostonCity(gym.Env):
                 self.cell_subgraph.nodes[center_node]['average_battery_level'] = average_battery_level
                 self.cell_subgraph.nodes[center_node]['low_battery_ratio'] = low_battery_ratio
                 self.cell_subgraph.nodes[center_node]['variance_battery_level'] = variance_battery_level
-                self.cell_subgraph.nodes[center_node]['total_bikes'] = cell.get_total_bikes() / 500
+                self.cell_subgraph.nodes[center_node]['total_bikes'] = cell.get_total_bikes() / self.maximum_number_of_bikes
                 self.cell_subgraph.nodes[center_node]['visits'] = cell.get_visits() / self.total_visits
                 self.cell_subgraph.nodes[center_node]['critic_score'] = cell.get_critic_score()
 

@@ -1,4 +1,4 @@
-import os
+import os, shutil
 import pickle
 import threading
 import torch
@@ -36,18 +36,19 @@ torch.manual_seed(seed)
 
 params = {
     "num_episodes": 4,                              # Total number of training episodes
-    "batch_size": 256,                              # Batch size for replay buffer sampling
+    "batch_size": 64,                               # Batch size for replay buffer sampling
     "replay_buffer_capacity": 1e5,                  # Capacity of replay buffer: 0.1 million transitions
-    "gamma": 0.999,                                 # Discount factor
+    "gamma": 0.99,                                  # Discount factor
     "epsilon_start": 1.0,                           # Starting exploration rate
     "epsilon_delta": 0.05,                          # Epsilon decay rate
     "epsilon_end": 0.00,                            # Minimum exploration rate
     "epsilon_decay": 1e-5,                          # Epsilon decay constant
-    "lr": 1e-2,                                     # Learning rate
+    "lr": 1e-4,                                     # Learning rate
     "total_timeslots": 56,                          # Total number of time slots in one episode (1 month)
     "maximum_number_of_bikes": 300,                 # Maximum number of bikes in the system
     "standard_reward": True,                        # Use standard reward function
     "results_path": "../results/training/",         # Path to save results
+    "exploring_episodes": 10,                       # Number of episodes to explore
 }
 
 enable_telegram = False
@@ -86,6 +87,7 @@ def train_dueling_dqn(env: gym, agent: DQNAgent, batch_size: int, episode: int, 
     truck_path = []
     truck_path_per_timeslot = []
     losses = []
+    reward_per_action = [(0,0)]*env.action_space.n
 
     inner_tbar = tqdm(
         range(360),
@@ -125,18 +127,30 @@ def train_dueling_dqn(env: gym, agent: DQNAgent, batch_size: int, episode: int, 
             batch=torch.zeros(state.x.size(0), dtype=torch.long).to(device),
         )
 
-        # Select an action using the agent
-        avoid_action = None
+        # Remove actions that are not allowed
+        avoid_actions = []
 
+        # Avoid dropping bikes if the system is almost full
         if info['number_of_system_bikes'] > params["maximum_number_of_bikes"]*0.95:
-            # Avoid dropping bikes if the system is almost full
-            avoid_action = Actions.DROP_BIKE.value
+            avoid_actions.append(Actions.DROP_BIKE.value)
 
-        # if info['number_of_system_bikes'] < params["maximum_number_of_bikes"]*0.1:
-        #     # Avoid picking up bikes if the system is almost empty
-        #     avoid_action = Actions.PICK_UP_BIKE.value
+        # Avoid moving in directions where the truck cannot move
+        truck_adjacent_cells = info['truck_neighbor_cells']
 
-        action = agent.select_action(single_state, avoid_action=avoid_action)
+        if truck_adjacent_cells['down'] is None:
+            avoid_actions.append(Actions.DOWN.value)
+
+        if truck_adjacent_cells['up'] is None:
+            avoid_actions.append(Actions.UP.value)
+
+        if truck_adjacent_cells['left'] is None:
+            avoid_actions.append(Actions.LEFT.value)
+
+        if truck_adjacent_cells['right'] is None:
+            avoid_actions.append(Actions.RIGHT.value)
+
+        # Select an action using the agent
+        action = agent.select_action(single_state, avoid_action=avoid_actions)
         action_per_step.append((action, agent.epsilon))
 
         # Step the environment with the chosen action
@@ -159,17 +173,20 @@ def train_dueling_dqn(env: gym, agent: DQNAgent, batch_size: int, episode: int, 
         total_reward += reward
         total_failures += sum(info['failures'])
         truck_path.append(info['path'])
+        reward_per_action[action] = (reward_per_action[action][0] + reward, reward_per_action[action][1] + 1)
 
         # Check if the episode is complete
         not_done = not done
+
+        agent.update_epsilon()
 
         if timeslot_terminated:
             timeslots_completed += 1
 
             # Update target network periodically
             # agent.update_target_network()
-            if timeslots_completed % 10 == 0:
-                agent.update_epsilon(delta_epsilon=params["epsilon_delta"])
+            # if timeslots_completed % int((params['exploring_episodes'])*params['total_timeslots']/20) == 0:
+            #     agent.update_epsilon(delta_epsilon=params["epsilon_delta"])
 
             # Record metrics for the current time slot
             rewards_per_timeslot.append((total_reward/360, agent.epsilon))
@@ -213,6 +230,7 @@ def train_dueling_dqn(env: gym, agent: DQNAgent, batch_size: int, episode: int, 
         "q_values_per_timeslot": q_values_per_timeslot,
         "action_per_step": action_per_step,
         "losses": losses,
+        'reward_per_action': reward_per_action,
     }
 
     return results
@@ -223,7 +241,7 @@ def save_checkpoint(main_variables: dict, agent: DQNAgent, buffer: ReplayBuffer)
     checkpoint_path = data_path + 'checkpoints/'
     if not os.path.exists(checkpoint_path):
         os.makedirs(checkpoint_path)
-        print(f"Directory '{checkpoint_path}' created.")
+        # print(f"Directory '{checkpoint_path}' created.")
 
     with open(checkpoint_path + 'main_variables.pkl', 'wb') as f:
         pickle.dump(main_variables, f)
@@ -254,6 +272,9 @@ def main():
 
     print(f"Device in use: {device}\n")
     print("Standard reward function is used." if params["standard_reward"] else "New reward function is used.")
+    params["epsilon_decay"] = 0.5 * params["num_episodes"] * params["total_timeslots"]*180
+    print(params)
+    print(params['results_path'])
 
     # Create the environment
     env = gym.make('gymnasium_env/BostonCity-v0', data_path=data_path)
@@ -307,6 +328,9 @@ def main():
                 dynamic_ncols=True
             )
 
+        if os.path.exists(str(params['results_path'])):
+            shutil.rmtree(str(params['results_path']))
+
         for episode in range(starting_episode, params["num_episodes"]):
             # Train the agent for one episode
             results = train_dueling_dqn(env, agent, params["batch_size"], episode, tbar)
@@ -316,7 +340,7 @@ def main():
             # print(results_path)
             if not os.path.exists(results_path):
                 os.makedirs(results_path)
-                print(f"Directory '{results_path}' created.")
+                # print(f"Directory '{results_path}' created.")
             with open(results_path + 'rewards_per_timeslot.pkl', 'wb') as f:
                 pickle.dump(results['rewards_per_timeslot'], f)
             with open(results_path + 'failures_per_timeslot.pkl', 'wb') as f:
@@ -327,6 +351,11 @@ def main():
                 pickle.dump(results['action_per_step'], f)
             with open(results_path + 'losses.pkl', 'wb') as f:
                 pickle.dump(results['losses'], f)
+            with open(results_path + 'reward_per_action.pkl', 'wb') as f:
+                rewards_per_action = [0]*env.action_space.n
+                for index, rpa in enumerate(results['reward_per_action']):
+                    rewards_per_action[index] = rpa[0]/rpa[1] if rpa[1] != 0 else 0
+                pickle.dump(rewards_per_action, f)
 
             # Save checkpoint
             if enable_checkpoint:
@@ -377,9 +406,9 @@ if __name__ == '__main__':
     parser.add_argument('--enable_logging', action='store_true', help='Enable logging.')
     parser.add_argument('--enable_checkpoint', action='store_true', help='Enable checkpointing.')
     parser.add_argument('--restore_from_checkpoint', action='store_true', help='Restore from checkpoint.')
-    parser.add_argument('--new_reward', action='store_true', help='Use new reward function.')
     parser.add_argument('--num_episodes', type=int, default=10, help='Number of episodes to train.')
     parser.add_argument('--results_path', type=str, default='../results/training/', help='Path to save results.')
+    parser.add_argument('--exploring_episodes', type=int, default=10, help='Number of episodes to explore.')
 
     args = parser.parse_args()
 
@@ -389,9 +418,9 @@ if __name__ == '__main__':
     enable_logging = args.enable_logging
     enable_checkpoint = args.enable_checkpoint
     restore_from_checkpoint = args.restore_from_checkpoint
-    params["standard_reward"] = not args.new_reward
     params["num_episodes"] = args.num_episodes
     params["results_path"] = args.results_path
+    params["exploring_episodes"] = args.exploring_episodes
 
     # Ensure the data path exists
     if not os.path.exists(data_path):

@@ -44,6 +44,10 @@ class DuelingDQN(nn.Module):
             nn.Linear(128, num_actions)
         )
 
+        for layer in self.modules():
+            if isinstance(layer, nn.Linear):
+                nn.init.xavier_uniform_(layer.weight)
+
     def forward(self, batch, key=None):
         """
         Forward pass to compute Q-values.

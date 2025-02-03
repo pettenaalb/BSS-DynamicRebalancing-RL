@@ -36,10 +36,10 @@ class DQNAgent:
         self.epsilon_decay = epsilon_decay
         self.steps_done = 0
         self.device = device
-        self.tau = 0.005
+        self.tau = tau
 
 
-    def select_action(self, state, greedy=False, avoid_action: int = None):
+    def select_action(self, state, greedy=False, avoid_action: list = None):
         """
         Selects an action using an epsilon-greedy strategy.
 
@@ -50,27 +50,32 @@ class DQNAgent:
         Returns:
             - The selected action as an integer.
         """
+        if avoid_action is None:
+            avoid_action = []
+
         # Select a random action with probability epsilon
         if not greedy and random.random() < self.epsilon:
-            action = random.randint(0, self.num_actions - 1)
-            if avoid_action is not None:
-                while action == avoid_action:
-                    action = random.randint(0, self.num_actions - 1)
-            return action
+            valid_actions = [action for action in range(self.num_actions) if action not in avoid_action]
+            if not valid_actions:
+                raise ValueError("No valid actions available to select.")
+
+            return random.choice(valid_actions)
 
         # Select the greedy action
         with torch.no_grad():
             # Get sorted indices of Q-values
             q_values = self.get_q_values(state)
             sorted_q_values = q_values.squeeze(0).detach().argsort(dim=-1, descending=True)
-            action = sorted_q_values[0].item()
-            if avoid_action is not None:
-                if action == avoid_action:
-                    action = sorted_q_values[1].item()
-            del q_values, sorted_q_values
 
-        return action
+            # Choose the highest-ranked action that is not in avoid_action
+            for q_value in sorted_q_values:
+                action = q_value.item()
+                if action not in avoid_action:
+                    del q_values, sorted_q_values
+                    return action
 
+        # If cannot find a valid action
+        raise ValueError("No valid greedy action could be selected.")
 
     def get_q_values(self, state):
         """
@@ -95,12 +100,14 @@ class DQNAgent:
         else:
             self.epsilon = max(self.epsilon - delta_epsilon, self.epsilon_min)
 
+        self.steps_done += 1
 
-    def update_target_network(self):
-        """
-        Updates the target model by copying the weights from the training model.
-        """
-        self.target_model.load_state_dict(self.train_model.state_dict())
+
+    # def update_target_network(self):
+    #     """
+    #     Updates the target model by copying the weights from the training model.
+    #     """
+    #     self.target_model.load_state_dict(self.train_model.state_dict())
 
 
     def soft_update_target_network(self, tau=0.005):
@@ -119,7 +126,7 @@ class DQNAgent:
             - None if the replay buffer does not have enough samples.
         """
         if len(self.replay_buffer) < batch_size:
-            return
+            return 0
 
         # Sample a batch from the replay buffer
         b = self.replay_buffer.sample(batch_size)
@@ -151,8 +158,9 @@ class DQNAgent:
             # Optimize the model
             self.optimizer.zero_grad(set_to_none=True)
             loss.backward()
-            for param in self.train_model.parameters():
-                param.grad.data.clamp_(-1, 1)  # Gradient clipping for stability
+            # for param in self.train_model.parameters():
+            #     param.grad.data.clamp_(-1, 1)
+            torch.nn.utils.clip_grad_norm_(self.train_model.parameters(), max_norm=10)
             self.optimizer.step()
 
             loss_value = loss.item()
@@ -161,7 +169,7 @@ class DQNAgent:
             del train_q_values, next_q_values, target_q_values, loss, batch
             torch.cuda.empty_cache()
 
-        self.soft_update_target_network()
+        self.soft_update_target_network(tau=self.tau)
 
         return loss_value
 

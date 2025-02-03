@@ -29,7 +29,7 @@ np.random.seed(seed)
 torch.manual_seed(seed)
 
 params = {
-    "num_episodes": 4,                 # Total number of training episodes
+    "num_episodes": 10,                 # Total number of training episodes
     "batch_size": 256,                  # Batch size for replay buffer sampling
     "replay_buffer_capacity": 1e5,      # Capacity of replay buffer: 1 million transitions
     "gamma": 0.99,                      # Discount factor
@@ -72,8 +72,8 @@ def train_dueling_dqn(env: gym, episode: int, tbar: tqdm | tqdm_telegram) -> dic
         'maximum_number_of_bikes': params["maximum_number_of_bikes"],
         'discount_factor': params["gamma"],
         'logging': False,
-        'depot_id': 10,         # 491 back
-        'initial_cell': 10,     # 185 back
+        'depot_id': 7,         # 491 back
+        'initial_cell': 7,     # 185 back
     }
 
     agent_state, info = env.reset(options=options)
@@ -139,10 +139,7 @@ def main():
 
     tbar.close()
 
-    if not os.path.exists('../results/training'):
-        os.makedirs('../results/training')
-
-    with open('../results/training/total_failures_baseline.pkl', 'wb') as f:
+    with open('../results/total_failures_baseline.pkl', 'wb') as f:
         pickle.dump(total_failures, f)
 
     # Print the rewards after training

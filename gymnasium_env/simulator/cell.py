@@ -20,6 +20,7 @@ class Cell:
         self.visits = 0
         self.critic_score = 0
         self.is_critical = False
+        self.eligibility_trace = 0.0
 
     def __str__(self):
         return f"Cell {self.id}: Bikes: {self.total_bikes}, Critic Score: {self.critic_score}, Visits: {self.visits}"
@@ -78,6 +79,9 @@ class Cell:
         else:
             self.is_critical = False
 
+    def set_eligibility_trace(self, eligibility_trace: float):
+        self.eligibility_trace = eligibility_trace
+
     def get_id(self) -> int:
         return self.id
 
@@ -105,6 +109,7 @@ class Cell:
         self.visits = 0
         self.critic_score = 0
         self.is_critical = False
+        self.eligibility_trace = 0.0
 
     def get_request_rate(self) -> float:
         return self.request_rate
@@ -114,3 +119,6 @@ class Cell:
 
     def get_critic_score(self) -> float:
         return self.critic_score
+
+    def get_eligibility_trace(self) -> float:
+        return self.eligibility_trace
