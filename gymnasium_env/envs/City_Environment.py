@@ -441,7 +441,7 @@ class BostonCity(gym.Env):
         # Simulate the environment for the time slot
         if self.next_event_buffer is None:
             next_timeslot = (self.timeslot + 1) % 8
-            next_day = days2num[(days2num[self.day] + 1) % 7] if next_timeslot == 0 else self.day
+            next_day = num2days[(days2num[self.day] + 1) % 7] if next_timeslot == 0 else self.day
             next_pmf_matrix, next_global_rate = self._load_pmf_matrix_global_rate(next_day, next_timeslot)
 
             # Flatten the PMF matrix for event simulation
