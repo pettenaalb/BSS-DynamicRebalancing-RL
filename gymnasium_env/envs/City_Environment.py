@@ -113,6 +113,7 @@ class BostonCity(gym.Env):
         self.discount_factor = 0.99
         self.eligibility_value = 0.99787
         self.zero_bikes_penalty = []
+        self.reward_params = None
 
         self.standard_reward = True
 
@@ -146,6 +147,9 @@ class BostonCity(gym.Env):
 
         # Discount factor option
         self.discount_factor = options.get('discount_factor', 0.99) if options else 0.99
+
+        # Reward parameters
+        self.reward_params = options.get('reward_params', None) if options else None
 
         # Reset the cells
         for cell in self.cells.values():
@@ -259,7 +263,7 @@ class BostonCity(gym.Env):
 
         # Perform the action
         if action == Actions.STAY.value:
-            t = stay()
+            t = stay(self.truck)
             self.logger.log_starting_action('STAY', t)
         elif action == Actions.RIGHT.value:
             t, distance = move_right(self.truck, self.distance_matrix, self.cells, mean_truck_velocity)
@@ -571,15 +575,12 @@ class BostonCity(gym.Env):
         # ----------------------------
         # Define tunable weight parameters
         # ----------------------------
-        W_ZERO_BIKES = 2.0              # weight for the zero bikes penalty
-        W_CRIT_ZONE_PENALTY = 2.0       # weight for the critic zone penalty
-        W_CRIT_ZONE_BONUS = 1.0         # weight for the bonus when staying in a critical zone
-        W_EXPLORE = 1.0                 # weight for bonus on exploring non-visited zones
-        W_DELTA_CRIT = 5.0              # weight for improvements (delta in critic score)
-        W_BIKE_CHARGE = 2.0             # weight for bike charging penalty/bonus adjustments
-        W_LOGISTIC = 1.0                # weight for logistic benefit
-        W_PICK_UP_PENALTY = 1.0         # weight for pick up bike penalty
-        ACTION_COST = 0.2               # small cost per action to discourage inaction/idle behavior
+        W_ZERO_BIKES = self.reward_params.get('W_ZERO_BIKES', 1.0) if self.reward_params else 1.0
+        W_CRITICAL_ZONES = self.reward_params.get('W_CRITICAL_ZONES', 1.0) if self.reward_params else 1.0
+        W_DROP_PICKUP = self.reward_params.get('W_DROP_PICKUP', 1.0) if self.reward_params else 1.0
+        W_MOVEMENT = self.reward_params.get('W_MOVEMENT', 1.0) if self.reward_params else 1.0
+        W_CHARGE_BIKE = self.reward_params.get('W_CHARGE_BIKE', 1.0) if self.reward_params else 1.0
+        W_STAY = self.reward_params.get('W_STAY', 1.0) if self.reward_params else 1.0
 
         # ----------------------------
         # Compute expected departures per cell
@@ -597,11 +598,6 @@ class BostonCity(gym.Env):
                     expected_departures_per_cell[cell_id] = expected_departures_per_cell.get(cell_id, 0) + 1
 
         # ----------------------------
-        # Record previous critic score sum for delta computation
-        # ----------------------------
-        prev_total_critic = sum(cell.get_critic_score() for cell in self.cells.values())
-
-        # ----------------------------
         # Compute total charged bikes in cells where departures are expected
         # ----------------------------
         total_charged_bikes = {}
@@ -616,86 +612,59 @@ class BostonCity(gym.Env):
         # ----------------------------
         # Update critic scores and compute a penalty for critical zones
         # ----------------------------
-        critic_zone_penalty = 0.0
+        global_critic_penalty = 0.0
         for cell_id, cell in self.cells.items():
             critic_score = 0.0
             if cell_id in expected_departures_per_cell:
                 expected = expected_departures_per_cell[cell_id]
                 charged = total_charged_bikes.get(cell_id, 0)
-                if charged < expected:
-                    # The lower the ratio, the higher the critic score
-                    critic_score = 1.0 - (charged / expected)
+                # The lower the ratio, the higher the critic score
+                critic_score = max(0.0, 1.0 - (charged / expected))
             cell.set_critic_score(critic_score)
-            # If the cell is really critical, accumulate a penalty
-            if critic_score > 0.4:
-                critic_zone_penalty += 0.2 * critic_score
+            global_critic_penalty += critic_score
 
         # ----------------------------
-        # Compute change in critic score (reward for improvement)
+        # Drop / Pick Up penalty
         # ----------------------------
-        current_total_critic = sum(cell.get_critic_score() for cell in self.cells.values())
-        delta_critic_score = prev_total_critic - current_total_critic
+        truck_cell = self.truck.get_cell()
+        truck_leaving_cell = self.truck.get_leaving_cell()
+        drop_pickup_penalty = 0.0
+        if action == Actions.DROP_BIKE.value:
+            drop_pickup_penalty = 1.0 * truck_cell.get_critic_score()
+
+        if action == Actions.PICK_UP_BIKE.value:
+            drop_pickup_penalty = -1.0 * truck_cell.get_critic_score()
 
         # ----------------------------
-        # Movement-related bonuses and penalties
+        # Move penalty (e.g. discourage unnecessary movements)
         # ----------------------------
-        critical_zone_bonus = 0.0
-        non_visited_bonus = 0.0
-        if action in {Actions.UP.value, Actions.DOWN.value, Actions.LEFT.value, Actions.RIGHT.value}:
-            truck_cell = self.truck.get_cell()
-            leaving_cell = self.truck.get_leaving_cell()
-            # Reward staying in a critical zone
-            if truck_cell.is_critical:
-                critical_zone_bonus += 0.4 * truck_cell.get_critic_score()
-            # Penalize leaving a critical zone (be careful: if too high, the agent might never leave)
-            if leaving_cell.is_critical:
-                critical_zone_bonus -= 0.5 * leaving_cell.get_critic_score()
-            # Bonus for exploring zones that haven’t been visited recently
-            if truck_cell.get_eligibility_trace() < 0.1:
-                non_visited_bonus = 0.5
-
-        # ----------------------------
-        # Logistic benefit for drop/charge bike actions
-        # ----------------------------
-        logistic_benefit = 0.0
-        if action in {Actions.DROP_BIKE.value, Actions.CHARGE_BIKE.value}:
-            truck_cell = self.truck.get_cell()
-            cell_criticality = truck_cell.get_critic_score()
-            if cell_criticality < 0.2:
-                logistic_benefit = 0.0
-            elif cell_criticality < 0.8:
-                logistic_benefit = (cell_criticality - 0.2) * 0.5
-            else:
-                logistic_benefit = 0.4
+        move_penalty = truck_cell.get_critic_score() - truck_leaving_cell.get_critic_score()
 
         # ----------------------------
         # Bike charging penalty (e.g. discourage charging a bike that isn’t sufficiently discharged)
         # ----------------------------
         bike_charge_penalty = 0.0
         if action == Actions.CHARGE_BIKE.value:
-            if self.truck.last_charge < 0.8:
-                bike_charge_penalty = 0.2
+            bike_charge_penalty = -0.2 * max(0, self.truck.last_charge - 0.8)
 
         # ----------------------------
-        # Pick up bike penalty (e.g. discourage picking up a bike from a non-critical zone)
+        # Stay penalty
         # ----------------------------
-        pick_up_penalty = 0.0
-        if action == Actions.PICK_UP_BIKE.value and self.truck.get_cell().get_critic_score() < 0.3:
-            pick_up_penalty = 0.2
+        stay_penalty = 0.0
+        if action == Actions.STAY.value:
+            stay_penalty = truck_cell.get_critic_score()
 
         # ----------------------------
         # Combine all reward components with their weights
         # ----------------------------
         reward = (
-                - W_ZERO_BIKES * self.zero_bikes_penalty[0]     # Penalty for zero bikes (immediate)
-                - W_CRIT_ZONE_PENALTY * critic_zone_penalty     # Penalty for critical zones
-                - W_PICK_UP_PENALTY * pick_up_penalty           # Penalty for picking up bikes in non-critical zones
-                + W_CRIT_ZONE_BONUS * critical_zone_bonus       # Bonus for being in a critical zone
-                + W_EXPLORE * non_visited_bonus                 # Bonus for exploring new zones
-                + W_DELTA_CRIT * delta_critic_score             # Reward for reducing the overall critic score
-                - W_BIKE_CHARGE * bike_charge_penalty           # Adjustment for bike charging actions
-                + W_LOGISTIC * logistic_benefit                 # Logistic benefit for drop/charge actions
-                - ACTION_COST                                   # Small cost to encourage efficient behavior
+            1.0
+            - W_ZERO_BIKES * self.zero_bikes_penalty[0]     # Penalty for zero bikes (immediate)
+            - W_CRITICAL_ZONES * global_critic_penalty      # Penalty for critical zones
+            - W_STAY * stay_penalty                         # Penalty for staying in a cell
+            + W_DROP_PICKUP * drop_pickup_penalty           # Penalty for drop/pickup actions
+            + W_MOVEMENT * move_penalty                     # Penalty for movement actions
+            + W_CHARGE_BIKE * bike_charge_penalty           # Penalty for charging a bike
         )
 
         # ----------------------------
@@ -704,7 +673,7 @@ class BostonCity(gym.Env):
         for i in range(1, steps):
             reward -= W_ZERO_BIKES * self.zero_bikes_penalty[i] * (self.discount_factor ** i)
 
-        reward += 0.5
+        reward = reward / len(self.cells)
 
         return reward
 
@@ -725,31 +694,35 @@ class BostonCity(gym.Env):
         Parameters:
             - subgraph (nx.Graph): The subgraph to update with regional metrics.
         """
-        # FIXME: Fix the observation space
         for cell_id, cell in self.cells.items():
             center_node = cell.get_center_node()
 
             # Initialize regional metrics
-            demand_rate, arrival_rate, bike_load = 0.0, 0.0, cell.get_total_bikes()/500
-
-            # Aggregate metrics for nodes in the cell
+            bike_load = cell.get_total_bikes() / self.maximum_number_of_bikes
+            demand_rate, arrival_rate = 0.0, 0.0
             battery_levels = []
+
+            # Single loop to aggregate metrics
             for node in cell.nodes:
-                bikes = self.stations[node].get_bikes()
-                battery_levels.extend([bike.get_battery() / bike.get_max_battery() for bike in bikes.values()])
+                station = self.stations[node]
+                bikes = station.get_bikes()
+                battery_levels.extend(bike.get_battery() / bike.get_max_battery() for bike in bikes.values())
 
                 # Update regional metrics
-                demand_rate += self.stations[node].get_request_rate()
-                arrival_rate += self.stations[node].get_arrival_rate()
+                demand_rate += station.get_request_rate()
+                arrival_rate += station.get_arrival_rate()
 
-            # Avoid division by zero by ensuring at least one node
+            # Normalize demand and arrival rates
             demand_rate /= self.global_rate
             arrival_rate /= self.global_rate
-            average_battery_level = np.mean(battery_levels) if battery_levels else 0.0
-            low_battery_ratio = sum([1 for level in battery_levels if level < 0.2]) / len(battery_levels) if battery_levels else 0.0
-            variance_battery_level = np.var(battery_levels) if battery_levels else 0.0
 
-            # TODO: aggiungere quanto sono visitate le zone
+            # Battery-related calculations
+            if battery_levels:
+                battery_levels_np = np.array(battery_levels)
+                average_battery_level = np.mean(battery_levels_np)
+                low_battery_ratio = np.sum(battery_levels_np <= 0.2) / battery_levels_np.size
+            else:
+                average_battery_level, low_battery_ratio = 0.0, 0.0
 
             # Update attributes in the subgraph
             if center_node in self.cell_subgraph:
@@ -757,10 +730,10 @@ class BostonCity(gym.Env):
                 self.cell_subgraph.nodes[center_node]['arrival_rate'] = arrival_rate
                 self.cell_subgraph.nodes[center_node]['average_battery_level'] = average_battery_level
                 self.cell_subgraph.nodes[center_node]['low_battery_ratio'] = low_battery_ratio
-                self.cell_subgraph.nodes[center_node]['variance_battery_level'] = variance_battery_level
-                self.cell_subgraph.nodes[center_node]['total_bikes'] = cell.get_total_bikes() / self.maximum_number_of_bikes
-                self.cell_subgraph.nodes[center_node]['visits'] = cell.get_visits() / self.total_visits
+                self.cell_subgraph.nodes[center_node]['total_bikes'] = bike_load
                 self.cell_subgraph.nodes[center_node]['critic_score'] = cell.get_critic_score()
+            else:
+                raise ValueError(f"Node {center_node} not found in the subgraph.")
 
 
     def _get_truck_position(self) -> tuple[float, float]:

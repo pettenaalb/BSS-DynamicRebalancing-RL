@@ -45,10 +45,19 @@ params = {
     "epsilon_decay": 1e-5,                          # Epsilon decay constant
     "lr": 1e-4,                                     # Learning rate
     "total_timeslots": 56,                          # Total number of time slots in one episode (1 month)
-    "maximum_number_of_bikes": 300,                 # Maximum number of bikes in the system
+    "maximum_number_of_bikes": 250,                 # Maximum number of bikes in the system
     "standard_reward": True,                        # Use standard reward function
     "results_path": "../results/training/",         # Path to save results
     "exploring_episodes": 10,                       # Number of episodes to explore
+}
+
+reward_params = {
+    'W_ZERO_BIKES': 1.0,
+    'W_CRITICAL_ZONES': 1.0,
+    'W_DROP_PICKUP': 0.7,
+    'W_MOVEMENT': 0.5,
+    'W_CHARGE_BIKE': 2.0,
+    'W_STAY': 0.1,
 }
 
 enable_telegram = False
@@ -107,6 +116,7 @@ def train_dueling_dqn(env: gym, agent: DQNAgent, batch_size: int, episode: int, 
         'depot_id': 10,         # 491 back
         'initial_cell': 10,     # 185 back
         'standard_reward': params["standard_reward"],
+        'reward_params': reward_params,
     }
 
     agent_state, info = env.reset(options=options)
@@ -271,10 +281,10 @@ def main():
     warnings.filterwarnings("ignore")
 
     print(f"Device in use: {device}\n")
-    print("Standard reward function is used." if params["standard_reward"] else "New reward function is used.")
+    print(f"Standard reward function is used.\n" if params["standard_reward"] else f"New reward function is used.\n")
     params["epsilon_decay"] = 0.5 * params["num_episodes"] * params["total_timeslots"]*180
-    print(params)
-    print(params['results_path'])
+    print(f"{params}\n")
+    print(f"{reward_params}\n")
 
     # Create the environment
     env = gym.make('gymnasium_env/BostonCity-v0', data_path=data_path)

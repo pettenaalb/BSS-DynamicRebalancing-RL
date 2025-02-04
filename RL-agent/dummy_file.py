@@ -30,8 +30,8 @@ torch.manual_seed(seed)
 
 params = {
     "num_episodes": 10,                 # Total number of training episodes
-    "batch_size": 256,                  # Batch size for replay buffer sampling
-    "replay_buffer_capacity": 1e5,      # Capacity of replay buffer: 1 million transitions
+    "batch_size": 32,                  # Batch size for replay buffer sampling
+    "replay_buffer_capacity": 10,      # Capacity of replay buffer: 1 million transitions
     "gamma": 0.99,                      # Discount factor
     "epsilon_start": 1.0,               # Starting exploration rate
     "epsilon_delta": 0.05,
@@ -72,8 +72,8 @@ def train_dueling_dqn(env: gym, episode: int, tbar: tqdm | tqdm_telegram) -> dic
         'maximum_number_of_bikes': params["maximum_number_of_bikes"],
         'discount_factor': params["gamma"],
         'logging': False,
-        'depot_id': 7,         # 491 back
-        'initial_cell': 7,     # 185 back
+        'depot_id': 10,         # 491 back
+        'initial_cell': 10,     # 185 back
     }
 
     agent_state, info = env.reset(options=options)
@@ -85,7 +85,7 @@ def train_dueling_dqn(env: gym, episode: int, tbar: tqdm | tqdm_telegram) -> dic
 
         # loop from 0 to 7
         action = Actions.STAY.value
-        past_action = (past_action + 1) % 8
+        # past_action = (past_action + 1) % 8
 
         # Step the environment with the chosen action
         agent_state, reward, done, timeslot_terminated, info = env.step(action)

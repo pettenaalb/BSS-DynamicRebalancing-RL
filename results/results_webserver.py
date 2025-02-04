@@ -52,8 +52,8 @@ app.layout = html.Div([
                                 style={'background-color': '#4A90E2', 'color': 'white', 'border': 'none', 'padding': '10px 20px', 'cursor': 'pointer', 'border-radius': '5px'}),
                 ], style={'margin-bottom': '10px'}),
                 dcc.Graph(id="reward-plot", style={'border': '1px solid #d3d3d3', 'padding': '10px'}),
-                html.Label("Select Timeslot for Rewards:", style={'font-weight': 'bold'}),
-                dcc.Dropdown(id="timeslot-selector-reward", value="all", clearable=False, style={'width': '100%'})
+                html.Label("Select Episode for Rewards:", style={'font-weight': 'bold'}),
+                dcc.Dropdown(id="episode-selector-reward", value="all", clearable=False, style={'width': '100%'})
             ], style={'width': '100%', 'display': 'inline-block', 'vertical-align': 'top', 'padding': '10px', 'box-shadow': '0px 1px 3px rgba(0, 0, 0, 0.2)', 'background-color': 'white'}),
 
             # Failure plot section
@@ -63,8 +63,8 @@ app.layout = html.Div([
                                 style={'background-color': '#4A90E2', 'color': 'white', 'border': 'none', 'padding': '10px 20px', 'cursor': 'pointer', 'border-radius': '5px'}),
                 ], style={'margin-bottom': '10px'}),
                 dcc.Graph(id="failure-plot", style={'border': '1px solid #d3d3d3', 'padding': '10px'}),
-                html.Label("Select Timeslot for Failures:", style={'font-weight': 'bold'}),
-                dcc.Dropdown(id="timeslot-selector-failure", value="all", clearable=False, style={'width': '100%'})
+                html.Label("Select Episode for Failures:", style={'font-weight': 'bold'}),
+                dcc.Dropdown(id="episode-selector-failure", value="all", clearable=False, style={'width': '100%'})
             ], style={'width': '100%', 'display': 'inline-block', 'vertical-align': 'top', 'padding': '10px', 'box-shadow': '0px 1px 3px rgba(0, 0, 0, 0.2)', 'background-color': 'white'}),
 
             # Q-value plot section
@@ -74,8 +74,8 @@ app.layout = html.Div([
                                 style={'background-color': '#4A90E2', 'color': 'white', 'border': 'none', 'padding': '10px 20px', 'cursor': 'pointer', 'border-radius': '5px'}),
                 ], style={'margin-bottom': '10px'}),
                 dcc.Graph(id="q-value-plot", style={'border': '1px solid #d3d3d3', 'padding': '10px'}),
-                html.Label("Select Timeslot for Q-Values:", style={'font-weight': 'bold'}),
-                dcc.Dropdown(id="timeslot-selector-q-value", value="all", clearable=False, style={'width': '100%'})
+                html.Label("Select Episode for Q-Values:", style={'font-weight': 'bold'}),
+                dcc.Dropdown(id="episode-selector-q-value", value="all", clearable=False, style={'width': '100%'})
             ], style={'width': '100%', 'display': 'inline-block', 'vertical-align': 'top', 'padding': '10px', 'box-shadow': '0px 1px 3px rgba(0, 0, 0, 0.2)', 'background-color': 'white'}),
 
             # Action plot section
@@ -85,8 +85,8 @@ app.layout = html.Div([
                                 style={'background-color': '#4A90E2', 'color': 'white', 'border': 'none', 'padding': '10px 20px', 'cursor': 'pointer', 'border-radius': '5px'}),
                 ], style={'margin-bottom': '10px'}),
                 dcc.Graph(id="action-plot", style={'border': '1px solid #d3d3d3', 'padding': '10px'}),
-                html.Label("Select Timeslot for Actions:", style={'font-weight': 'bold'}),
-                dcc.Dropdown(id="timeslot-selector-action", value="00", clearable=False, style={'width': '100%'})
+                html.Label("Select Episode for Actions:", style={'font-weight': 'bold'}),
+                dcc.Dropdown(id="episode-selector-action", value="00", clearable=False, style={'width': '100%'})
             ], style={'width': '100%', 'display': 'inline-block', 'vertical-align': 'top', 'padding': '10px', 'box-shadow': '0px 1px 3px rgba(0, 0, 0, 0.2)', 'background-color': 'white'}),
 
             # Reward per Action, Epsilon and Loss plots
@@ -99,7 +99,7 @@ app.layout = html.Div([
     ], style={'max-width': '1200px', 'margin': '0 auto'}),
 ], style={'font-family': 'Poppins, sans-serif', 'padding': '20px'})
 
-def get_timeslot_options(training_path):
+def get_timeslot_options(training_path, default_option=True):
     if not os.path.exists(training_path):
         return []
 
@@ -107,13 +107,16 @@ def get_timeslot_options(training_path):
         [folder for folder in os.listdir(training_path) if os.path.isdir(os.path.join(training_path, folder))]
     )
 
-    return [{"label": "All Timeslots", "value": "all"}] + [{"label": folder, "value": folder} for folder in timeslot_folders]
+    options = (
+        [{"label": "All Episodes", "value": "all"}] if default_option else []
+    ) + [{"label": folder, "value": folder} for folder in timeslot_folders]
+    return options
 
 @app.callback(
-    [Output("timeslot-selector-reward", "options"),
-     Output("timeslot-selector-failure", "options"),
-     Output("timeslot-selector-q-value", "options"),
-     Output("timeslot-selector-action", "options")],
+    [Output("episode-selector-reward", "options"),
+     Output("episode-selector-failure", "options"),
+     Output("episode-selector-q-value", "options"),
+     Output("episode-selector-action", "options")],
     [Input("training-selector", "value"),
         Input("interval-component", "n_intervals")]
 )
@@ -172,7 +175,17 @@ def create_plot(data, title, y_axis_label, x_axis_label, cumulative=False, actio
     if action_plot:
         fig = go.Figure()
         fig.add_trace(go.Bar(x=action_bin_labels, y=data))
-        fig.update_layout(title=title, yaxis_title=y_axis_label)
+        fig.update_layout(
+            title=title,
+            yaxis_title=y_axis_label,
+            legend=dict(
+                x=0.9,  # Horizontal position (0 = left, 1 = right)
+                y=0.9,  # Vertical position (0 = bottom, 1 = top)
+                bgcolor='rgba(255, 255, 255, 0.5)',  # Semi-transparent background
+                bordercolor='black',
+                borderwidth=1
+            )
+        )
     else:
         y_cumulative = np.cumsum(data) / np.arange(1, len(data) + 1) if cumulative else []
         fig = go.Figure()
@@ -180,7 +193,18 @@ def create_plot(data, title, y_axis_label, x_axis_label, cumulative=False, actio
         if cumulative:
             fig.add_trace(go.Scatter(y=y_cumulative, mode='lines', name="Cumulative Mean", line=dict(color='red')))
 
-        fig.update_layout(title=title, yaxis_title=y_axis_label, xaxis_title=x_axis_label)
+        fig.update_layout(
+            title=title,
+            yaxis_title=y_axis_label,
+            xaxis_title=x_axis_label,
+            legend=dict(
+                x=0.84,  # Horizontal position (0 = left, 1 = right)
+                y=0.97,  # Vertical position (0 = bottom, 1 = top)
+                bgcolor='rgba(255, 255, 255, 1)',
+                bordercolor='black',
+                borderwidth=1
+            )
+        )
     return fig
 
 @app.callback(
@@ -188,7 +212,7 @@ def create_plot(data, title, y_axis_label, x_axis_label, cumulative=False, actio
     [Input("interval-component", "n_intervals"),
      Input("update-btn-reward", "n_clicks"),
      Input("training-selector", "value"),
-     Input("timeslot-selector-reward", "value")]
+     Input("episode-selector-reward", "value")]
 )
 def update_reward_plot(n_intervals, n_clicks, training_path, timeslot_folder):
     rewards, *_ = load_results(training_path, timeslot_folder)
@@ -199,7 +223,7 @@ def update_reward_plot(n_intervals, n_clicks, training_path, timeslot_folder):
     [Input("interval-component", "n_intervals"),
      Input("update-btn-failure", "n_clicks"),
      Input("training-selector", "value"),
-     Input("timeslot-selector-failure", "value")]
+     Input("episode-selector-failure", "value")]
 )
 def update_failure_plot(n_intervals, n_clicks, training_path, timeslot_folder):
     _, failures, *_ = load_results(training_path, timeslot_folder)
@@ -210,7 +234,7 @@ def update_failure_plot(n_intervals, n_clicks, training_path, timeslot_folder):
     [Input("interval-component", "n_intervals"),
      Input("update-btn-q-value", "n_clicks"),
      Input("training-selector", "value"),
-     Input("timeslot-selector-q-value", "value")]
+     Input("episode-selector-q-value", "value")]
 )
 def update_q_value_plot(n_intervals, n_clicks, training_path, timeslot_folder):
     _, _, q_values, *_ = load_results(training_path, timeslot_folder)
@@ -235,7 +259,7 @@ def update_epsilon_loss(n_intervals, training_path):
     [Input("interval-component", "n_intervals"),
      Input("update-btn-action", "n_clicks"),
      Input("training-selector", "value"),
-     Input("timeslot-selector-action", "value")]
+     Input("episode-selector-action", "value")]
 )
 
 def update_action_plot(n_intervals, n_clicks, training_path, timeslot_folder):

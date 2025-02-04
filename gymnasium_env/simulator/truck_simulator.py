@@ -100,6 +100,8 @@ def drop_bike(truck: Truck, distance_matrix: pd.DataFrame, mean_velocity: int, d
         time += int(distance * 3.6 / velocity_kmh)
         truck.set_position(target_node)
 
+    truck.leaving_cell = truck.get_cell()
+
     return time, distance
 
 
@@ -161,6 +163,8 @@ def pick_up_bike(truck: Truck, station_dict: dict[int, Station], distance_matrix
         truck.load_bike(bike)
     truck.set_position(station.get_station_id())
 
+    truck.leaving_cell = truck.get_cell()
+
     return time, distance, True
 
 
@@ -169,4 +173,6 @@ def charge_bike(truck: Truck, station_dict: dict[int, Station], distance_matrix:
     return pick_up_bike(truck, station_dict, distance_matrix, mean_velocity, depot_node, depot, system_bikes)
 
 
-def stay() -> int: return 0
+def stay(truck: Truck) -> int:
+    truck.leaving_cell = truck.get_cell()
+    return 0
