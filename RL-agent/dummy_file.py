@@ -29,16 +29,16 @@ np.random.seed(seed)
 torch.manual_seed(seed)
 
 params = {
-    "num_episodes": 10,                 # Total number of training episodes
-    "batch_size": 32,                  # Batch size for replay buffer sampling
-    "replay_buffer_capacity": 10,      # Capacity of replay buffer: 1 million transitions
-    "gamma": 0.99,                      # Discount factor
+    "num_episodes": 5,                 # Total number of training episodes
+    "batch_size": 32,                   # Batch size for replay buffer sampling
+    "replay_buffer_capacity": 10,       # Capacity of replay buffer: 1 million transitions
+    "gamma": 0.99787,                   # Discount factor
     "epsilon_start": 1.0,               # Starting exploration rate
     "epsilon_delta": 0.05,
     "epsilon_end": 0.00,                # Minimum exploration rate
     "epsilon_decay": 500,               # Epsilon decay rate
     "lr": 1e-3,                         # Learning rate
-    "total_timeslots": 56,             # Total number of time slots in one episode (1 month)
+    "total_timeslots": 112,              # Total number of time slots in one episode (1 month)
     "maximum_number_of_bikes": 300,     # Maximum number of bikes in the system
 }
 
@@ -72,8 +72,8 @@ def train_dueling_dqn(env: gym, episode: int, tbar: tqdm | tqdm_telegram) -> dic
         'maximum_number_of_bikes': params["maximum_number_of_bikes"],
         'discount_factor': params["gamma"],
         'logging': False,
-        'depot_id': 10,         # 491 back
-        'initial_cell': 10,     # 185 back
+        'depot_id': 18,         # 491 back
+        'initial_cell': 18,     # 185 back
     }
 
     agent_state, info = env.reset(options=options)
@@ -139,7 +139,7 @@ def main():
 
     tbar.close()
 
-    with open('../results/total_failures_baseline.pkl', 'wb') as f:
+    with open(data_path + 'utils/total_failures_baseline.pkl', 'wb') as f:
         pickle.dump(total_failures, f)
 
     # Print the rewards after training
@@ -149,7 +149,7 @@ def main():
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Dummy file')
-    parser.add_argument('--data_path', type=str, default="../data/", help='Path to the data folder')
+    parser.add_argument('--data_path', type=str, default="../data_cambridge_medium/", help='Path to the data folder')
 
     args = parser.parse_args()
     if args.data_path:

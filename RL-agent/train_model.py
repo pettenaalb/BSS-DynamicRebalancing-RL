@@ -14,8 +14,10 @@ import numpy as np
 from tqdm.contrib.telegram import tqdm as tqdm_telegram
 from tqdm import tqdm
 from agent import DQNAgent
+from prioritized_agent import PrioritizedDQNAgent
 from utils import convert_graph_to_data, convert_seconds_to_hours_minutes, send_telegram_message, Actions
 from replay_memory import ReplayBuffer
+from prioritized_replay_memory import PrioritizedReplayBuffer
 from torch_geometric.data import Data
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -37,7 +39,7 @@ torch.manual_seed(seed)
 params = {
     "num_episodes": 4,                              # Total number of training episodes
     "batch_size": 64,                               # Batch size for replay buffer sampling
-    "replay_buffer_capacity": 1e5,                  # Capacity of replay buffer: 0.1 million transitions
+    "replay_buffer_capacity": int(1e4),             # Capacity of replay buffer: 0.1 million transitions
     "gamma": 0.99,                                  # Discount factor
     "epsilon_start": 1.0,                           # Starting exploration rate
     "epsilon_delta": 0.05,                          # Epsilon decay rate
@@ -45,19 +47,21 @@ params = {
     "epsilon_decay": 1e-5,                          # Epsilon decay constant
     "lr": 1e-4,                                     # Learning rate
     "total_timeslots": 56,                          # Total number of time slots in one episode (1 month)
-    "maximum_number_of_bikes": 250,                 # Maximum number of bikes in the system
+    "maximum_number_of_bikes": 300,                 # Maximum number of bikes in the system
     "standard_reward": True,                        # Use standard reward function
     "results_path": "../results/training/",         # Path to save results
     "exploring_episodes": 10,                       # Number of episodes to explore
+    "alpha": 0.6,                                   # Alpha parameter for prioritized replay buffer
+    "beta": 0.4,                                    # Beta parameter for prioritized replay buffer
 }
 
 reward_params = {
     'W_ZERO_BIKES': 1.0,
     'W_CRITICAL_ZONES': 1.0,
-    'W_DROP_PICKUP': 0.7,
-    'W_MOVEMENT': 0.5,
-    'W_CHARGE_BIKE': 2.0,
-    'W_STAY': 0.1,
+    'W_DROP_PICKUP': 0.9,
+    'W_MOVEMENT': 0.7,
+    'W_CHARGE_BIKE': 0.9,
+    'W_STAY': 0.7,
 }
 
 enable_telegram = False
@@ -70,7 +74,7 @@ enable_logging = False
 
 # ----------------------------------------------------------------------------------------------------------------------
 
-def train_dueling_dqn(env: gym, agent: DQNAgent, batch_size: int, episode: int, tbar: tqdm | tqdm_telegram) -> dict:
+def train_dueling_dqn(env: gym, agent: DQNAgent | PrioritizedDQNAgent, batch_size: int, episode: int, tbar: tqdm | tqdm_telegram) -> dict:
     """
     Trains a Dueling Deep Q-Network agent using experience replay.
 
@@ -93,19 +97,10 @@ def train_dueling_dqn(env: gym, agent: DQNAgent, batch_size: int, episode: int, 
     total_failures = 0
     q_values_per_timeslot = []
     action_per_step = []
-    truck_path = []
-    truck_path_per_timeslot = []
     losses = []
-    reward_per_action = [(0,0)]*env.action_space.n
-
-    inner_tbar = tqdm(
-        range(360),
-        desc="Timeslot training",
-        position=1,
-        leave=False,
-        dynamic_ncols=True,
-        disable=True
-    )
+    reward_tracking = [[] for _ in range(len(Actions))]
+    epsilon_per_timeslot = []
+    deployed_bikes = []
 
     # Reset environment and agent state
     options ={
@@ -113,8 +108,8 @@ def train_dueling_dqn(env: gym, agent: DQNAgent, batch_size: int, episode: int, 
         'maximum_number_of_bikes': params["maximum_number_of_bikes"],
         'discount_factor': params["gamma"],
         'logging': enable_logging,
-        'depot_id': 10,         # 491 back
-        'initial_cell': 10,     # 185 back
+        'depot_id': 18,         # 491 back
+        'initial_cell': 18,     # 185 back
         'standard_reward': params["standard_reward"],
         'reward_params': reward_params,
     }
@@ -141,7 +136,7 @@ def train_dueling_dqn(env: gym, agent: DQNAgent, batch_size: int, episode: int, 
         avoid_actions = []
 
         # Avoid dropping bikes if the system is almost full
-        if info['number_of_system_bikes'] > params["maximum_number_of_bikes"]*0.95:
+        if info['number_of_system_bikes'] >= (params["maximum_number_of_bikes"] - 1):
             avoid_actions.append(Actions.DROP_BIKE.value)
 
         # Avoid moving in directions where the truck cannot move
@@ -161,7 +156,6 @@ def train_dueling_dqn(env: gym, agent: DQNAgent, batch_size: int, episode: int, 
 
         # Select an action using the agent
         action = agent.select_action(single_state, avoid_action=avoid_actions)
-        action_per_step.append((action, agent.epsilon))
 
         # Step the environment with the chosen action
         agent_state, reward, done, timeslot_terminated, info = env.step(action)
@@ -176,19 +170,23 @@ def train_dueling_dqn(env: gym, agent: DQNAgent, batch_size: int, episode: int, 
 
         # Train the agent with a batch from the replay buffer
         loss = agent.train_step(batch_size)
+
+        # Update the state
+        state = next_state
+
+        # Update the metrics
+        action_per_step.append(action)
+        reward_tracking[action].append(reward)
         losses.append(loss)
 
-        # Update the state and metrics
-        state = next_state
         total_reward += reward
         total_failures += sum(info['failures'])
-        truck_path.append(info['path'])
-        reward_per_action[action] = (reward_per_action[action][0] + reward, reward_per_action[action][1] + 1)
 
         # Check if the episode is complete
         not_done = not done
 
-        agent.update_epsilon()
+        agent.update_epsilon(steps_in_action=info['steps'])
+        # agent.update_beta()
 
         if timeslot_terminated:
             timeslots_completed += 1
@@ -198,40 +196,33 @@ def train_dueling_dqn(env: gym, agent: DQNAgent, batch_size: int, episode: int, 
             # if timeslots_completed % int((params['exploring_episodes'])*params['total_timeslots']/20) == 0:
             #     agent.update_epsilon(delta_epsilon=params["epsilon_delta"])
 
-            # Record metrics for the current time slot
-            rewards_per_timeslot.append((total_reward/360, agent.epsilon))
-            failures_per_timeslot.append((total_failures, agent.epsilon))
-            truck_path_per_timeslot.append(truck_path)
-
             # Get Q-values for the current state
             with torch.no_grad():
                 q_values = agent.get_q_values(single_state)
-                q_values_per_timeslot.append((q_values.squeeze().cpu().numpy(), agent.epsilon))
+                q_values_per_timeslot.append(q_values.squeeze().cpu().numpy())
                 del q_values
 
-            # Log progress
-            tbar.set_description(f"Episode {episode}, Week {info['week'] % 52}, {info['day'].capitalize()} "
-                                 f"at {convert_seconds_to_hours_minutes(info['time'])}")
+            # Record metrics for the current time slot
+            rewards_per_timeslot.append(total_reward/360)
+            failures_per_timeslot.append(total_failures)
+            epsilon_per_timeslot.append(agent.epsilon)
+            deployed_bikes.append(info['number_of_system_bikes'])
 
             # Reset time slot metrics
             total_reward = 0
             total_failures = 0
-            truck_path = []
             timeslot = 0 if timeslot == 7 else timeslot + 1
 
-            inner_tbar.reset()
-
             # Update progress bar
-            tbar.set_postfix({'epsilon': agent.epsilon, 'failures': failures_per_timeslot[-1][0]})
+            tbar.set_description(f"Episode {episode}, Week {info['week'] % 52}, {info['day'].capitalize()} "
+                                 f"at {convert_seconds_to_hours_minutes(info['time'])}")
+            tbar.set_postfix({'epsilon': agent.epsilon, 'failures': failures_per_timeslot[-1]})
             tbar.update(1)
 
         # Explicitly delete single_state
         del single_state
 
-        inner_tbar.update(info['steps']+1)
-
     env.close()
-    inner_tbar.close()
     torch.cuda.empty_cache()
 
     results = {
@@ -240,14 +231,16 @@ def train_dueling_dqn(env: gym, agent: DQNAgent, batch_size: int, episode: int, 
         "q_values_per_timeslot": q_values_per_timeslot,
         "action_per_step": action_per_step,
         "losses": losses,
-        'reward_per_action': reward_per_action,
+        "reward_tracking": reward_tracking,
+        "epsilon_per_timeslot": epsilon_per_timeslot,
+        "deployed_bikes": deployed_bikes,
     }
 
     return results
 
 # ----------------------------------------------------------------------------------------------------------------------
 
-def save_checkpoint(main_variables: dict, agent: DQNAgent, buffer: ReplayBuffer):
+def save_checkpoint(main_variables: dict, agent: DQNAgent | PrioritizedDQNAgent, buffer: ReplayBuffer | PrioritizedReplayBuffer):
     checkpoint_path = data_path + 'checkpoints/'
     if not os.path.exists(checkpoint_path):
         os.makedirs(checkpoint_path)
@@ -261,7 +254,7 @@ def save_checkpoint(main_variables: dict, agent: DQNAgent, buffer: ReplayBuffer)
     print("Checkpoint saved.")
 
 
-def restore_checkpoint(agent: DQNAgent, buffer: ReplayBuffer) -> dict:
+def restore_checkpoint(agent: DQNAgent | PrioritizedDQNAgent, buffer: ReplayBuffer | PrioritizedReplayBuffer) -> dict:
     print("Restoring checkpoint...", end=' ')
     checkpoint_path = data_path + 'checkpoints/'
 
@@ -279,9 +272,8 @@ def restore_checkpoint(agent: DQNAgent, buffer: ReplayBuffer) -> dict:
 
 def main():
     warnings.filterwarnings("ignore")
-
     print(f"Device in use: {device}\n")
-    print(f"Standard reward function is used.\n" if params["standard_reward"] else f"New reward function is used.\n")
+
     params["epsilon_decay"] = 0.5 * params["num_episodes"] * params["total_timeslots"]*180
     print(f"{params}\n")
     print(f"{reward_params}\n")
@@ -292,6 +284,7 @@ def main():
 
     # Set up replay buffer
     replay_buffer = ReplayBuffer(params["replay_buffer_capacity"])
+    # replay_buffer = PrioritizedReplayBuffer(params["replay_buffer_capacity"], params["alpha"])
 
     # Create background thread for checkpointing
     checkpoint_background_thread = None
@@ -307,6 +300,19 @@ def main():
         lr=params["lr"],
         device=device,
     )
+    # agent = PrioritizedDQNAgent(
+    #     replay_buffer=replay_buffer,
+    #     num_actions=env.action_space.n,
+    #     gamma=params["gamma"],
+    #     epsilon_start=params["epsilon_start"],
+    #     epsilon_end=params["epsilon_end"],
+    #     epsilon_decay=params["epsilon_decay"],
+    #     lr=params["lr"],
+    #     device=device,
+    #     beta=params["beta"],
+    # )
+
+
     # Restore from checkpoint
     starting_episode = 0
     if restore_from_checkpoint:
@@ -347,25 +353,11 @@ def main():
 
             # Save result lists
             results_path = str(params['results_path']) + 'data/'+ str(episode).zfill(2) + '/'
-            # print(results_path)
             if not os.path.exists(results_path):
                 os.makedirs(results_path)
-                # print(f"Directory '{results_path}' created.")
-            with open(results_path + 'rewards_per_timeslot.pkl', 'wb') as f:
-                pickle.dump(results['rewards_per_timeslot'], f)
-            with open(results_path + 'failures_per_timeslot.pkl', 'wb') as f:
-                pickle.dump(results['failures_per_timeslot'], f)
-            with open(results_path + 'q_values_per_timeslot.pkl', 'wb') as f:
-                pickle.dump(results['q_values_per_timeslot'], f)
-            with open(results_path + 'action_per_step.pkl', 'wb') as f:
-                pickle.dump(results['action_per_step'], f)
-            with open(results_path + 'losses.pkl', 'wb') as f:
-                pickle.dump(results['losses'], f)
-            with open(results_path + 'reward_per_action.pkl', 'wb') as f:
-                rewards_per_action = [0]*env.action_space.n
-                for index, rpa in enumerate(results['reward_per_action']):
-                    rewards_per_action[index] = rpa[0]/rpa[1] if rpa[1] != 0 else 0
-                pickle.dump(rewards_per_action, f)
+            for key, value in results.items():
+                with open(results_path + key + '.pkl', 'wb') as f:
+                    pickle.dump(value, f)
 
             # Save checkpoint
             if enable_checkpoint:

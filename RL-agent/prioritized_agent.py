@@ -8,10 +8,10 @@ from DuelingDQN import DuelingDQN
 from VanillaDQN import DQN
 from torch_geometric.loader import DataLoader
 
-class DQNAgent:
+class PrioritizedDQNAgent:
 
     def __init__(self, num_actions, replay_buffer =  None, gamma=0.99, epsilon_start=1.0, epsilon_end=0.01,
-                 epsilon_decay=500, lr=0.1, device='cpu', tau=0.005):
+                 epsilon_decay=500, lr=0.1, device='cpu', tau=0.005, beta=0.4):
         """
         Initializes the DQNAgent.
 
@@ -38,6 +38,8 @@ class DQNAgent:
         self.steps_done = 0
         self.device = device
         self.tau = tau
+        self.beta_start = beta
+        self.beta = beta
 
 
     def select_action(self, state, greedy=False, avoid_action: list = None):
@@ -104,6 +106,17 @@ class DQNAgent:
             self.epsilon = max(self.epsilon - delta_epsilon, self.epsilon_min)
 
 
+    def update_beta(self):
+        """
+        Updates beta for prioritized experience replay.
+        """
+        # Schedule beta
+        beta_start = self.beta
+        beta_end = 1.0
+        self.beta = beta_start + (beta_end - beta_start) * (self.steps_done / self.epsilon_decay)
+        self.beta = min(self.beta, beta_end)
+
+
     # def update_target_network(self):
     #     """
     #     Updates the target model by copying the weights from the training model.
@@ -117,27 +130,18 @@ class DQNAgent:
 
 
     def train_step(self, batch_size) -> float:
-        """
-        Performs a single training step using a batch sampled from the replay buffer.
-
-        Parameters:
-            - batch_size: The number of samples to draw from the replay buffer.
-
-        Returns:
-            - None if the replay buffer does not have enough samples.
-        """
-        if len(self.replay_buffer) < batch_size:
+        if len(self.replay_buffer.buffer) < batch_size:
             return 0
 
-        # Sample a batch from the replay buffer
-        b = self.replay_buffer.sample(batch_size)
-        loader = DataLoader(b, batch_size=batch_size, follow_batch=['x_s', 'x_t'])
-        batch = next(iter(loader))
-        batch = batch.to(self.device)
+        # Sample with priorities and get importance-sampling weights
+        batch, indices, weights = self.replay_buffer.sample(batch_size, self.beta)
 
+        loader = DataLoader(batch, batch_size=batch_size, follow_batch=['x_s', 'x_t'])
+        batch = next(iter(loader)).to(self.device)
+
+        # Compute Q-values and target Q-values
         train_q_values = self.train_model(batch, 's').gather(1, batch.actions)
 
-        # Compute target Q-values
         with torch.no_grad():
             next_actions = self.train_model(batch, 't').argmax(dim=1, keepdim=True)
             next_q_values = self.target_model(batch, 't').gather(1, next_actions)
@@ -145,8 +149,10 @@ class DQNAgent:
             discount = self.gamma ** batch.steps
             target_q_values = batch.reward + discount * next_q_values * (1 - batch.done.float())
 
-        # Compute loss
-        loss = F.smooth_l1_loss(train_q_values, target_q_values)
+        # Compute TD error and loss
+        td_errors = target_q_values - train_q_values
+        weights = weights.to(self.device)
+        loss = (weights * F.smooth_l1_loss(train_q_values, target_q_values, reduction='none')).mean()
 
         # Optimize the model
         self.optimizer.zero_grad(set_to_none=True)
@@ -154,6 +160,11 @@ class DQNAgent:
         torch.nn.utils.clip_grad_norm_(self.train_model.parameters(), max_norm=10)
         self.optimizer.step()
 
+        # Update priorities in replay buffer based on TD errors
+        priorities = td_errors.abs().detach().cpu().numpy() + 1e-5  # Add epsilon to avoid zero priority
+        self.replay_buffer.update_priorities(indices, priorities)
+
+        # Perform target network update
         self.soft_update_target_network(tau=self.tau)
 
         return loss.item()

@@ -18,7 +18,6 @@ if is_ipython:
 
 plt.ion()
 
-
 class Actions(Enum):
     STAY = 0
     RIGHT = 1
@@ -28,7 +27,6 @@ class Actions(Enum):
     DROP_BIKE = 5
     PICK_UP_BIKE = 6
     CHARGE_BIKE = 7
-
 
 def convert_graph_to_data(graph: nx.MultiDiGraph):
     """
@@ -252,3 +250,4 @@ def send_telegram_message(message: str, BOT_TOKEN: str, CHAT_ID: str):
 def memory_usage():
     process = psutil.Process(os.getpid())
     return process.memory_info().rss / (1024 * 1024)  # MB
+

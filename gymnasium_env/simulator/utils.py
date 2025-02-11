@@ -217,10 +217,11 @@ def initialize_stations(stations: dict, depot: dict, bikes_per_station: dict, ne
 
     for station in stations.values():
         station_id = station.get_station_id()
-        total_bikes_for_station = bikes_per_station.get(station_id)
-        bikes = {key: depot.pop(key) for key in list(depot.keys())[:total_bikes_for_station]}
-        station.set_bikes(bikes)
-        system_bikes.update(bikes)
+        if station_id != 10000:
+            total_bikes_for_station = bikes_per_station.get(station_id)
+            bikes = {key: depot.pop(key) for key in list(depot.keys())[:total_bikes_for_station]}
+            station.set_bikes(bikes)
+            system_bikes.update(bikes)
 
     outside_system_bikes, next_bike_id = initialize_bikes(n=1000, next_bike_id=next_bike_id)
     for bike in outside_system_bikes.values():

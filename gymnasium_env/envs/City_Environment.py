@@ -157,7 +157,6 @@ class BostonCity(gym.Env):
 
         # Reset reward items
         self.zero_bikes_penalty = []
-        self.total_visits = 1
 
         # Initialize the depot
         self.next_bike_id = 0
@@ -185,6 +184,10 @@ class BostonCity(gym.Env):
             for node in cell.nodes:
                 self.stations[node].set_cell(cell)
 
+        for station in self.stations.values():
+            if station.get_cell() is None and station.get_station_id() != 10000:
+                raise ValueError(f"Station {station} is not assigned to a cell.")
+
         # Initialize the truck
         cell = self.cells[truck_cell_id]
         cell.set_eligibility_trace(1.0)
@@ -198,18 +201,20 @@ class BostonCity(gym.Env):
         bikes_per_station = {}
         std_dev = 0.0
         for stn_id, stn in self.stations.items():
-            base_bikes = int(self.pmf_matrix.loc[stn_id, :].sum() * int(self.maximum_number_of_bikes-15))
-            noise = random.gauss(0, std_dev) * base_bikes
-            noisy_bikes = max(0, int(base_bikes + noise))
-            noisy_bikes = min(noisy_bikes, stn.get_capacity())
-            bikes_per_station[stn_id] = noisy_bikes
+            if stn_id != 10000:
+                base_bikes = math.ceil(self.pmf_matrix.loc[stn_id, :].sum() * int(self.maximum_number_of_bikes))
+                noise = random.gauss(0, std_dev) * base_bikes
+                noisy_bikes = max(0, int(base_bikes + noise))
+                noisy_bikes = min(noisy_bikes, stn.get_capacity())
+                bikes_per_station[stn_id] = noisy_bikes
 
         # Adjust the total bikes to not exceed the desired total
         current_total = sum(bikes_per_station.values())
-        if current_total > self.maximum_number_of_bikes*0.8:
-            # Scale down proportionally if we exceed the total
-            scale_factor = self.maximum_number_of_bikes*0.8 / current_total
-            bikes_per_station = {stn_id: int(bikes * scale_factor) for stn_id, bikes in bikes_per_station.items()}
+        while current_total > self.maximum_number_of_bikes*0.8:
+            station_id = random.choice(list(bikes_per_station.keys()))
+            if bikes_per_station[station_id] > 0:
+                bikes_per_station[station_id] -= 1
+                current_total -= 1
 
         # Initialize the system bikes
         self.system_bikes, self.outside_system_bikes, self.next_bike_id = initialize_stations(
@@ -623,6 +628,8 @@ class BostonCity(gym.Env):
             cell.set_critic_score(critic_score)
             global_critic_penalty += critic_score
 
+        # global_critic_penalty = (global_critic_penalty / len(self.cells)) * 10.0
+
         # ----------------------------
         # Drop / Pick Up penalty
         # ----------------------------
@@ -645,7 +652,7 @@ class BostonCity(gym.Env):
         # ----------------------------
         bike_charge_penalty = 0.0
         if action == Actions.CHARGE_BIKE.value:
-            bike_charge_penalty = -0.2 * max(0, self.truck.last_charge - 0.8)
+            bike_charge_penalty = -1.0 * truck_cell.get_critic_score()
 
         # ----------------------------
         # Stay penalty
