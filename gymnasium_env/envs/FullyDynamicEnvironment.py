@@ -38,7 +38,7 @@ num2days = {0: 'monday', 1: 'tuesday', 2: 'wednesday', 3: 'thursday', 4: 'friday
 
 # ----------------------------------------------------------------------------------------------------------------------
 
-class BostonCity(gym.Env):
+class FullyDynamicEnv(gym.Env):
 
     # Initialize the environment
     def __init__(self, data_path: str):
@@ -135,7 +135,7 @@ class BostonCity(gym.Env):
         # Day and time slot options
         self.day = options.get('day', 'monday') if options else 'monday'
         self.timeslot = options.get('timeslot', 0) if options else 0
-        self.total_timeslots = options.get('total_timeslots', 2*365*8) if options else 2*365*8
+        self.total_timeslots = options.get('total_timeslots', 56) if options else 56
 
         # Bike options
         self.maximum_number_of_bikes = options.get('maximum_number_of_bikes', self.maximum_number_of_bikes) if options else self.maximum_number_of_bikes
@@ -363,12 +363,8 @@ class BostonCity(gym.Env):
             self.timeslots_completed += 1
             terminated = True
 
-        if self.timeslots_completed == self.total_timeslots:   # 2 years
-            done = True
-            # Print the total number of bikes in the environment
-            # print(f"Total number of bikes in the environment: {len(self.system_bikes)}")
-        else:
-            done = False
+
+        done = True if self.timeslots_completed == self.total_timeslots else False
 
         # Return the step results
         return observation, reward, done, terminated, info

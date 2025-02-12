@@ -1,6 +1,7 @@
-from types import NoneType
-
+import networkx as nx
 import pandas as pd
+
+from networkx.algorithms.approximation import traveling_salesman_problem
 
 from gymnasium_env.simulator.cell import Cell
 from gymnasium_env.simulator.utils import truncated_gaussian
@@ -176,3 +177,42 @@ def charge_bike(truck: Truck, station_dict: dict[int, Station], distance_matrix:
 def stay(truck: Truck) -> int:
     truck.leaving_cell = truck.get_cell()
     return 0
+
+# ----------------------------------------------------------------------------------------------------------------------
+
+def _tsp_truck_rebalancing(surplus_nodes, deficit_nodes, starting_node, distance_matrix: pd.DataFrame):
+    # Combine surplus and deficit nodes into a single list
+    all_nodes = list(surplus_nodes.keys()) + list(deficit_nodes.keys())
+    tsp_graph = nx.Graph()
+
+    # Add edges between all pairs of nodes with weights as shortest path distances
+    for i in range(len(all_nodes)):
+        for j in range(i + 1, len(all_nodes)):
+            node_i, node_j = all_nodes[i], all_nodes[j]
+            distance = distance_matrix[node_i, node_i]
+            tsp_graph.add_edge(node_i, node_j, weight=distance)
+
+    # Find the optimized path using a TSP approximation
+    tsp_path = traveling_salesman_problem(tsp_graph, cycle=False, start=starting_node)
+
+    # Follow the TSP path to rebalance bikes
+    total_distance = 0
+    truck_bikes = 0
+    previous_node = starting_node
+
+    for node in tsp_path:
+        distance = distance_matrix[previous_node, node]
+        total_distance += distance
+        previous_node = node
+
+        if node in surplus_nodes:
+            truck_bikes += surplus_nodes[node]
+            del surplus_nodes[node]
+        elif node in deficit_nodes:
+            bikes_to_drop = min(truck_bikes, -deficit_nodes[node])
+            truck_bikes -= bikes_to_drop
+            deficit_nodes[node] += bikes_to_drop
+            if deficit_nodes[node] == 0:
+                del deficit_nodes[node]
+
+    return total_distance

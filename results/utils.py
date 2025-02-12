@@ -216,7 +216,8 @@ def load_results(training_path, episode_folder="all", metric="rewards_per_timesl
 
     return results
 
-def create_plot(data, title, y_axis_label, x_axis_label, cumulative=False, action_plot=False):
+def create_plot(data, title, y_axis_label, x_axis_label, cumulative=False, action_plot=False,
+                failures_plot=False, episode_size=56):
     if not data:
         return go.Figure().update_layout(title=title, yaxis_title=y_axis_label)
 
@@ -235,10 +236,17 @@ def create_plot(data, title, y_axis_label, x_axis_label, cumulative=False, actio
             )
         )
     else:
-        y_cumulative = np.cumsum(data) / np.arange(1, len(data) + 1) if cumulative else []
         fig = go.Figure()
         fig.add_trace(go.Scatter(y=data, mode='lines', name="Values"))
         if cumulative:
+            if failures_plot:
+                y_cumulative = []
+                for i in range(0, len(data), episode_size):
+                    segment = data[i:i + episode_size]
+                    if len(segment) > 0:
+                        y_cumulative.extend(np.cumsum(segment) / np.arange(1, len(segment) + 1))
+            else:
+                y_cumulative = np.cumsum(data) / np.arange(1, len(data) + 1)
             fig.add_trace(go.Scatter(y=y_cumulative, mode='lines', name="Cumulative Mean", line=dict(color='red')))
 
         fig.update_layout(

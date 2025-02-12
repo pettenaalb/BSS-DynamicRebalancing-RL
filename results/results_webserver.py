@@ -264,7 +264,8 @@ def update_reward_plot(n_intervals, n_clicks, training_path, episode_folder):
 )
 def update_failure_plot(n_intervals, n_clicks, training_path, episode_folder):
     failures = load_results(training_path, episode_folder, metric="failures_per_timeslot")
-    return create_plot(failures, "Failures per Timeslot", "Failures", "Timeslot", cumulative=True)
+    return create_plot(failures, "Failures per Timeslot", "Failures", "Timeslot",
+                       cumulative=True, failures_plot=True)
 
 @app.callback(
     Output("q-value-plot", "figure"),
@@ -357,7 +358,8 @@ def update_failures_baseline_plot(interval, n_clicks):
         failures_baseline = pickle.load(f)
 
     failures = [f for f, _ in failures_baseline]
-    return create_plot(failures, "Failures", "Failures", "Timeslot", cumulative=True)
+    return create_plot(failures, "Failures", "Failures", "Timeslot", cumulative=True,
+                       failures_plot=True)
 
 @app.callback(
     Output("reward-tracking-plot", "figure"),

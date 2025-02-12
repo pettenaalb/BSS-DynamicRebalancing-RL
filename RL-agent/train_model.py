@@ -279,7 +279,7 @@ def main():
     print(f"{reward_params}\n")
 
     # Create the environment
-    env = gym.make('gymnasium_env/BostonCity-v0', data_path=data_path)
+    env = gym.make('gymnasium_env/FullyDynamicEnv-v0', data_path=data_path)
     env.unwrapped.seed(seed)
 
     # Set up replay buffer
