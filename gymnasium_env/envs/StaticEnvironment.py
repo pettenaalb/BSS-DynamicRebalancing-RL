@@ -11,8 +11,8 @@ import osmnx as ox
 from gymnasium.utils import seeding
 
 from gymnasium_env.simulator.bike_simulator import simulate_environment, event_handler
-from gymnasium_env.simulator.utils import (initialize_graph, initialize_stations, initialize_bikes,
-                                           convert_seconds_to_hours_minutes, initialize_cells_subgraph)
+from gymnasium_env.simulator.utils import initialize_graph, initialize_stations, initialize_bikes, truncated_gaussian
+from gymnasium_env.simulator.truck_simulator import tsp_rebalancing
 
 params = {
     'graph_file': 'utils/cambridge_network.graphml',
@@ -81,7 +81,7 @@ class StaticEnv(gym.Env):
         self.timeslots_completed, self.days_completed, self.total_timeslots = 0, 0, 0
         self.depot, self.depot_node = None, None
         self.stations = None
-        self.event_buffer = None
+        self.event_buffer =[]
         self.cell_subgraph = None
         self.next_bike_id = 0
 
@@ -104,7 +104,7 @@ class StaticEnv(gym.Env):
 
         # Set rebalancing hours
         if self.num_rebalancing_events > 0:
-            self.rebalancing_hours = [i+3 for i in range(0, 24, 24 // self.num_rebalancing_events)].sort()
+            self.rebalancing_hours = [i+3 for i in range(0, 24, 24 // self.num_rebalancing_events)]
         self.timeslots_completed = 0
         self.days_completed = 0
         self.event_buffer = []
@@ -170,25 +170,14 @@ class StaticEnv(gym.Env):
         # Initialize the day and time slot
         self._initialize_day()
 
-        # Initialize the cell subgraph
-        # TODO: check this
-        # self.cell_subgraph = initialize_cells_subgraph(self.cells, self.nodes_dict, self.distance_matrix)
-
-        # Update the graph with regional metrics
-        # TODO: check this
-        # self._update_graph()
-
-        # Return the initial observation and an optional info dictionary
-        # TODO: check this
-        info = {}
-
-        return [], info
+        return {}, {}
 
 
     def step(self, action) -> tuple[np.array, float, bool, bool, dict]:
         terminated = False
         total_failures = 0
         failures_per_timeslot = []
+        rebalance_time = []
         while not terminated:
             self.env_time += 30
 
@@ -207,6 +196,12 @@ class StaticEnv(gym.Env):
                 )
                 total_failures += failure
 
+            if self.env_time % 3600 == 0:
+                hour = (self.env_time // 3600) + 1
+                if hour in self.rebalancing_hours:
+                    time_to_rebalance = self._rebalance_system()
+                    rebalance_time.append(time_to_rebalance)
+
             if self.env_time >= 3600*3*(self.timeslot + 1):
                 self.timeslot = (self.timeslot + 1) % 8
                 failures_per_timeslot.append(total_failures)
@@ -220,11 +215,15 @@ class StaticEnv(gym.Env):
 
         info = {
             'failures': failures_per_timeslot,
+            'time': self.env_time + (self.timeslot * 3 + 1) * 3600,
+            'day': self.day,
+            'week': int(self.days_completed // 7),
+            'rebalance_time': rebalance_time
         }
 
         done = True if self.timeslots_completed == self.total_timeslots else False
 
-        return [], 0, done, terminated, info
+        return {}, 0, done, terminated, info
 
 
     def seed(self, seed=None):
@@ -280,50 +279,82 @@ class StaticEnv(gym.Env):
         return pmf_matrix, global_rate
 
 
-    def _update_graph(self):
-        """
-        Update the attributes of the subgraph with regional metrics.
+    def _rebalance_system(self) -> int:
+        # Add bikes back to the system
+        while len(self.system_bikes) < self.maximum_number_of_bikes:
+            bike = self.outside_system_bikes.pop(iter(next(self.outside_system_bikes)))
+            self.system_bikes[bike.get_bike_id()] = bike
 
-        Parameters:
-            - subgraph (nx.Graph): The subgraph to update with regional metrics.
-        """
+        # Compute the net flow per cell
+        net_flow_per_cell = {cell_id: 0 for cell_id in self.cells.keys()}
+        for event in self.event_buffer:
+            if event.is_departure():
+                station_id = event.trip.get_start_location().get_station_id()
+                if station_id != 10000:
+                    cell = self.stations[station_id].get_cell()
+                    net_flow_per_cell[cell.get_id()] -= 1
+            elif event.is_arrival():
+                station_id = event.trip.get_end_location().get_station_id()
+                if station_id != 10000:
+                    cell = self.stations[station_id].get_cell()
+                    net_flow_per_cell[cell.get_id()] += 1
+
+        # Assign bikes to cells based on the net flow
+        bikes_per_cell = {cell_id: 5 for cell_id in self.cells.keys()}
+        available_bikes = sum([1 for bike in self.system_bikes.values() if bike.available])
+        left_bikes = available_bikes - 5*len(self.cells)
+        total_negative_flow = sum(flow for flow in net_flow_per_cell.values() if flow < 0)
+        used_bikes = 0
+        for cell_id, flow in net_flow_per_cell.items():
+            if flow < 0:
+                num_of_bikes = int((flow / total_negative_flow) * left_bikes)
+                bikes_per_cell[cell_id] += num_of_bikes
+                used_bikes += num_of_bikes
+
+        # Assign the remaining bikes to cells with negative flow randomly
+        if used_bikes < left_bikes:
+            cell_ids = [cell_key for cell_key, flow in net_flow_per_cell.items() if flow < 0]
+            random.shuffle(cell_ids)
+            for cell_id in cell_ids:
+                bikes_per_cell[cell_id] += 1
+                used_bikes += 1
+                if used_bikes == left_bikes:
+                    break
+
+        # Compute rebalance time
+        surplus_nodes = {}
+        deficit_nodes = {}
         for cell_id, cell in self.cells.items():
-            center_node = cell.get_center_node()
+            cell_bikes = cell.get_total_bikes()
+            target_bikes = bikes_per_cell[cell_id]
+            if cell_bikes > target_bikes:
+                surplus_nodes[cell.get_center_node()] = cell_bikes - target_bikes
+            elif cell_bikes < target_bikes:
+                deficit_nodes[cell.get_center_node()] = target_bikes - cell_bikes
 
-            # Initialize regional metrics
-            bike_load = cell.get_total_bikes() / self.maximum_number_of_bikes
-            demand_rate, arrival_rate = 0.0, 0.0
-            battery_levels = []
+        distance, _ = tsp_rebalancing(surplus_nodes, deficit_nodes, self.depot_node, self.distance_matrix)
+        hour = (self.env_time // 3600) + 1
+        mean_truck_velocity = self.velocity_matrix.loc[hour, self.day]
+        velocity_kmh = truncated_gaussian(10, 70, mean_truck_velocity, 5)
+        time = int(distance * 3.6 / velocity_kmh)
 
-            # Single loop to aggregate metrics
-            for node in cell.nodes:
-                station = self.stations[node]
-                bikes = station.get_bikes()
-                battery_levels.extend(bike.get_battery() / bike.get_max_battery() for bike in bikes.values())
+        # Empty the stations
+        for station in self.stations.values():
+            if station.get_station_id() != 10000:
+                while station.get_number_of_bikes() > 0:
+                    bike = station.unlock_bike()
+                    bike.set_availability(True)
 
-                # Update regional metrics
-                demand_rate += station.get_request_rate()
-                arrival_rate += station.get_arrival_rate()
+        # Available bikes dictionary
+        available_bikes = {bike_id: bike for bike_id, bike in self.system_bikes.items() if bike.available}
+        for cell_id, num_of_bikes in bikes_per_cell.items():
+            for _ in range(num_of_bikes):
+                bike = available_bikes.pop(next(iter(available_bikes)))
+                center_node_id = self.cells[cell_id].get_center_node()
+                self.stations[center_node_id].lock_bike(bike)
 
-            # Normalize demand and arrival rates
-            demand_rate /= self.global_rate
-            arrival_rate /= self.global_rate
+        # Charge all bikes
+        for bike in self.system_bikes.values():
+            bike.set_battery(bike.get_max_battery())
 
-            # Battery-related calculations
-            if battery_levels:
-                battery_levels_np = np.array(battery_levels)
-                average_battery_level = np.mean(battery_levels_np)
-                low_battery_ratio = np.sum(battery_levels_np <= 0.2) / battery_levels_np.size
-            else:
-                average_battery_level, low_battery_ratio = 0.0, 0.0
-
-            # Update attributes in the subgraph
-            if center_node in self.cell_subgraph:
-                self.cell_subgraph.nodes[center_node]['demand_rate'] = demand_rate
-                self.cell_subgraph.nodes[center_node]['arrival_rate'] = arrival_rate
-                self.cell_subgraph.nodes[center_node]['average_battery_level'] = average_battery_level
-                self.cell_subgraph.nodes[center_node]['low_battery_ratio'] = low_battery_ratio
-                self.cell_subgraph.nodes[center_node]['total_bikes'] = bike_load
-                self.cell_subgraph.nodes[center_node]['critic_score'] = cell.get_critic_score()
-            else:
-                raise ValueError(f"Node {center_node} not found in the subgraph.")
+        return time

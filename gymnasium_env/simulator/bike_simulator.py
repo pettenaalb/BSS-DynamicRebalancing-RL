@@ -115,6 +115,8 @@ def arrival_handler(trip: Trip, system_bikes: dict[int, Bike], outside_system_bi
 
     # Move the bike to the outside system if the destination station is outside the system
     if end_station.get_station_id() == 10000:
+        bike.set_availability(True)
+        bike.set_station(None)
         outside_system_bikes[bike.get_bike_id()] = system_bikes.pop(bike.get_bike_id())
         return
 

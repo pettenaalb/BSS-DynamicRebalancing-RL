@@ -354,10 +354,8 @@ def update_action_plot(n_intervals, n_clicks, training_path, episode_folder):
 )
 
 def update_failures_baseline_plot(interval, n_clicks):
-    with open(os.path.join('../data_cambridge_medium/utils/total_failures_baseline.pkl'), 'rb') as f:
-        failures_baseline = pickle.load(f)
-
-    failures = [f for f, _ in failures_baseline]
+    with open(os.path.join('../benchmarks/results/total_failures.pkl'), 'rb') as f:
+        failures = pickle.load(f)
     return create_plot(failures, "Failures", "Failures", "Timeslot", cumulative=True,
                        failures_plot=True)
 

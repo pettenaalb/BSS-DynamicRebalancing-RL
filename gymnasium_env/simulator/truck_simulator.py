@@ -180,39 +180,95 @@ def stay(truck: Truck) -> int:
 
 # ----------------------------------------------------------------------------------------------------------------------
 
-def _tsp_truck_rebalancing(surplus_nodes, deficit_nodes, starting_node, distance_matrix: pd.DataFrame):
-    # Combine surplus and deficit nodes into a single list
+def tsp_rebalancing(surplus_nodes: dict, deficit_nodes: dict, starting_node, distance_matrix: pd.DataFrame):
     all_nodes = list(surplus_nodes.keys()) + list(deficit_nodes.keys())
     tsp_graph = nx.Graph()
 
-    # Add edges between all pairs of nodes with weights as shortest path distances
+    # Check if there are nodes to process
+    if not all_nodes:
+        raise ValueError("No valid surplus or deficit nodes to rebalance.")
+
     for i in range(len(all_nodes)):
         for j in range(i + 1, len(all_nodes)):
             node_i, node_j = all_nodes[i], all_nodes[j]
-            distance = distance_matrix[node_i, node_i]
+            distance = distance_matrix.loc[node_i, node_j]
             tsp_graph.add_edge(node_i, node_j, weight=distance)
 
-    # Find the optimized path using a TSP approximation
-    tsp_path = traveling_salesman_problem(tsp_graph, cycle=False, start=starting_node)
+    # Ensure starting node is included
+    for node in all_nodes:
+        tsp_graph.add_edge(starting_node, node, weight=distance_matrix.loc[starting_node, node])
 
-    # Follow the TSP path to rebalance bikes
+    # Solve TSP to get the initial path
+    tsp_path = traveling_salesman_problem(tsp_graph, cycle=False)
+
+    # Variables to track progress
     total_distance = 0
     truck_bikes = 0
-    previous_node = starting_node
+    final_route = []
+    skipped_deficit_nodes = {}
+    total_missing_bikes = 0
+
+    # Process the TSP path dynamically
+    current_node = starting_node
 
     for node in tsp_path:
-        distance = distance_matrix[previous_node, node]
+        if node not in surplus_nodes and node not in deficit_nodes:
+            continue
+
+        distance = distance_matrix.loc[current_node, node]
         total_distance += distance
-        previous_node = node
+        final_route.append(node)
 
+        # If it's a surplus node, pick up bikes, otherwise drop them
         if node in surplus_nodes:
-            truck_bikes += surplus_nodes[node]
-            del surplus_nodes[node]
+            truck_bikes += surplus_nodes.pop(node, 0)
         elif node in deficit_nodes:
-            bikes_to_drop = min(truck_bikes, -deficit_nodes[node])
-            truck_bikes -= bikes_to_drop
-            deficit_nodes[node] += bikes_to_drop
-            if deficit_nodes[node] == 0:
-                del deficit_nodes[node]
+            deficit_demand = -deficit_nodes[node]
+            if truck_bikes >= deficit_demand:
+                # Enough bikes: drop them
+                truck_bikes -= deficit_demand
+                deficit_nodes.pop(node)
+            else:
+                # Not enough bikes: track it and move on
+                skipped_deficit_nodes[node] = deficit_demand
+                total_missing_bikes += deficit_demand
 
-    return total_distance
+        # Move to the next node
+        current_node = node
+
+        # Once the truck has enough bikes to satisfy all skipped deficits, go back in an efficient order
+        if 0 < total_missing_bikes <= truck_bikes:
+            # Solve a new TSP for skipped deficit nodes
+            backtrack_graph = nx.Graph()
+            skipped_list = list(skipped_deficit_nodes.keys())
+
+            for i in range(len(skipped_list)):
+                for j in range(i + 1, len(skipped_list)):
+                    node_i, node_j = skipped_list[i], skipped_list[j]
+                    distance = distance_matrix.loc[node_i, node_j]
+                    backtrack_graph.add_edge(node_i, node_j, weight=distance)
+
+            # Ensure we start from the last node we visited
+            for n in skipped_list:
+                backtrack_graph.add_edge(current_node, n, weight=distance_matrix.loc[current_node, n])
+
+            # Solve TSP for revisiting skipped nodes
+            backtrack_path = traveling_salesman_problem(backtrack_graph, cycle=False)
+
+            # Visit skipped nodes
+            for n in backtrack_path:
+                if n in skipped_deficit_nodes:
+                    distance = distance_matrix.loc[current_node, n]
+                    total_distance += distance
+                    final_route.append(n)
+
+                    # Drop bikes
+                    bikes_needed = skipped_deficit_nodes[n]
+                    truck_bikes -= bikes_needed
+                    total_missing_bikes -= bikes_needed
+                    skipped_deficit_nodes.pop(n)
+
+                    # Move to the next node
+                    current_node = n
+
+    return total_distance, final_route

@@ -7,6 +7,7 @@ import pickle
 import os
 from enum import Enum
 
+from fontTools.unicodedata import block
 from matplotlib import pyplot as plt
 
 class Actions(Enum):
@@ -41,7 +42,7 @@ def plot_data_online(data, show_result=False, idx=1, xlabel='Step', ylabel='Rewa
         - ylabel: Label for the y-axis (default='Reward').
         - show_histogram: If True, displays a histogram of the data (default=False).
     """
-    new_data = []*8
+    new_data = [0]*8
     if isinstance(data, dict):
         for timeslot, value in data.items():
             print(timeslot, value)
@@ -92,7 +93,7 @@ def plot_data_online(data, show_result=False, idx=1, xlabel='Step', ylabel='Rewa
             else:
                 display.display(plt.gcf())
 
-    plt.close()
+    plt.show(block=True)
 
 
 def plot_confusion_matrix(data: pd.DataFrame, title="Heatmap", x_label = "", y_label = "", cbar_label = "", cmap="YlGnBu", save_path=None):

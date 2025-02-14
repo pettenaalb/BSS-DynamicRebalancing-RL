@@ -231,7 +231,7 @@ def initialize_stations(stations: dict, depot: dict, bikes_per_station: dict, ne
 
 
 def initialize_cells_subgraph(cells: dict[int, "Cell"], nodes_dict: dict[int, tuple[float, float]],
-                              distance_matrix: pd.DataFrame) -> nx.MultiDiGraph:
+                              distance_matrix: pd.DataFrame, node_features: dict = None) -> nx.MultiDiGraph:
     """
     Initialize a subgraph of the road network based on the cells.
 
@@ -245,58 +245,60 @@ def initialize_cells_subgraph(cells: dict[int, "Cell"], nodes_dict: dict[int, tu
     """
     # Initialize the subgraph
     subgraph = nx.MultiDiGraph()
-
     subgraph.graph['crs'] = "EPSG:4326"
 
-    # Add center nodes to the subgraph
+    max_length = 0
+    nodes_data = {}
+
+    # Default node features if not provided
+    default_features = {
+        "average_battery_level": 0.0,
+        "variance_battery_level": 0.0,
+        "low_battery_ratio": 0.0,
+        "demand_rate": 0.0,
+        "arrival_rate": 0.0,
+        "bike_load": 0.0,
+        "visits": 0.0,
+        "critic_score": 0.0,
+    }
+
+    # Use provided features or fall back to defaults
+    node_features = node_features or default_features
+
+    # Collect node data and find max length in one pass
     for cell_id, cell in cells.items():
         center_node = cell.get_center_node()
         center_coords = nodes_dict.get(center_node)
-        subgraph.add_node(
-            center_node,
-            cell_id=cell.get_id(),
-            total_bikes=cell.get_total_bikes(),
-            x=center_coords[1],  # Longitude
-            y=center_coords[0],  # Latitude
-            # Initialize internal parameters
-            average_battery_level=0.0,
-            variance_battery_level=0.0,
-            low_battery_ratio=0.0,
-            demand_rate=0.0,
-            arrival_rate=0.0,
-            bike_load = 0.0,
-            visits = 0.0,
-            critic_score = 0.0,
-        )
 
-    max_length = 0
-    # Connect center nodes of adjacent cells
+        # Initialize node attributes
+        node_attrs = {
+            "cell_id": cell.get_id(),
+            "total_bikes": cell.get_total_bikes(),
+            "x": center_coords[1],  # Longitude
+            "y": center_coords[0],  # Latitude
+        }
+        # Add custom node features
+        node_attrs.update(node_features)
+
+        nodes_data[center_node] = node_attrs
+
+        for adjacent_cell_id in cell.get_adjacent_cells().values():
+            if adjacent_cell_id and adjacent_cell_id in cells:
+                adjacent_center = cells[adjacent_cell_id].get_center_node()
+                max_length = max(max_length, distance_matrix.loc[center_node, adjacent_center])
+
+    # Add nodes in bulk
+    subgraph.add_nodes_from(nodes_data.items())
+
+    # Add edges
     for cell_id, cell in cells.items():
         current_center = cell.get_center_node()
-        for direction, adjacent_cell_id in cell.get_adjacent_cells().items():
-            if adjacent_cell_id is not None and adjacent_cell_id in cells:
-                adjacent_cell = cells[adjacent_cell_id]
-                adjacent_center = adjacent_cell.get_center_node()
-                if distance_matrix.loc[current_center, adjacent_center] > max_length:
-                    max_length = distance_matrix.loc[current_center, adjacent_center]
-
-    # Connect center nodes of adjacent cells
-    for cell_id, cell in cells.items():
-        current_center = cell.get_center_node()
-        for direction, adjacent_cell_id in cell.get_adjacent_cells().items():
-            if adjacent_cell_id is not None and adjacent_cell_id in cells:
-                adjacent_cell = cells[adjacent_cell_id]
-                adjacent_center = adjacent_cell.get_center_node()
-
-                # Compute the shortest path between the current center and the adjacent center
+        for adjacent_cell_id in cell.get_adjacent_cells().values():
+            if adjacent_cell_id and adjacent_cell_id in cells:
+                adjacent_center = cells[adjacent_cell_id].get_center_node()
                 try:
                     path_length = distance_matrix.loc[current_center, adjacent_center]
-                    # Add the edge to the subgraph
-                    subgraph.add_edge(
-                        current_center,
-                        adjacent_center,
-                        distance=path_length/max_length,
-                    )
+                    subgraph.add_edge(current_center, adjacent_center, distance=path_length / max_length)
                 except nx.NetworkXNoPath:
                     print(f"No path found between {current_center} and {adjacent_center}.")
 

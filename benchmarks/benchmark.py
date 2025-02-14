@@ -1,7 +1,8 @@
+import os
 import torch
 import argparse
 import pickle
-import os
+import warnings
 
 import gymnasium as gym
 import numpy as np
@@ -31,8 +32,8 @@ def simulate_env(env: gym, episode: int, tbar: tqdm | tqdm_telegram) -> dict:
     # Initialize episode metrics
     timeslot = 0
     timeslots_completed = 0
-    total_failures = 0
     failures_per_timeslot = []
+    rebalance_time = []
 
     # Reset environment and agent state
     options ={
@@ -40,6 +41,7 @@ def simulate_env(env: gym, episode: int, tbar: tqdm | tqdm_telegram) -> dict:
         'maximum_number_of_bikes': params["maximum_number_of_bikes"],
         'depot_id': 18,         # 491 back
         'initial_cell': 18,     # 185 back
+        'num_rebalancing_events': 2
     }
 
     env.reset(options=options)
@@ -49,8 +51,6 @@ def simulate_env(env: gym, episode: int, tbar: tqdm | tqdm_telegram) -> dict:
     while not_done:
         # Step the environment with the chosen action
         *_, done, terminated, info = env.step(0)
-
-        total_failures += sum(info['failures'])
 
         # Check if the episode is complete
         not_done = not done
@@ -63,27 +63,26 @@ def simulate_env(env: gym, episode: int, tbar: tqdm | tqdm_telegram) -> dict:
                                  f"at {convert_seconds_to_hours_minutes(info['time'])}")
             timeslot = 0 if timeslot == 7 else timeslot + 1
 
-            failures_per_timeslot.append((total_failures, timeslot))
+            failures_per_timeslot.extend(info['failures'])
+            rebalance_time.extend(info['rebalance_time'])
 
             # Update progress bar
-            tbar.set_postfix({'failures': failures_per_timeslot[-1][0]})
             tbar.update(1)
-
-            total_failures = 0
 
     env.close()
 
-    return {'failures': failures_per_timeslot}
+    return {'failures': failures_per_timeslot, 'rebalance_time': rebalance_time}
 
 # ----------------------------------------------------------------------------------------------------------------------
 
 def main():
+    warnings.filterwarnings("ignore")
     # Create the environment
     env = gym.make('gymnasium_env/StaticEnv-v0', data_path=data_path)
     env.unwrapped.seed(seed)
 
     tbar = tqdm(
-        range(params["total_timeslots"]*params["num_episodes"]),
+        range(7*params["num_episodes"]),
         desc="Training Episode 1, Week 1, Monday at 01:00:00",
         position=0,
         leave=True,
@@ -91,15 +90,22 @@ def main():
     )
 
     total_failures = []
+    rebalance_time = []
 
     for episode in range(0, params["num_episodes"]):
         results = simulate_env(env, episode, tbar)
         total_failures.extend(results['failures'])
+        rebalance_time.extend(results['rebalance_time'])
 
     tbar.close()
 
-    with open('results/total_failures_baseline.pkl', 'wb') as f:
+    if not os.path.exists('results'):
+        os.makedirs('results')
+
+    with open('results/total_failures.pkl', 'wb') as f:
         pickle.dump(total_failures, f)
+    with open('results/rebalance_time.pkl', 'wb') as f:
+        pickle.dump(rebalance_time, f)
 
     # Print the rewards after training
     print("\nSimulation completed.")
@@ -108,7 +114,7 @@ def main():
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Benchmark file')
-    parser.add_argument('--data_path', type=str, default="../data_cambridge_medium/", help='Path to the data folder')
+    parser.add_argument('--data_path', type=str, default="../data/", help='Path to the data folder')
 
     args = parser.parse_args()
     if args.data_path:
