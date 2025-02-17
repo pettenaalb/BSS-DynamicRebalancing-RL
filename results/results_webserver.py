@@ -293,17 +293,18 @@ def update_q_value_plot(n_intervals, n_clicks, training_path, episode_folder):
      Input("update-btn-plots", "n_clicks")]
 )
 def update_epsilon_loss(n_intervals, training_path, n_clicks):
-    loss = load_results(training_path, metric="losses")
+    # loss = load_results(training_path, metric="losses")
     epsilon = load_results(training_path, metric="epsilon_per_timeslot")
     deployed_bikes = load_results(training_path, metric="deployed_bikes")
-    reward_tracking = load_results(training_path, metric="reward_tracking")
+    last_episode_folder = get_episode_options(training_path)[-1]
+    las_episode_reward_tracking = load_results(training_path, last_episode_folder['value'], metric="reward_tracking")
 
     reward_per_action = [0] * len(action_bin_labels)
     for action, _ in enumerate(action_bin_labels):
-        reward_per_action[action] = np.mean(reward_tracking[action])
+        reward_per_action[action] = np.mean(las_episode_reward_tracking[action])
 
     epsilon_plot = create_plot(epsilon, "Epsilon over Time", "Epsilon", "Timeslot", cumulative=False)
-    loss_plot = create_plot(loss, "Loss over Time", "Loss", "Timeslot", cumulative=False)
+    loss_plot = create_plot([], "Loss over Time", "Loss", "Timeslot", cumulative=False)
     reward_action_plot = create_plot(reward_per_action, "Reward per Action", "Reward", "Timeslot", action_plot=True)
     deployed_bikes_plot = create_plot(deployed_bikes, "Deployed Bikes per Timeslot", "Bikes", "Timeslot", cumulative=False)
 

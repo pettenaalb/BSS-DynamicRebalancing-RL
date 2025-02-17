@@ -1,4 +1,3 @@
-import math
 import pickle
 import random
 import bisect
@@ -137,27 +136,38 @@ class StaticEnv(gym.Env):
             if station.get_cell() is None and station.get_station_id() != 10000:
                 raise ValueError(f"Station {station} is not assigned to a cell.")
 
-        # Load the PMF matrix and global rate for the current day and time slot
-        pmf_matrix, _ = self._load_pmf_matrix_global_rate(self.day, self.timeslot)
+        # Initialize the day and time slot
+        self._initialize_day()
+
+        # Compute net flow per cell
+        net_flow_per_cell = self._compute_net_flow()
+
+        # Assign bikes to cells based on net flow
+        bikes_per_cell = {cell_id: 5 for cell_id in self.cells.keys()}
+        left_bikes = self.maximum_number_of_bikes - 5 * len(self.cells)
+        total_negative_flow = sum(flow for flow in net_flow_per_cell.values() if flow < 0)
+        bike_positioned = 0
+        for cell_id, flow in net_flow_per_cell.items():
+            if flow < 0:
+                num_of_bikes = int((flow / total_negative_flow) * left_bikes)
+                bikes_per_cell[cell_id] += num_of_bikes
+                bike_positioned += num_of_bikes
+
+        # Assign the remaining bikes to cells with negative flow randomly
+        if bike_positioned < left_bikes:
+            cell_ids = [cell_key for cell_key, flow in net_flow_per_cell.items() if flow < 0]
+            random.shuffle(cell_ids)
+            for cell_id in cell_ids:
+                bikes_per_cell[cell_id] += 1
+                bike_positioned += 1
+                if bike_positioned == left_bikes:
+                    break
 
         # Initialize stations and system bikes
-        bikes_per_station = {}
-        std_dev = 0.0
-        for stn_id, stn in self.stations.items():
-            if stn_id != 10000:
-                base_bikes = math.ceil(pmf_matrix.loc[stn_id, :].sum() * int(self.maximum_number_of_bikes))
-                noise = random.gauss(0, std_dev) * base_bikes
-                noisy_bikes = max(0, int(base_bikes + noise))
-                noisy_bikes = min(noisy_bikes, stn.get_capacity())
-                bikes_per_station[stn_id] = noisy_bikes
-
-        # Adjust the total bikes to not exceed the desired total
-        current_total = sum(bikes_per_station.values())
-        while current_total > self.maximum_number_of_bikes:
-            station_id = random.choice(list(bikes_per_station.keys()))
-            if bikes_per_station[station_id] > 0:
-                bikes_per_station[station_id] -= 1
-                current_total -= 1
+        bikes_per_station = {stn_id: 0 for stn_id in self.stations.keys()}
+        for cell_id, num_of_bikes in bikes_per_cell.items():
+            stn_id = self.cells[cell_id].get_center_node()
+            bikes_per_station[stn_id] = num_of_bikes
 
         # Initialize the system bikes
         self.system_bikes, self.outside_system_bikes, self.next_bike_id = initialize_stations(
@@ -166,9 +176,6 @@ class StaticEnv(gym.Env):
             bikes_per_station=bikes_per_station,
             next_bike_id=self.next_bike_id,
         )
-
-        # Initialize the day and time slot
-        self._initialize_day()
 
         return {}, {}
 
@@ -285,19 +292,8 @@ class StaticEnv(gym.Env):
             bike = self.outside_system_bikes.pop(iter(next(self.outside_system_bikes)))
             self.system_bikes[bike.get_bike_id()] = bike
 
-        # Compute the net flow per cell
-        net_flow_per_cell = {cell_id: 0 for cell_id in self.cells.keys()}
-        for event in self.event_buffer:
-            if event.is_departure():
-                station_id = event.trip.get_start_location().get_station_id()
-                if station_id != 10000:
-                    cell = self.stations[station_id].get_cell()
-                    net_flow_per_cell[cell.get_id()] -= 1
-            elif event.is_arrival():
-                station_id = event.trip.get_end_location().get_station_id()
-                if station_id != 10000:
-                    cell = self.stations[station_id].get_cell()
-                    net_flow_per_cell[cell.get_id()] += 1
+        # Compute net flow per cell
+        net_flow_per_cell = self._compute_net_flow()
 
         # Assign bikes to cells based on the net flow
         bikes_per_cell = {cell_id: 5 for cell_id in self.cells.keys()}
@@ -358,3 +354,21 @@ class StaticEnv(gym.Env):
             bike.set_battery(bike.get_max_battery())
 
         return time
+
+
+    def _compute_net_flow(self, upper_bound: int = None) -> dict:
+        # Compute the net flow per cell
+        net_flow_per_cell = {cell_id: 0 for cell_id in self.cells.keys()}
+        for event in self.event_buffer:
+            if event.is_departure():
+                station_id = event.trip.get_start_location().get_station_id()
+                if station_id != 10000:
+                    cell = self.stations[station_id].get_cell()
+                    net_flow_per_cell[cell.get_id()] -= 1
+            elif event.is_arrival():
+                station_id = event.trip.get_end_location().get_station_id()
+                if station_id != 10000:
+                    cell = self.stations[station_id].get_cell()
+                    net_flow_per_cell[cell.get_id()] += 1
+
+        return net_flow_per_cell

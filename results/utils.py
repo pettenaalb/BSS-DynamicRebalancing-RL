@@ -144,7 +144,8 @@ def get_episode_options(training_path, default_option=True):
         return []
 
     episode_folders = sorted(
-        [folder for folder in os.listdir(training_path) if os.path.isdir(os.path.join(training_path, folder))]
+        [folder for folder in os.listdir(training_path) if os.path.isdir(os.path.join(training_path, folder))],
+        key=lambda x: int(x)
     )
 
     options = (

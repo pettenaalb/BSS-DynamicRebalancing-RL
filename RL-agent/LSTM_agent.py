@@ -3,14 +3,13 @@ import numpy as np
 import random
 
 from torch.nn import functional as F
-
-from VanillaDQN import DQN
+from LSTM_DQN import DQN
 from torch_geometric.loader import DataLoader
 
 class DQNAgent:
 
     def __init__(self, num_actions, replay_buffer =  None, gamma=0.99, epsilon_start=1.0, epsilon_end=0.01,
-                 epsilon_decay=500, lr=0.1, device='cpu', tau=0.005, soft_update=False):
+                 epsilon_decay=500, lr=0.1, device='cpu', tau=0.005, lstm_hidden_dim=64):
         """
         Initializes the DQNAgent.
 
@@ -24,20 +23,31 @@ class DQNAgent:
             - lr: Learning rate for the optimizer (default=0.1).
             - device: Target device for computation (default='cpu').
         """
-        self.train_model = DQN(num_actions).to(device)
-        self.target_model = DQN(num_actions).to(device)
-        self.target_model.load_state_dict(self.train_model.state_dict())
-        self.optimizer = torch.optim.Adam(self.train_model.parameters(), lr=lr)
-        self.replay_buffer = replay_buffer
+        self.device = device
         self.num_actions = num_actions
         self.gamma = gamma
         self.epsilon = epsilon_start
         self.epsilon_min = epsilon_end
         self.epsilon_decay = epsilon_decay
         self.steps_done = 0
-        self.device = device
         self.tau = tau
-        self.soft_update = soft_update
+        self.lstm_hidden_dim = lstm_hidden_dim
+
+        self.train_model = DQN(num_actions, lstm_hidden_dim=lstm_hidden_dim).to(device)
+        self.target_model = DQN(num_actions, lstm_hidden_dim=lstm_hidden_dim).to(device)
+        self.target_model.load_state_dict(self.train_model.state_dict())
+
+        self.optimizer = torch.optim.Adam(self.train_model.parameters(), lr=lr)
+        self.replay_buffer = replay_buffer
+
+        self.hx = (torch.zeros(1, 1, lstm_hidden_dim).to(device),
+                   torch.zeros(1, 1, lstm_hidden_dim).to(device))  # (h, c)
+
+
+    def reset_hidden_state(self):
+        """ Resets LSTM hidden state at the beginning of each episode. """
+        self.hx = (torch.zeros(1, 1, self.lstm_hidden_dim).to(self.device),
+                   torch.zeros(1, 1, self.lstm_hidden_dim).to(self.device))
 
 
     def select_action(self, state, greedy=False, avoid_action: list = None):
@@ -65,7 +75,7 @@ class DQNAgent:
         # Select the greedy action
         with torch.no_grad():
             # Get sorted indices of Q-values
-            q_values = self.get_q_values(state)
+            q_values, self.hx = self.get_q_values(state)
             sorted_q_values = q_values.squeeze(0).detach().argsort(dim=-1, descending=True)
 
             # Choose the highest-ranked action that is not in avoid_action
@@ -77,6 +87,7 @@ class DQNAgent:
 
         # If cannot find a valid action
         raise ValueError("No valid greedy action could be selected.")
+
 
     def get_q_values(self, state):
         """
@@ -132,15 +143,24 @@ class DQNAgent:
         # Sample a batch from the replay buffer
         b = self.replay_buffer.sample(batch_size)
         loader = DataLoader(b, batch_size=batch_size, follow_batch=['x_s', 'x_t'])
-        batch = next(iter(loader))
-        batch = batch.to(self.device)
+        batch = next(iter(loader)).to(self.device)
 
-        train_q_values = self.train_model(batch, 's').gather(1, batch.actions)
+        hx_train = (torch.zeros(1, batch_size, self.lstm_hidden_dim).to(self.device),
+                    torch.zeros(1, batch_size, self.lstm_hidden_dim).to(self.device))
+
+        hx_target = (torch.zeros(1, batch_size, self.lstm_hidden_dim).to(self.device),
+                     torch.zeros(1, batch_size, self.lstm_hidden_dim).to(self.device))
+
+        train_q_values, _ = self.train_model(batch, hx_train, key='s')
+        train_q_values = train_q_values.gather(1, batch.actions)
 
         # Compute target Q-values
         with torch.no_grad():
-            next_actions = self.train_model(batch, 't').argmax(dim=1, keepdim=True)
-            next_q_values = self.target_model(batch, 't').gather(1, next_actions)
+            next_actions, _ = self.train_model(batch, hx_train, key='t')
+            next_actions = next_actions.argmax(dim=1, keepdim=True)
+
+            next_q_values, _ = self.target_model(batch, hx_target, key='t')
+            next_q_values = next_q_values.gather(1, next_actions)
 
             discount = self.gamma ** batch.steps
             target_q_values = batch.reward + discount * next_q_values * (1 - batch.done.float())

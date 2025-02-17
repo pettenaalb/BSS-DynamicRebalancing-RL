@@ -39,20 +39,22 @@ torch.manual_seed(seed)
 params = {
     "num_episodes": 4,                              # Total number of training episodes
     "batch_size": 64,                               # Batch size for replay buffer sampling
-    "replay_buffer_capacity": int(1e4),             # Capacity of replay buffer: 0.1 million transitions
+    "replay_buffer_capacity": int(1e5),             # Capacity of replay buffer: 0.1 million transitions
     "gamma": 0.99,                                  # Discount factor
     "epsilon_start": 1.0,                           # Starting exploration rate
     "epsilon_delta": 0.05,                          # Epsilon decay rate
-    "epsilon_end": 0.00,                            # Minimum exploration rate
+    "epsilon_end": 0.01,                            # Minimum exploration rate
     "epsilon_decay": 1e-5,                          # Epsilon decay constant
     "lr": 1e-4,                                     # Learning rate
     "total_timeslots": 56,                          # Total number of time slots in one episode (1 month)
-    "maximum_number_of_bikes": 300,                 # Maximum number of bikes in the system
+    "maximum_number_of_bikes": 250,                 # Maximum number of bikes in the system
     "standard_reward": True,                        # Use standard reward function
     "results_path": "../results/training/",         # Path to save results
     "exploring_episodes": 10,                       # Number of episodes to explore
     "alpha": 0.6,                                   # Alpha parameter for prioritized replay buffer
     "beta": 0.4,                                    # Beta parameter for prioritized replay buffer
+    "soft_update": True,                            # Use soft update for target network
+    "tau": 0.01,                                    # Tau parameter for soft update
 }
 
 reward_params = {
@@ -74,20 +76,7 @@ enable_logging = False
 
 # ----------------------------------------------------------------------------------------------------------------------
 
-def train_dueling_dqn(env: gym, agent: DQNAgent | PrioritizedDQNAgent, batch_size: int, episode: int, tbar: tqdm | tqdm_telegram) -> dict:
-    """
-    Trains a Dueling Deep Q-Network agent using experience replay.
-
-    Parameters:
-        - agent (DQNAgent): The Dueling DQN agent to train.
-        - num_episodes (int): The number of episodes to train the agent.
-        - batch_size (int): The batch size for training the agent.
-
-    Returns:
-        - rewards_per_timeslot (list): The rewards obtained per time slot during training.
-        - failures_per_timeslot (list): The failures per time slot during training.
-    """
-
+def train_dueling_dqn(env: gym, agent: DQNAgent, batch_size: int, episode: int, tbar: tqdm | tqdm_telegram) -> dict:
     # Initialize episode metrics
     timeslot = 0
     timeslots_completed = 0
@@ -101,6 +90,7 @@ def train_dueling_dqn(env: gym, agent: DQNAgent | PrioritizedDQNAgent, batch_siz
     reward_tracking = [[] for _ in range(len(Actions))]
     epsilon_per_timeslot = []
     deployed_bikes = []
+    cell_subgraph = None
 
     # Reset environment and agent state
     options ={
@@ -186,20 +176,18 @@ def train_dueling_dqn(env: gym, agent: DQNAgent | PrioritizedDQNAgent, batch_siz
         not_done = not done
 
         agent.update_epsilon(steps_in_action=info['steps'])
-        # agent.update_beta()
 
         if timeslot_terminated:
             timeslots_completed += 1
 
             # Update target network periodically
-            # agent.update_target_network()
-            # if timeslots_completed % int((params['exploring_episodes'])*params['total_timeslots']/20) == 0:
-            #     agent.update_epsilon(delta_epsilon=params["epsilon_delta"])
+            # if timeslots_completed % 8 == 0:
+            #     agent.update_target_network()
 
             # Get Q-values for the current state
             with torch.no_grad():
                 q_values = agent.get_q_values(single_state)
-                q_values_per_timeslot.append(q_values.squeeze().cpu().numpy())
+                q_values_per_timeslot.append(q_values[0].squeeze().cpu().numpy())
                 del q_values
 
             # Record metrics for the current time slot
@@ -219,6 +207,9 @@ def train_dueling_dqn(env: gym, agent: DQNAgent | PrioritizedDQNAgent, batch_siz
             tbar.set_postfix({'epsilon': agent.epsilon, 'failures': failures_per_timeslot[-1]})
             tbar.update(1)
 
+        if done:
+            cell_subgraph = info['cells_subgraph']
+
         # Explicitly delete single_state
         del single_state
 
@@ -234,6 +225,7 @@ def train_dueling_dqn(env: gym, agent: DQNAgent | PrioritizedDQNAgent, batch_siz
         "reward_tracking": reward_tracking,
         "epsilon_per_timeslot": epsilon_per_timeslot,
         "deployed_bikes": deployed_bikes,
+        "cell_subgraph": cell_subgraph,
     }
 
     return results
@@ -274,7 +266,7 @@ def main():
     warnings.filterwarnings("ignore")
     print(f"Device in use: {device}\n")
 
-    params["epsilon_decay"] = 0.5 * params["num_episodes"] * params["total_timeslots"]*180
+    params["epsilon_decay"] = (0.7 * params["num_episodes"] * params["total_timeslots"]*360) / 4.6
     print(f"{params}\n")
     print(f"{reward_params}\n")
 
@@ -299,18 +291,9 @@ def main():
         epsilon_decay=params["epsilon_decay"],
         lr=params["lr"],
         device=device,
+        tau=params["tau"],
+        soft_update=params["soft_update"],
     )
-    # agent = PrioritizedDQNAgent(
-    #     replay_buffer=replay_buffer,
-    #     num_actions=env.action_space.n,
-    #     gamma=params["gamma"],
-    #     epsilon_start=params["epsilon_start"],
-    #     epsilon_end=params["epsilon_end"],
-    #     epsilon_decay=params["epsilon_decay"],
-    #     lr=params["lr"],
-    #     device=device,
-    #     beta=params["beta"],
-    # )
 
 
     # Restore from checkpoint
@@ -349,6 +332,7 @@ def main():
 
         for episode in range(starting_episode, params["num_episodes"]):
             # Train the agent for one episode
+            # agent.reset_hidden_state()
             results = train_dueling_dqn(env, agent, params["batch_size"], episode, tbar)
 
             # Save result lists

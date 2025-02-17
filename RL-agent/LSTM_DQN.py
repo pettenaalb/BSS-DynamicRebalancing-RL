@@ -1,16 +1,16 @@
+import torch
 import torch.nn as nn
 import torch_geometric.nn as gnn
-import torch
-
 from torch_geometric.nn.conv import GATv2Conv
 
 class DQN(nn.Module):
-    def __init__(self, num_actions: int):
+    def __init__(self, num_actions: int, lstm_hidden_dim=64):
         """
-        A simple Deep Q-Network with a graph feature extractor (GAT).
+        A Deep Q-Network with a Graph Attention Network (GAT) and LSTM for temporal dependencies.
 
         Parameters:
             - num_actions (int): Number of actions in the environment
+            - lstm_hidden_dim (int): Hidden dimension for LSTM
         """
         super(DQN, self).__init__()
 
@@ -29,9 +29,12 @@ class DQN(nn.Module):
             nn.ReLU()
         )
 
+        # LSTM for temporal modeling
+        self.lstm = nn.LSTM(input_size=192, hidden_size=lstm_hidden_dim, batch_first=True)
+
         # Final fully connected layers to predict Q-values
         self.fc_output = nn.Sequential(
-            nn.Linear(192, 128),
+            nn.Linear(lstm_hidden_dim, 128),
             nn.ReLU(),
             nn.Linear(128, num_actions)
         )
@@ -41,16 +44,18 @@ class DQN(nn.Module):
             if isinstance(layer, nn.Linear):
                 nn.init.xavier_uniform_(layer.weight)
 
-    def forward(self, batch, key=None):
+    def forward(self, batch, hx=None, key=None):
         """
         Forward pass to compute Q-values.
 
         Parameters:
             - batch (Data): A batch of graph data.
+            - hx (tuple): Hidden and cell state for LSTM (for temporal processing)
             - key (str): Key to select source ('s') or target ('t') graph data.
 
         Returns:
             - q_values (Tensor): Q-values for each action.
+            - hx (tuple): Updated hidden and cell states for LSTM.
         """
         # Extract the appropriate features based on the key
         if key == 's':
@@ -76,11 +81,15 @@ class DQN(nn.Module):
 
         # Concatenate graph and agent state embeddings
         try:
-            x = torch.cat([x, agent_state], dim=-1)
+            x = torch.cat([x, agent_state], dim=-1)  # Shape: [batch_size, 192]
         except Exception as e:
             print(f"Shape mismatch in concatenation: graph embedding shape {x.shape}, agent state shape {agent_state.shape}")
             raise e
 
-        # Compute Q-values directly
+        # LSTM processing
+        x = x.unsqueeze(1)
+        x, hx = self.lstm(x, hx)
+        x = x.squeeze(1)
+
         q_values = self.fc_output(x)
-        return q_values
+        return q_values, hx
