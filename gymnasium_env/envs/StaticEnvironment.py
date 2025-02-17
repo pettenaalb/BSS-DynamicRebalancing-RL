@@ -103,7 +103,7 @@ class StaticEnv(gym.Env):
 
         # Set rebalancing hours
         if self.num_rebalancing_events > 0:
-            self.rebalancing_hours = [i+3 for i in range(0, 24, 24 // self.num_rebalancing_events)]
+            self.rebalancing_hours = [(i+3)%24 for i in range(0, 24, 24 // self.num_rebalancing_events)]
         self.timeslots_completed = 0
         self.days_completed = 0
         self.event_buffer = []
@@ -289,7 +289,7 @@ class StaticEnv(gym.Env):
     def _rebalance_system(self) -> int:
         # Add bikes back to the system
         while len(self.system_bikes) < self.maximum_number_of_bikes:
-            bike = self.outside_system_bikes.pop(iter(next(self.outside_system_bikes)))
+            bike = self.outside_system_bikes.pop(next(iter(self.outside_system_bikes)))
             self.system_bikes[bike.get_bike_id()] = bike
 
         # Compute net flow per cell

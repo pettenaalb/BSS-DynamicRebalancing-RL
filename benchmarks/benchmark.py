@@ -41,7 +41,7 @@ def simulate_env(env: gym, episode: int, tbar: tqdm | tqdm_telegram) -> dict:
         'maximum_number_of_bikes': params["maximum_number_of_bikes"],
         'depot_id': 18,         # 491 back
         'initial_cell': 18,     # 185 back
-        'num_rebalancing_events': 0
+        'num_rebalancing_events': 8
     }
 
     env.reset(options=options)
@@ -114,7 +114,7 @@ def main():
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Benchmark file')
-    parser.add_argument('--data_path', type=str, default="../data_cambridge_medium/", help='Path to the data folder')
+    parser.add_argument('--data_path', type=str, default="../data/", help='Path to the data folder')
 
     args = parser.parse_args()
     if args.data_path:
