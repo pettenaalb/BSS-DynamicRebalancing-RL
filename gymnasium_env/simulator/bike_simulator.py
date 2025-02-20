@@ -74,26 +74,26 @@ def departure_handler(trip: Trip, station_dict: dict, nearby_nodes_dict: dict[st
     # Check if there are any bikes available at the starting station
     if start_station.get_number_of_bikes() > 0:
         bike = start_station.unlock_bike()
-        if bike.get_battery() > trip.get_distance()/1000:
-            trip.set_bike(bike)
-            trip.set_failed(False)
-            return trip, next_bike_id
-        else:
-            start_station.lock_bike(bike)
+        # if bike.get_battery() > trip.get_distance()/1000:
+        trip.set_bike(bike)
+        trip.set_failed(False)
+        return trip, next_bike_id
+        # else:
+        #     start_station.lock_bike(bike)
 
     # Check if there are any bikes available at nearby stations
     nodes_dist_dict = {node_id: distance_matrix.at[start_station_id, node_id] for node_id in nearby_nodes_dict[start_station_id]}
     for node_id, _ in sorted(nodes_dist_dict.items(), key=lambda item: item[1]):
         if station_dict[node_id].get_number_of_bikes() > 0:
             bike = station_dict[node_id].unlock_bike()
-            if bike.get_battery() > trip.get_distance()/1000:
-                trip.set_deviated_location(station_dict[node_id])
-                trip.set_bike(bike)
-                trip.set_failed(False)
-                trip.set_deviated(True)
-                return trip, next_bike_id
-            else:
-                station_dict[node_id].lock_bike(bike)
+            # if bike.get_battery() > trip.get_distance()/1000:
+            trip.set_deviated_location(station_dict[node_id])
+            trip.set_bike(bike)
+            trip.set_failed(False)
+            trip.set_deviated(True)
+            return trip, next_bike_id
+            # else:
+            #     station_dict[node_id].lock_bike(bike)
 
     trip.set_failed(True)
     return trip, next_bike_id
@@ -112,16 +112,19 @@ def arrival_handler(trip: Trip, system_bikes: dict[int, Bike], outside_system_bi
     start_station = trip.get_start_location()
     end_station = trip.get_end_location()
     bike = trip.get_bike()
+    bike.set_battery(bike.get_battery() - trip.get_distance()/1000)
 
     # Move the bike to the outside system if the destination station is outside the system
     if end_station.get_station_id() == 10000:
         bike.set_availability(True)
         bike.set_station(None)
+        bike.set_battery(bike.get_max_battery())
         outside_system_bikes[bike.get_bike_id()] = system_bikes.pop(bike.get_bike_id())
         return
 
     # Move the bike back to the system if the starting station is outside the system
     if start_station.get_station_id() == 10000:
+        bike.set_battery(bike.get_max_battery())
         system_bikes[bike.get_bike_id()] = bike
 
     end_station.lock_bike(bike)

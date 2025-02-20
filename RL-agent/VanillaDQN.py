@@ -1,8 +1,10 @@
 import torch.nn as nn
 import torch_geometric.nn as gnn
 import torch
-
 from torch_geometric.nn.conv import GATv2Conv
+from torch_geometric.nn.conv import GCNConv
+from torch_geometric.nn.pool import global_mean_pool
+import torch.nn.functional as F
 
 class DQN(nn.Module):
     def __init__(self, num_actions: int):
@@ -15,19 +17,29 @@ class DQN(nn.Module):
         super(DQN, self).__init__()
 
         # Graph feature extractor using Graph Attention Network (GAT)
-        self.gat1 = GATv2Conv(in_channels=9, out_channels=64, edge_dim=1)
+        self.gat1 = GATv2Conv(in_channels=5, out_channels=64, edge_dim=1)
 
         # Fully connected layers for graph features
         self.fc_input1 = nn.Sequential(
             nn.Linear(64, 128),
             nn.ReLU()
         )
+        # self.fc_input1 = nn.Sequential(
+        #     nn.Linear(64, 128),
+        #     nn.LayerNorm(128),
+        #     nn.ReLU(),
+        # )
 
         # Fully connected layers for agent state features
         self.fc_input2 = nn.Sequential(
-            nn.Linear(34, 64),
+            nn.Linear(60, 64),
             nn.ReLU()
         )
+        # self.fc_input2 = nn.Sequential(
+        #     nn.Linear(60, 64),
+        #     nn.LayerNorm(64),
+        #     nn.ReLU(),
+        # )
 
         # Final fully connected layers to predict Q-values
         self.fc_output = nn.Sequential(
@@ -35,6 +47,20 @@ class DQN(nn.Module):
             nn.ReLU(),
             nn.Linear(128, num_actions)
         )
+
+        # --- Graph Path ---
+        # self.conv1 = GCNConv(5, 64)
+        # self.conv2 = GCNConv(64, 64)
+        # self.graph_fc = nn.Linear(64, 64)
+        #
+        # # --- Truck Path ---
+        # self.truck_fc1 = nn.Linear(60, 64)
+        # self.truck_fc2 = nn.Linear(64, 64)
+        #
+        # # --- Fusion & Q-Value Prediction ---
+        # self.fc1 = nn.Linear(128, 128)  # Fusion layer
+        # self.fc2 = nn.Linear(128, 64)
+        # self.fc3 = nn.Linear(64, num_actions)  # Output Q-values for each action
 
         # Initialize weights
         for layer in self.modules():
@@ -83,4 +109,22 @@ class DQN(nn.Module):
 
         # Compute Q-values directly
         q_values = self.fc_output(x)
+
+        # x = self.conv1(x, edge_index, edge_attr)
+        # x = F.relu(x)
+        # x = self.conv2(x, edge_index, edge_attr)
+        # x = F.relu(x)
+        # x = global_mean_pool(x, pool_batch)
+        # x = self.graph_fc(x)
+        #
+        # # --- Truck Path ---
+        # t = F.relu(self.truck_fc1(agent_state))
+        # t = F.relu(self.truck_fc2(t))
+        #
+        # # --- Fusion Layer ---
+        # combined = torch.cat([x, t], dim=-1)
+        # q = F.relu(self.fc1(combined))
+        # q = F.relu(self.fc2(q))
+        # q_values = self.fc3(q)
+
         return q_values

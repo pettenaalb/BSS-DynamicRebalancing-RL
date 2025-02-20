@@ -10,6 +10,7 @@ import gymnasium_env.register_env
 
 import gymnasium as gym
 import numpy as np
+import osmnx as ox
 
 from tqdm.contrib.telegram import tqdm as tqdm_telegram
 from tqdm import tqdm
@@ -40,21 +41,21 @@ params = {
     "num_episodes": 4,                              # Total number of training episodes
     "batch_size": 64,                               # Batch size for replay buffer sampling
     "replay_buffer_capacity": int(1e5),             # Capacity of replay buffer: 0.1 million transitions
-    "gamma": 0.99,                                  # Discount factor
+    "gamma": 0.99787,                                  # Discount factor
     "epsilon_start": 1.0,                           # Starting exploration rate
     "epsilon_delta": 0.05,                          # Epsilon decay rate
     "epsilon_end": 0.01,                            # Minimum exploration rate
     "epsilon_decay": 1e-5,                          # Epsilon decay constant
     "lr": 1e-4,                                     # Learning rate
     "total_timeslots": 56,                          # Total number of time slots in one episode (1 month)
-    "maximum_number_of_bikes": 250,                 # Maximum number of bikes in the system
+    "maximum_number_of_bikes": 255,                 # Maximum number of bikes in the system
     "standard_reward": True,                        # Use standard reward function
     "results_path": "../results/training/",         # Path to save results
     "exploring_episodes": 10,                       # Number of episodes to explore
     "alpha": 0.6,                                   # Alpha parameter for prioritized replay buffer
     "beta": 0.4,                                    # Beta parameter for prioritized replay buffer
     "soft_update": True,                            # Use soft update for target network
-    "tau": 0.01,                                    # Tau parameter for soft update
+    "tau": 0.005,                                   # Tau parameter for soft update
 }
 
 reward_params = {
@@ -104,9 +105,18 @@ def train_dueling_dqn(env: gym, agent: DQNAgent, batch_size: int, episode: int, 
         'reward_params': reward_params,
     }
 
+    node_features = [
+        'cell_id',
+        'surplus_score',
+        # 'low_battery_bikes',
+        'total_bikes',
+        'critic_score',
+        'visits',
+    ]
+
     agent_state, info = env.reset(options=options)
 
-    state = convert_graph_to_data(info['cells_subgraph'])
+    state = convert_graph_to_data(info['cells_subgraph'], node_features=node_features)
     state.agent_state = np.concatenate([info['agent_position'], agent_state])
     state.steps = info['steps']
 
@@ -126,7 +136,7 @@ def train_dueling_dqn(env: gym, agent: DQNAgent, batch_size: int, episode: int, 
         avoid_actions = []
 
         # Avoid dropping bikes if the system is almost full
-        if info['number_of_system_bikes'] >= (params["maximum_number_of_bikes"] - 1):
+        if info['number_of_system_bikes'] >= (params["maximum_number_of_bikes"] - 5):
             avoid_actions.append(Actions.DROP_BIKE.value)
 
         # Avoid moving in directions where the truck cannot move
@@ -151,7 +161,7 @@ def train_dueling_dqn(env: gym, agent: DQNAgent, batch_size: int, episode: int, 
         agent_state, reward, done, timeslot_terminated, info = env.step(action)
 
         # Update state with new information
-        next_state = convert_graph_to_data(info['cells_subgraph'])
+        next_state = convert_graph_to_data(info['cells_subgraph'], node_features=node_features)
         next_state.agent_state = np.concatenate([info['agent_position'], agent_state])
         next_state.steps = info['steps']
 

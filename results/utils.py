@@ -6,8 +6,14 @@ import plotly.graph_objects as go
 import pickle
 import os
 from enum import Enum
+import networkx as nx
+import osmnx as ox
+import io
+import base64
+import geopandas as gpd
+import matplotlib.colors as mcolors
+import matplotlib.cm as cm
 
-from fontTools.unicodedata import block
 from matplotlib import pyplot as plt
 
 class Actions(Enum):
@@ -18,9 +24,9 @@ class Actions(Enum):
     DOWN = 4
     DROP_BIKE = 5
     PICK_UP_BIKE = 6
-    CHARGE_BIKE = 7
+    # CHARGE_BIKE = 7
 
-action_bin_labels = ['STAY', 'RIGHT', 'UP', 'LEFT', 'DOWN', 'DROP_BIKE', 'PICK_UP_BIKE', 'CHARGE_BIKE']
+action_bin_labels = ['STAY', 'RIGHT', 'UP', 'LEFT', 'DOWN', 'DROP_BIKE', 'PICK_UP_BIKE']
 
 # set up matplotlib
 is_ipython = 'inline' in matplotlib.get_backend()
@@ -28,6 +34,17 @@ if is_ipython:
     from IPython import display
 
 plt.ion()
+
+
+def initialize_graph(graph_path: str = None) -> nx.MultiDiGraph:
+    if os.path.isfile(graph_path):
+        graph = ox.load_graphml(graph_path)
+    else:
+        # Raise an error if the graph file does not exist
+        raise FileNotFoundError("Network file does not exist. Please check the file path.")
+
+    return graph
+
 
 def plot_data_online(data, show_result=False, idx=1, xlabel='Step', ylabel='Reward', show_histogram=False,
                      bin_labels=None, title="Plot", save_path=None, mean=True):
@@ -264,3 +281,57 @@ def create_plot(data, title, y_axis_label, x_axis_label, cumulative=False, actio
             )
         )
     return fig
+
+def generate_osmnx_graph(graph: nx.MultiDiGraph, cell_dict: dict, cell_values: dict):
+    # Extract nodes and edges in WGS84 coordinates (lon, lat)
+    nodes, edges = ox.graph_to_gdfs(graph, nodes=True, edges=True)
+
+    # Convert cell_dict into a GeoDataFrame in WGS84 for easy plotting
+    grid_geoms = [cell.boundary for cell in cell_dict.values()]
+    cell_gdf = gpd.GeoDataFrame(geometry=grid_geoms, crs="EPSG:4326")
+
+    # Define colormap (use 'hot' for a heatmap effect)
+    max_value = max(cell_values.values()) if cell_values else 1
+    cmap = cm.get_cmap("viridis")  # Choose colormap (e.g., 'hot', 'viridis', 'coolwarm')
+    norm = mcolors.Normalize(vmin=0, vmax=max_value)  # Normalize colors based on frequency range
+
+    # Plot setup
+    fig, ax = plt.subplots(figsize=(16, 9), dpi=300)
+
+    # Plot the graph edges in geographic coordinates
+    edges.plot(ax=ax, linewidth=0.5, edgecolor="black", alpha=0.7)
+    # Plot the graph nodes
+    nodes.plot(ax=ax, markersize=2, color="blue", alpha=0.7)
+
+    # Plot each cell with the heatmap color
+    for cell_id, cell in cell_dict.items():
+        color = cmap(norm(cell_values[cell_id]))
+        cell_gdf[cell_gdf.geometry == cell.boundary].plot(ax=ax, linewidth=0.8, edgecolor="red",
+                                                          facecolor=mcolors.to_hex(color), alpha=0.8)
+
+    for cell_id, cell in cell_dict.items():
+        center_node = cell.center_node
+        if center_node != 0:
+            node_coords = graph.nodes[center_node]['x'], graph.nodes[center_node]['y']
+            ax.plot(node_coords[0], node_coords[1], marker='o', color='yellow', markersize=4,
+                    label=f"Center Node {cell.id}")
+        center_coords = cell.boundary.centroid.coords[0]
+        ax.text(center_coords[0], center_coords[1], f"{cell_values[cell_id] * 100:.2f}%", fontsize=10, color='yellow', ha='center', va='center',
+                weight='bold')
+
+    # Hide x-ticks, y-ticks, and labels
+    ax.set_xticks([])
+    ax.set_yticks([])
+    ax.set_xticklabels([])
+    ax.set_yticklabels([])
+    ax.set_frame_on(False)  # Optional: removes the border/frame
+
+    # Save plot to a bytes buffer
+    buf = io.BytesIO()
+    plt.savefig(buf, format="png", bbox_inches="tight", dpi=300)
+    plt.close(fig)
+    buf.seek(0)
+
+    # Encode image to base64 to display in Dash
+    encoded_image = base64.b64encode(buf.getvalue()).decode()
+    return f"data:image/png;base64,{encoded_image}"

@@ -2,9 +2,10 @@ import os
 import pickle
 import numpy as np
 import dash
+import osmnx as ox
 from dash import dcc, html
 from dash.dependencies import Input, Output
-from utils import load_results, get_episode_options, create_plot, action_bin_labels
+from utils import load_results, get_episode_options, create_plot, action_bin_labels, generate_osmnx_graph, initialize_graph
 
 # Base paths for two training phases
 BASE_PATH = ""
@@ -225,7 +226,13 @@ app.layout = html.Div([
                             'scale': 3       # Multiply resolution (e.g., for high-DPI)
                         }
                     })
-            ], style={'width': '100%', 'padding': '10px', 'background-color': 'white', 'box-shadow': '0px 1px 3px rgba(0, 0, 0, 0.2)'})
+            ], style={'width': '100%', 'padding': '10px', 'background-color': 'white', 'box-shadow': '0px 1px 3px rgba(0, 0, 0, 0.2)'}),
+            html.Div([
+                html.Button("Update OSMnx Graph", id="update-btn-osmnx", n_clicks=0,
+                            style={'background-color': '#4A90E2', 'color': 'white', 'border': 'none',
+                                   'padding': '10px 20px', 'cursor': 'pointer', 'border-radius': '5px'}),
+                html.Img(id="osmnx-graph", style={'width': '70%', 'border': '1px solid #d3d3d3', 'padding': '10px'})
+            ], style={'width': '100%', 'display': 'inline-block', 'vertical-align': 'top', 'padding': '10px', 'box-shadow': '0px 1px 3px rgba(0, 0, 0, 0.2)', 'background-color': 'white'}),
         ], style={'display': 'flex', 'flex-wrap': 'wrap', 'gap': '10px'}),
     ], style={'max-width': '1200px', 'margin': '0 auto'}),
 ], style={'font-family': 'Poppins, sans-serif', 'padding': '20px'})
@@ -372,6 +379,34 @@ def update_reward_tracking_plot(n_intervals, n_clicks, training_path, action):
     action_value = action_bin_labels.index(action)
     rewards = reward_tracking[action_value]
     return create_plot(rewards, "Rewards per Step", "Reward", "Step", cumulative=True)
+
+
+@app.callback(
+    Output("osmnx-graph", "src"),
+    [Input("training-selector", "value"),
+     Input("update-btn-osmnx", "n_clicks")]
+)
+def update_osmnx_graph(training_path, n_clicks):
+    graph = initialize_graph('../data_cambridge_medium/utils/cambridge_network.graphml')
+    # Initialize the cells
+    with open('../data_cambridge_medium/utils/cell_data.pkl', 'rb') as file:
+        cells = pickle.load(file)
+
+    last_episode_folder = get_episode_options(training_path)[-1]
+    cell_subgraph = load_results(training_path, last_episode_folder['value'], metric="cell_subgraph")
+    nodes = ox.graph_to_gdfs(cell_subgraph, nodes=True, edges=False)
+
+    cell_values = {}
+    total_visits = 0
+    for _, node in nodes.iterrows():
+        cell_values[node['cell_id']] = node['visits']
+        total_visits += node['visits']
+
+    for cell_id in cell_values.keys():
+        cell_values[cell_id] = cell_values[cell_id] / total_visits
+
+    return generate_osmnx_graph(graph, cells, cell_values)
+
 
 # Run the Dash app
 if __name__ == '__main__':

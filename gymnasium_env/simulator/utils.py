@@ -7,6 +7,7 @@ import pandas as pd
 import networkx as nx
 import matplotlib.pyplot as plt
 import geopandas as gpd
+import torch.nn as nn
 
 from scipy.stats import truncnorm
 from geopy.distance import distance
@@ -30,7 +31,21 @@ class Actions(Enum):
     DOWN = 4
     DROP_BIKE = 5
     PICK_UP_BIKE = 6
-    CHARGE_BIKE = 7
+    # CHARGE_BIKE = 7
+
+
+# Action History Encoder with Embeddings
+class ActionHistoryEncoder(nn.Module):
+    def __init__(self, num_actions=7, embedding_dim=4, history_length=4):
+        super().__init__()
+        # Maps action index to an embedding
+        self.embedding = nn.Embedding(num_actions, embedding_dim)
+        self.history_length = history_length
+
+    def forward(self, action_history):
+        embedded_actions = self.embedding(action_history)
+        return embedded_actions.view(action_history.shape[0], -1)
+
 
 class Logger:
     def __init__(self, log_file: str, is_logging: bool = False):
@@ -268,14 +283,13 @@ def initialize_cells_subgraph(cells: dict[int, "Cell"], nodes_dict: dict[int, tu
     # Collect node data and find max length in one pass
     for cell_id, cell in cells.items():
         center_node = cell.get_center_node()
-        center_coords = nodes_dict.get(center_node)
+        node_coords = nodes_dict.get(center_node)
 
         # Initialize node attributes
         node_attrs = {
             "cell_id": cell.get_id(),
-            "total_bikes": cell.get_total_bikes(),
-            "x": center_coords[1],  # Longitude
-            "y": center_coords[0],  # Latitude
+            "x": node_coords[1],
+            "y": node_coords[0],
         }
         # Add custom node features
         node_attrs.update(node_features)

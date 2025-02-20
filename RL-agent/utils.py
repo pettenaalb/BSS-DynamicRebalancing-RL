@@ -10,6 +10,7 @@ import psutil, os
 from torch_geometric.utils import from_networkx
 from matplotlib import pyplot as plt
 from enum import Enum
+from torch_geometric.data import Data
 
 # set up matplotlib
 is_ipython = 'inline' in matplotlib.get_backend()
@@ -26,9 +27,10 @@ class Actions(Enum):
     DOWN = 4
     DROP_BIKE = 5
     PICK_UP_BIKE = 6
-    CHARGE_BIKE = 7
+    # CHARGE_BIKE = 7
 
-def convert_graph_to_data(graph: nx.MultiDiGraph):
+
+def convert_graph_to_data(graph: nx.MultiDiGraph, node_features: list = None) -> Data:
     """
     Converts a NetworkX MultiDiGraph to a PyTorch Geometric Data object.
 
@@ -41,7 +43,7 @@ def convert_graph_to_data(graph: nx.MultiDiGraph):
     data = from_networkx(graph)
 
     # Extract node attributes
-    node_attrs = [
+    default_node_attrs = [
         'demand_rate',
         'arrival_rate',
         'average_battery_level',
@@ -52,9 +54,12 @@ def convert_graph_to_data(graph: nx.MultiDiGraph):
         'visits',
         'critic_score',
     ]
+
+    node_attrs = node_features or default_node_attrs
+
     data.x = torch.cat([
         torch.tensor(
-            [graph.nodes[n].get(attr, 0) for n in graph.nodes()],
+            [graph.nodes[n].get(attr, 0) or 0 for n in graph.nodes()],
             dtype=torch.float
         ).unsqueeze(dim=-1) for attr in node_attrs
     ], dim=-1)

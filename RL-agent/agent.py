@@ -151,7 +151,7 @@ class DQNAgent:
         # Optimize the model
         self.optimizer.zero_grad(set_to_none=True)
         loss.backward()
-        torch.nn.utils.clip_grad_norm_(self.train_model.parameters(), max_norm=10)
+        torch.nn.utils.clip_grad_norm_(self.train_model.parameters(), max_norm=10.0)
         self.optimizer.step()
 
         self.soft_update_target_network(tau=self.tau)
