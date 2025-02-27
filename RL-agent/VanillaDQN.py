@@ -17,7 +17,8 @@ class DQN(nn.Module):
         super(DQN, self).__init__()
 
         # Graph feature extractor using Graph Attention Network (GAT)
-        self.gat1 = GATv2Conv(in_channels=5, out_channels=64, edge_dim=1)
+        self.gat1 = GATv2Conv(in_channels=4, out_channels=64, heads=4, edge_dim=1, concat=False)
+        # self.gat2 = GATv2Conv(in_channels=64, out_channels=64, heads=4, edge_dim=1, concat=False)
 
         # Fully connected layers for graph features
         self.fc_input1 = nn.Sequential(
@@ -32,7 +33,7 @@ class DQN(nn.Module):
 
         # Fully connected layers for agent state features
         self.fc_input2 = nn.Sequential(
-            nn.Linear(60, 64),
+            nn.Linear(44, 64),
             nn.ReLU()
         )
         # self.fc_input2 = nn.Sequential(
@@ -94,6 +95,8 @@ class DQN(nn.Module):
 
         # Compute node embeddings using GAT and apply the first fully connected layer
         x = self.gat1(x, edge_index, edge_attr)
+        # x = F.relu(x)
+        # x = self.gat2(x, edge_index, edge_attr) + x
         x = self.fc_input1(x)
         x = gnn.global_mean_pool(x, pool_batch)
 

@@ -282,7 +282,7 @@ def create_plot(data, title, y_axis_label, x_axis_label, cumulative=False, actio
         )
     return fig
 
-def generate_osmnx_graph(graph: nx.MultiDiGraph, cell_dict: dict, cell_values: dict):
+def generate_osmnx_graph(graph: nx.MultiDiGraph, cell_dict: dict, cell_values: dict, percentage: bool = False):
     # Extract nodes and edges in WGS84 coordinates (lon, lat)
     nodes, edges = ox.graph_to_gdfs(graph, nodes=True, edges=True)
 
@@ -316,8 +316,12 @@ def generate_osmnx_graph(graph: nx.MultiDiGraph, cell_dict: dict, cell_values: d
             ax.plot(node_coords[0], node_coords[1], marker='o', color='yellow', markersize=4,
                     label=f"Center Node {cell.id}")
         center_coords = cell.boundary.centroid.coords[0]
-        ax.text(center_coords[0], center_coords[1], f"{cell_values[cell_id] * 100:.2f}%", fontsize=10, color='yellow', ha='center', va='center',
-                weight='bold')
+        if percentage:
+            ax.text(center_coords[0], center_coords[1], f"{cell_values[cell_id] * 100:.2f}%", fontsize=10,
+                    color='yellow', ha='center', va='center',weight='bold')
+        else:
+            ax.text(center_coords[0], center_coords[1], f"{cell_values[cell_id]:.2f}", fontsize=10,
+                    color='yellow', ha='center', va='center',weight='bold')
 
     # Hide x-ticks, y-ticks, and labels
     ax.set_xticks([])

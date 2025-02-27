@@ -160,6 +160,7 @@ def pick_up_bike(truck: Truck, station_dict: dict[int, Station], distance_matrix
         time += t_reload
         while truck.get_load() > 15:
             bk = truck.unload_bike()
+            bk.reset()
             depot[bk.get_bike_id()] = bk
         truck.load_bike(bike)
     truck.set_position(station.get_station_id())

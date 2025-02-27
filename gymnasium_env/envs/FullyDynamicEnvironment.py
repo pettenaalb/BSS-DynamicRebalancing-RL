@@ -119,8 +119,6 @@ class FullyDynamicEnv(gym.Env):
         self.total_visits = 1
         self.history_4 = deque(maxlen=4)
 
-        self.standard_reward = True
-
         self.encoder = ActionHistoryEncoder(num_actions=len(Actions), embedding_dim=4, history_length=4)
         self.embedding_length = 16
 
@@ -132,8 +130,6 @@ class FullyDynamicEnv(gym.Env):
     def reset(self, seed=None, options=None) -> tuple[np.array, dict]:
         # Call parent class reset
         super().reset(seed=seed)
-
-        self.standard_reward = options.get('standard_reward', True) if options else True
 
         #Enabling the logging
         self.logging = options.get('logging', False) if options else False
@@ -247,6 +243,7 @@ class FullyDynamicEnv(gym.Env):
             'steps': 0,
             'number_of_system_bikes': len(self.system_bikes),
             'truck_neighbor_cells': self.truck.get_cell().get_adjacent_cells(),
+            'distance_matrix': self.distance_matrix,
         }
 
         return observation, info
@@ -343,7 +340,7 @@ class FullyDynamicEnv(gym.Env):
         self.logger.log_truck(self.truck)
 
         # Compute the outputs
-        reward = self._get_reward(steps, failures, distance, action)
+        reward = self._get_reward(action)
         observation = self._get_obs()
         self._update_graph()
 
@@ -573,17 +570,7 @@ class FullyDynamicEnv(gym.Env):
         return observation.astype(np.float32)
 
 
-    def _get_reward(self, steps: int, failures: list, distance: int, action: int) -> float:
-        # ----------------------------
-        # Define tunable weight parameters
-        # ----------------------------
-        W_ZERO_BIKES = self.reward_params.get('W_ZERO_BIKES', 1.0) if self.reward_params else 1.0
-        W_CRITICAL_ZONES = self.reward_params.get('W_CRITICAL_ZONES', 1.0) if self.reward_params else 1.0
-        W_DROP_PICKUP = self.reward_params.get('W_DROP_PICKUP', 1.0) if self.reward_params else 1.0
-        W_MOVEMENT = self.reward_params.get('W_MOVEMENT', 1.0) if self.reward_params else 1.0
-        W_CHARGE_BIKE = self.reward_params.get('W_CHARGE_BIKE', 1.0) if self.reward_params else 1.0
-        W_STAY = self.reward_params.get('W_STAY', 1.0) if self.reward_params else 1.0
-
+    def _get_reward(self, action: int) -> float:
         # ----------------------------
         # Compute expected departures per cell
         # ----------------------------
@@ -605,32 +592,20 @@ class FullyDynamicEnv(gym.Env):
                     expected_departures_per_cell[cell_id] = expected_departures_per_cell.get(cell_id, 0) - 1
 
         # ----------------------------
-        # Compute total charged bikes in cells where departures are expected
-        # ----------------------------
-        # total_charged_bikes = {}
-        # for cell_id in expected_departures_per_cell:
-        #     charged_bikes = 0
-        #     for node in self.cells[cell_id].get_nodes():
-        #         charged_bikes += sum(
-        #             1 for bike in self.stations[node].get_bikes().values() if bike.get_battery() > 0.2
-        #         )
-        #     total_charged_bikes[cell_id] = charged_bikes
-
-        # ----------------------------
         # Update critic scores and compute a penalty for critical zones
         # ----------------------------
-        global_critic_penalty = 0.0
-        for cell_id, cell in self.cells.items():
-            critic_score = 0.0
-            expected = 0
-            if cell_id in expected_departures_per_cell:
-                expected = expected_departures_per_cell[cell_id]
-            available = cell.get_total_bikes()
-            if expected > 0:
-                critic_score = max(0.0, 1.0 - (available / expected))
-            cell.surplus_score = available - expected
-            cell.set_critic_score(critic_score)
-            global_critic_penalty += critic_score
+        # global_critic_penalty = 0.0
+        # for cell_id, cell in self.cells.items():
+        #     critic_score = 0.0
+        #     expected = 0
+        #     if cell_id in expected_departures_per_cell:
+        #         expected = expected_departures_per_cell[cell_id]
+        #     available = cell.get_total_bikes()
+        #     if expected > 0:
+        #         critic_score = max(0.0, 1.0 - (available / expected))
+        #     cell.surplus_score = available - expected
+        #     cell.set_critic_score(critic_score)
+        #     global_critic_penalty += critic_score
 
         # ----------------------------
         # Drop / Pick Up penalty
@@ -642,8 +617,10 @@ class FullyDynamicEnv(gym.Env):
 
         pick_up_penalty = 0.0
         if action == Actions.PICK_UP_BIKE.value:
-            if truck_cell.get_surplus_score() <= 0:
+            if truck_cell.get_critic_score() > 0.0:
                 pick_up_penalty = -1.0
+            else:
+                pick_up_penalty = 0.2
 
         # ----------------------------
         # Move penalty (e.g. discourage unnecessary movements)
@@ -652,9 +629,9 @@ class FullyDynamicEnv(gym.Env):
         if action in {Actions.UP.value, Actions.DOWN.value, Actions.LEFT.value, Actions.RIGHT.value}:
             is_4_step_loop, is_2_step_loop = self._detect_self_loops()
             if is_4_step_loop:
-                move_penalty = -0.4
+                move_penalty = -0.2
             elif is_2_step_loop:
-                move_penalty = -0.6
+                move_penalty = -0.3
 
         # ----------------------------
         # Bike charging penalty (e.g. discourage charging a bike that isn’t sufficiently discharged)
@@ -666,28 +643,30 @@ class FullyDynamicEnv(gym.Env):
         # ----------------------------
         # Stay penalty
         # ----------------------------
+        # stay_penalty = 0.0
+        # if action == Actions.STAY.value:
+        #     stay_penalty = -0.4
+        truck_cell = self.truck.get_cell()
+        position_penalty = 0.0
+        if truck_cell.get_visits() / self.total_visits > 0.1:
+            position_penalty = -0.1
+
         stay_penalty = 0.0
         if action == Actions.STAY.value:
-            stay_penalty = -0.4
+            if truck_cell.get_critic_score() > 0.0 and self.truck.get_load() > 0.0:
+                stay_penalty = -1.0
 
         # ----------------------------
         # Combine all reward components with their weights
         # ----------------------------
         reward = (
-            0.0
+            1.0
             + stay_penalty
+            + position_penalty
             + move_penalty
             + drop_bonus
             + pick_up_penalty
         )
-
-        # ----------------------------
-        # Decay additional penalties over time (if steps > 1)
-        # ----------------------------
-        # for i in range(1, steps):
-        #     reward -= W_ZERO_BIKES * self.zero_bikes_penalty[i] * (self.discount_factor ** i)
-        #
-        # reward /= len(self.cells)
 
         return reward
 
@@ -736,10 +715,10 @@ class FullyDynamicEnv(gym.Env):
 
             # Update attributes in the subgraph
             if center_node in self.cell_subgraph:
-                self.cell_subgraph.nodes[center_node]['surplus_score'] = cell.get_surplus_score() / self.maximum_number_of_bikes
+                self.cell_subgraph.nodes[center_node]['surplus_score'] = cell.get_mismatch_score() / self.maximum_number_of_bikes
                 # self.cell_subgraph.nodes[center_node]['low_battery_bikes'] = low_battery_bikes
                 self.cell_subgraph.nodes[center_node]['total_bikes'] = bike_load
-                self.cell_subgraph.nodes[center_node]['critic_score'] = cell.get_critic_score()
+                self.cell_subgraph.nodes[center_node]['critic_score'] = cell.get_mismatch_score()
                 self.cell_subgraph.nodes[center_node]['visits'] = cell.get_visits() / self.total_visits
             else:
                 raise ValueError(f"Node {center_node} not found in the subgraph.")
@@ -764,6 +743,7 @@ class FullyDynamicEnv(gym.Env):
             n_bikes = self.maximum_number_of_bikes - depot_load - system_load
             for _ in range(n_bikes):
                 bike = self.outside_system_bikes.pop(next(iter(self.outside_system_bikes)))
+                bike.reset()
                 self.depot[bike.get_bike_id()] = bike
 
 

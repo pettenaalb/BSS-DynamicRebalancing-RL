@@ -286,6 +286,7 @@ def initialize_cells_subgraph(cells: dict[int, "Cell"], nodes_dict: dict[int, tu
         node_coords = nodes_dict.get(center_node)
 
         # Initialize node attributes
+        # FIXME: change cell_id
         node_attrs = {
             "cell_id": cell.get_id(),
             "x": node_coords[1],

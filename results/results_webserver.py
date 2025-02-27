@@ -228,6 +228,16 @@ app.layout = html.Div([
                     })
             ], style={'width': '100%', 'padding': '10px', 'background-color': 'white', 'box-shadow': '0px 1px 3px rgba(0, 0, 0, 0.2)'}),
             html.Div([
+                html.Label("Select Episode for Rewards:", style={'font-weight': 'bold'}),
+                dcc.Dropdown(
+                    id="metric-selector-graph",
+                    options=[{"label": "Visits", "value": "visits"},
+                             {"label": "Critic Score", "value": "critic_score"},
+                             {"label": "Num of bikes", "value": "num_bikes"}],
+                    value="visits",
+                    clearable=False,
+                    style={'width': '100%'}
+                ),
                 html.Button("Update OSMnx Graph", id="update-btn-osmnx", n_clicks=0,
                             style={'background-color': '#4A90E2', 'color': 'white', 'border': 'none',
                                    'padding': '10px 20px', 'cursor': 'pointer', 'border-radius': '5px'}),
@@ -384,9 +394,10 @@ def update_reward_tracking_plot(n_intervals, n_clicks, training_path, action):
 @app.callback(
     Output("osmnx-graph", "src"),
     [Input("training-selector", "value"),
+     Input("metric-selector-graph", "value"),
      Input("update-btn-osmnx", "n_clicks")]
 )
-def update_osmnx_graph(training_path, n_clicks):
+def update_osmnx_graph(training_path, metric, n_clicks):
     graph = initialize_graph('../data_cambridge_medium/utils/cambridge_network.graphml')
     # Initialize the cells
     with open('../data_cambridge_medium/utils/cell_data.pkl', 'rb') as file:
@@ -399,13 +410,14 @@ def update_osmnx_graph(training_path, n_clicks):
     cell_values = {}
     total_visits = 0
     for _, node in nodes.iterrows():
-        cell_values[node['cell_id']] = node['visits']
+        cell_values[node['cell_id']] = node[metric]
         total_visits += node['visits']
 
-    for cell_id in cell_values.keys():
-        cell_values[cell_id] = cell_values[cell_id] / total_visits
+    if metric == "visits":
+        for cell_id in cell_values.keys():
+            cell_values[cell_id] = cell_values[cell_id] / total_visits
 
-    return generate_osmnx_graph(graph, cells, cell_values)
+    return generate_osmnx_graph(graph, cells, cell_values, percentage=(metric == "visits" or metric == "critic_score"))
 
 
 # Run the Dash app

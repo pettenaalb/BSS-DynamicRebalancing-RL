@@ -39,8 +39,7 @@ class Truck:
 
     def load_bike(self, bike: "Bike"):
         if self.current_load < self.max_load:
-            bike.set_station(None)
-            bike.set_availability(False)
+            bike.reset()
             max_battery = bike.get_max_battery()
             self.last_charge = (max_battery - bike.get_battery()) / max_battery
             bike.set_battery(max_battery)

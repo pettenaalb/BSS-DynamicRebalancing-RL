@@ -15,11 +15,10 @@ import osmnx as ox
 from tqdm.contrib.telegram import tqdm as tqdm_telegram
 from tqdm import tqdm
 from agent import DQNAgent
-from prioritized_agent import PrioritizedDQNAgent
 from utils import convert_graph_to_data, convert_seconds_to_hours_minutes, send_telegram_message, Actions
 from replay_memory import ReplayBuffer
-from prioritized_replay_memory import PrioritizedReplayBuffer
 from torch_geometric.data import Data
+from gymnasium_env.simulator.utils import initialize_cells_subgraph
 
 # ----------------------------------------------------------------------------------------------------------------------
 
@@ -77,7 +76,7 @@ enable_logging = False
 
 # ----------------------------------------------------------------------------------------------------------------------
 
-def train_dueling_dqn(env: gym, agent: DQNAgent, batch_size: int, episode: int, tbar: tqdm | tqdm_telegram) -> dict:
+def train_dqn(env: gym, agent: DQNAgent, batch_size: int, episode: int, tbar: tqdm | tqdm_telegram) -> dict:
     # Initialize episode metrics
     timeslot = 0
     timeslots_completed = 0
@@ -91,7 +90,6 @@ def train_dueling_dqn(env: gym, agent: DQNAgent, batch_size: int, episode: int, 
     reward_tracking = [[] for _ in range(len(Actions))]
     epsilon_per_timeslot = []
     deployed_bikes = []
-    cell_subgraph = None
 
     # Reset environment and agent state
     options ={
@@ -120,8 +118,19 @@ def train_dueling_dqn(env: gym, agent: DQNAgent, batch_size: int, episode: int, 
     state.agent_state = np.concatenate([info['agent_position'], agent_state])
     state.steps = info['steps']
 
+    cell_dict = info['cell_dict']
+    nodes_dict = info['nodes_dict']
+    distance_matrix = info['distance_matrix']
+    custom_features = {
+        'visits': 0.0,
+        'critic_score': 0.0,
+        'num_bikes': 0.0,
+    }
+    cell_graph = initialize_cells_subgraph(cell_dict, nodes_dict, distance_matrix, custom_features)
+
     not_done = True
 
+    iterations = 0
     while not_done:
         # Prepare the state for the agent
         single_state = Data(
@@ -140,19 +149,19 @@ def train_dueling_dqn(env: gym, agent: DQNAgent, batch_size: int, episode: int, 
             avoid_actions.append(Actions.DROP_BIKE.value)
 
         # Avoid moving in directions where the truck cannot move
-        truck_adjacent_cells = info['truck_neighbor_cells']
+        # truck_adjacent_cells = info['truck_neighbor_cells']
 
-        if truck_adjacent_cells['down'] is None:
-            avoid_actions.append(Actions.DOWN.value)
-
-        if truck_adjacent_cells['up'] is None:
-            avoid_actions.append(Actions.UP.value)
-
-        if truck_adjacent_cells['left'] is None:
-            avoid_actions.append(Actions.LEFT.value)
-
-        if truck_adjacent_cells['right'] is None:
-            avoid_actions.append(Actions.RIGHT.value)
+        # if truck_adjacent_cells['down'] is None:
+        #     avoid_actions.append(Actions.DOWN.value)
+        #
+        # if truck_adjacent_cells['up'] is None:
+        #     avoid_actions.append(Actions.UP.value)
+        #
+        # if truck_adjacent_cells['left'] is None:
+        #     avoid_actions.append(Actions.LEFT.value)
+        #
+        # if truck_adjacent_cells['right'] is None:
+        #     avoid_actions.append(Actions.RIGHT.value)
 
         # Select an action using the agent
         action = agent.select_action(single_state, avoid_action=avoid_actions)
@@ -161,7 +170,8 @@ def train_dueling_dqn(env: gym, agent: DQNAgent, batch_size: int, episode: int, 
         agent_state, reward, done, timeslot_terminated, info = env.step(action)
 
         # Update state with new information
-        next_state = convert_graph_to_data(info['cells_subgraph'], node_features=node_features)
+        env_cells_subgraph = info['cells_subgraph']
+        next_state = convert_graph_to_data(env_cells_subgraph, node_features=node_features)
         next_state.agent_state = np.concatenate([info['agent_position'], agent_state])
         next_state.steps = info['steps']
 
@@ -186,6 +196,14 @@ def train_dueling_dqn(env: gym, agent: DQNAgent, batch_size: int, episode: int, 
         not_done = not done
 
         agent.update_epsilon(steps_in_action=info['steps'])
+
+        for cell_id, cell in cell_dict.items():
+            center_node = cell.get_center_node()
+            if center_node in cell_graph:
+                cell_graph.nodes[center_node]['critic_score'] += env_cells_subgraph.nodes[center_node]['critic_score']
+                cell_graph.nodes[center_node]['num_bikes'] += env_cells_subgraph.nodes[center_node]['total_bikes']*params["maximum_number_of_bikes"]
+            else:
+                raise ValueError(f"Node {center_node} not found in the subgraph.")
 
         if timeslot_terminated:
             timeslots_completed += 1
@@ -217,8 +235,17 @@ def train_dueling_dqn(env: gym, agent: DQNAgent, batch_size: int, episode: int, 
             tbar.set_postfix({'epsilon': agent.epsilon, 'failures': failures_per_timeslot[-1]})
             tbar.update(1)
 
+        iterations += 1
+
         if done:
-            cell_subgraph = info['cells_subgraph']
+            for cell_id, cell in cell_dict.items():
+                center_node = cell.get_center_node()
+                if center_node in cell_graph:
+                    cell_graph.nodes[center_node]['visits'] = env_cells_subgraph.nodes[center_node]['visits']
+                    cell_graph.nodes[center_node]['critic_score'] = cell_graph.nodes[center_node]['critic_score'] / iterations
+                    cell_graph.nodes[center_node]['num_bikes'] = cell_graph.nodes[center_node]['num_bikes'] / iterations
+                else:
+                    raise ValueError(f"Node {center_node} not found in the subgraph.")
 
         # Explicitly delete single_state
         del single_state
@@ -235,14 +262,14 @@ def train_dueling_dqn(env: gym, agent: DQNAgent, batch_size: int, episode: int, 
         "reward_tracking": reward_tracking,
         "epsilon_per_timeslot": epsilon_per_timeslot,
         "deployed_bikes": deployed_bikes,
-        "cell_subgraph": cell_subgraph,
+        "cell_subgraph": cell_graph,
     }
 
     return results
 
 # ----------------------------------------------------------------------------------------------------------------------
 
-def save_checkpoint(main_variables: dict, agent: DQNAgent | PrioritizedDQNAgent, buffer: ReplayBuffer | PrioritizedReplayBuffer):
+def save_checkpoint(main_variables: dict, agent: DQNAgent, buffer: ReplayBuffer):
     checkpoint_path = data_path + 'checkpoints/'
     if not os.path.exists(checkpoint_path):
         os.makedirs(checkpoint_path)
@@ -256,7 +283,7 @@ def save_checkpoint(main_variables: dict, agent: DQNAgent | PrioritizedDQNAgent,
     print("Checkpoint saved.")
 
 
-def restore_checkpoint(agent: DQNAgent | PrioritizedDQNAgent, buffer: ReplayBuffer | PrioritizedReplayBuffer) -> dict:
+def restore_checkpoint(agent: DQNAgent, buffer: ReplayBuffer) -> dict:
     print("Restoring checkpoint...", end=' ')
     checkpoint_path = data_path + 'checkpoints/'
 
@@ -286,7 +313,6 @@ def main():
 
     # Set up replay buffer
     replay_buffer = ReplayBuffer(params["replay_buffer_capacity"])
-    # replay_buffer = PrioritizedReplayBuffer(params["replay_buffer_capacity"], params["alpha"])
 
     # Create background thread for checkpointing
     checkpoint_background_thread = None
@@ -343,7 +369,7 @@ def main():
         for episode in range(starting_episode, params["num_episodes"]):
             # Train the agent for one episode
             # agent.reset_hidden_state()
-            results = train_dueling_dqn(env, agent, params["batch_size"], episode, tbar)
+            results = train_dqn(env, agent, params["batch_size"], episode, tbar)
 
             # Save result lists
             results_path = str(params['results_path']) + 'data/'+ str(episode).zfill(2) + '/'

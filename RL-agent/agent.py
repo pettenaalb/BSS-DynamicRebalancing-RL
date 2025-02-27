@@ -27,7 +27,8 @@ class DQNAgent:
         self.train_model = DQN(num_actions).to(device)
         self.target_model = DQN(num_actions).to(device)
         self.target_model.load_state_dict(self.train_model.state_dict())
-        self.optimizer = torch.optim.Adam(self.train_model.parameters(), lr=lr)
+        self.optimizer = torch.optim.SGD(self.train_model.parameters(), lr=lr)
+        # self.optimizer = torch.optim.SGD(self.train_model.parameters(), lr=lr, momentum=0.9)
         self.replay_buffer = replay_buffer
         self.num_actions = num_actions
         self.gamma = gamma
@@ -151,7 +152,7 @@ class DQNAgent:
         # Optimize the model
         self.optimizer.zero_grad(set_to_none=True)
         loss.backward()
-        torch.nn.utils.clip_grad_norm_(self.train_model.parameters(), max_norm=10.0)
+        # torch.nn.utils.clip_grad_norm_(self.train_model.parameters(), max_norm=10.0)
         self.optimizer.step()
 
         self.soft_update_target_network(tau=self.tau)

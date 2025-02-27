@@ -6,6 +6,7 @@ import osmnx as ox
 import numpy as np
 import geopandas as gpd
 import psutil, os
+import pandas as pd
 
 from torch_geometric.utils import from_networkx
 from matplotlib import pyplot as plt

@@ -99,11 +99,9 @@ class Station:
         Bike: The bike unlocked from the station.
         """
         if len(self.bikes) > 0:
-            # if bike_id is None:
-            #     bike_id = max(self.bikes, key=lambda k: self.bikes[k].get_battery())
-            # bike = self.bikes.pop(bike_id)
-            # REMOVE WHEN ACTIVATING BATTERIES
-            bike = self.bikes.pop(next(iter(self.bikes)))
+            if bike_id is None:
+                bike_id = max(self.bikes, key=lambda k: self.bikes[k].get_battery())
+            bike = self.bikes.pop(bike_id)
             bike.set_availability(False)
             bike.set_station(None)
             self.cell.set_total_bikes(self.cell.get_total_bikes() - 1)
@@ -121,8 +119,6 @@ class Station:
         if len(self.bikes) < self.capacity:
             bike.set_availability(True)
             bike.set_station(self)
-            # REMOVE WHEN ACTIVATING BATTERIES
-            bike.set_battery(bike.get_max_battery())
             self.bikes[bike.get_bike_id()] = bike
             self.cell.set_total_bikes(self.cell.get_total_bikes() + 1)
         else:
