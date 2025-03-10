@@ -10,8 +10,12 @@ from utils import load_results, get_episode_options, create_plot, action_bin_lab
 # Base paths for two training phases
 BASE_PATH = ""
 TRAINING_PATHS = {
-    "Training Phase 1": os.path.join("training", "data"),
+    "Training Phase 1": os.path.join("training_1", "data"),
     "Training Phase 2": os.path.join("training_2", "data"),
+    "Training Phase 3": os.path.join("training_3", "data"),
+    "Validation Phase 1": os.path.join("validation_1", "data"),
+    "Validation Phase 2": os.path.join("validation_2", "data"),
+    "Validation Phase 3": os.path.join("validation_3", "data"),
 }
 
 # Import external stylesheets (Google Fonts)

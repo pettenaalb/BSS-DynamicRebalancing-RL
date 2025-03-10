@@ -70,6 +70,10 @@ class FullyDynamicEnv(gym.Env):
         with open(data_path + params['cell_file'], 'rb') as file:
             self.cells = pickle.load(file)
 
+        # Ensure eligibility_score is present in each cell
+        for cell in self.cells.values():
+            cell.eligibility_score = 0.0
+
         # Initialize the distance matrix
         self.distance_matrix = pd.read_csv(data_path + params['distance_matrix_file'], index_col='osmid')
         self.distance_matrix.index = self.distance_matrix.index.astype(int)
@@ -113,14 +117,15 @@ class FullyDynamicEnv(gym.Env):
         self.total_timeslots = 0
         self.background_thread = None
         self.discount_factor = 0.99
-        self.eligibility_value = 0.99787
+        self.eligibility_decay = 0.9968
         self.zero_bikes_penalty = []
         self.reward_params = None
         self.total_visits = 1
-        self.history_4 = deque(maxlen=4)
+        # self.history_4 = deque(maxlen=4)
+        self.last_move_action = None
 
-        self.encoder = ActionHistoryEncoder(num_actions=len(Actions), embedding_dim=4, history_length=4)
-        self.embedding_length = 16
+        self.encoder = ActionHistoryEncoder(num_actions=len(Actions), embedding_dim=4, history_length=2)
+        self.embedding_length = 8
 
         # Set logging options
         self.logging = False
@@ -221,11 +226,13 @@ class FullyDynamicEnv(gym.Env):
 
         # Initialize the cell subgraph
         custom_features = {
-            'surplus_score': 0.0,
+            'truck_cell': 0.0,
+            # 'surplus_score': 0.0,
             # 'low_battery_bikes': 0.0,
             'total_bikes': 0.0,
             'critic_score': 0.0,
             'visits': 0,
+            'eligibility_score': 0.0
         }
         self.cell_subgraph = initialize_cells_subgraph(self.cells, self.nodes_dict, self.distance_matrix, custom_features)
 
@@ -272,22 +279,22 @@ class FullyDynamicEnv(gym.Env):
             t, distance = move_right(self.truck, self.distance_matrix, self.cells, mean_truck_velocity)
             self.logger.log_starting_action('RIGHT', t)
             # Append last action to history
-            self.history_4.append(action)
+            # self.history_4.append(action)
         elif action == Actions.UP.value:
             t, distance = move_up(self.truck, self.distance_matrix, self.cells, mean_truck_velocity)
             self.logger.log_starting_action('UP', t)
             # Append last action to history
-            self.history_4.append(action)
+            # self.history_4.append(action)
         elif action == Actions.LEFT.value:
             t, distance = move_left(self.truck, self.distance_matrix, self.cells, mean_truck_velocity)
             self.logger.log_starting_action('LEFT', t)
             # Append last action to history
-            self.history_4.append(action)
+            # self.history_4.append(action)
         elif action == Actions.DOWN.value:
             t, distance = move_down(self.truck, self.distance_matrix, self.cells, mean_truck_velocity)
             self.logger.log_starting_action('DOWN', t)
             # Append last action to history
-            self.history_4.append(action)
+            # self.history_4.append(action)
         elif action == Actions.DROP_BIKE.value:
             t, distance = drop_bike(self.truck, self.distance_matrix, mean_truck_velocity, self.depot_node, self.depot)
             self.logger.log_starting_action('DROP_BIKE', t)
@@ -341,7 +348,7 @@ class FullyDynamicEnv(gym.Env):
 
         # Compute the outputs
         reward = self._get_reward(action)
-        observation = self._get_obs()
+        observation = self._get_obs(action)
         self._update_graph()
 
         info = {
@@ -508,12 +515,10 @@ class FullyDynamicEnv(gym.Env):
             # Increment the environment time by 30 seconds
             self.env_time += 30
 
-            zbp = 0
-            for cell in self.cells.values():
-                if cell.get_total_bikes() == 0:
-                    zbp += cell.get_request_rate()
-
-            self.zero_bikes_penalty.append(zbp)
+            for cell_id, cell in self.cells.items():
+                cell.update_eligibility_score(self.eligibility_decay)
+                if cell_id == self.truck.get_cell().get_id():
+                    cell.eligibility_score = 1.0
 
             total_failures = 0
             # Process all events that occurred before the updated environment time
@@ -543,28 +548,38 @@ class FullyDynamicEnv(gym.Env):
         return failures
 
 
-    def _get_obs(self) -> np.array:
+    def _get_obs(self, action: int = None) -> np.array:
         # FIXME: Fix the observation space
         # Encode time slot and day
         hour = divmod((self.timeslot * 3 + 1) * 3600 + self.env_time, 3600)[0]
         ohe_hour = [1 if hour == i else 0 for i in range(24)]
         ohe_day = [1 if self.day == d else 0 for d in days2num.keys()]
-        if len(self.history_4) == 4:
-            action_history_tensor = torch.tensor(list(self.history_4), dtype=torch.long).unsqueeze(0)
-            ohe_previous_action = self.encoder(action_history_tensor).detach().cpu().numpy().flatten()
+        # if len(self.history_4) == 4:
+        #     action_history_tensor = torch.tensor(list(self.history_4)[-2:], dtype=torch.long).unsqueeze(0)
+        #     ohe_previous_move_action = self.encoder(action_history_tensor).detach().cpu().numpy().flatten()
+        # else:
+        #     ohe_previous_move_action = np.zeros(self.embedding_length)
+        move_actions = [Actions.UP.value, Actions.DOWN.value, Actions.LEFT.value, Actions.RIGHT.value]
+        if action is None:
+            ohe_previous_move_action = np.zeros(len(move_actions))
+        elif action in move_actions:
+            ohe_previous_move_action = [1 if action == mv_actn else 0 for mv_actn in move_actions]
         else:
-            ohe_previous_action = np.zeros(self.embedding_length)
+            ohe_previous_move_action = [1 if self.last_move_action == mv_actn else 0 for mv_actn in move_actions]
 
         truck_cell_id = self.truck.get_cell().get_id()
-        binary_encoded_cell = np.array([int(x) for x in format(truck_cell_id, f'0{10}b')], dtype=np.float32)
+        # FIXME: One hot encoding for the cell id
+        # binary_encoded_cell = np.array([int(x) for x in format(truck_cell_id, f'0{10}b')], dtype=np.float32)
+        sorted_cells_keys = sorted(self.cells.keys())
+        ohe_cell_position = [1 if truck_cell_id == cell_id else 0 for cell_id in sorted_cells_keys]
 
         # Combine all features into a single observation array
         observation = np.concatenate([
             np.array([self.truck.get_load() / self.truck.max_load]),
             np.array(ohe_day, dtype=np.float32),
             np.array(ohe_hour, dtype=np.float32),
-            ohe_previous_action,
-            binary_encoded_cell
+            ohe_previous_move_action,
+            ohe_cell_position
         ])
 
         return observation.astype(np.float32)
@@ -595,17 +610,23 @@ class FullyDynamicEnv(gym.Env):
         # Update critic scores and compute a penalty for critical zones
         # ----------------------------
         # global_critic_penalty = 0.0
-        # for cell_id, cell in self.cells.items():
-        #     critic_score = 0.0
-        #     expected = 0
-        #     if cell_id in expected_departures_per_cell:
-        #         expected = expected_departures_per_cell[cell_id]
-        #     available = cell.get_total_bikes()
-        #     if expected > 0:
-        #         critic_score = max(0.0, 1.0 - (available / expected))
-        #     cell.surplus_score = available - expected
-        #     cell.set_critic_score(critic_score)
-        #     global_critic_penalty += critic_score
+        truck_cell_previous_critic_score = self.truck.get_cell().get_critic_score()
+        for cell_id, cell in self.cells.items():
+            critic_score = 0.0
+            expected = 0
+            if cell_id in expected_departures_per_cell:
+                expected = expected_departures_per_cell[cell_id]
+            available = cell.get_total_bikes()
+            if expected > 0:
+                # critic_score = max(0.0, 1.0 - (available / expected))
+                critic_score = (expected - available) / (expected + available)
+            cell.surplus_score = available - expected
+            cell.set_critic_score(critic_score)
+            # global_critic_penalty += critic_score
+
+        if truck_cell_previous_critic_score > 0.0 >= self.truck.get_cell().get_critic_score():
+            for cell in self.cells.values():
+                cell.eligibility_score = 0.0
 
         # ----------------------------
         # Drop / Pick Up penalty
@@ -618,20 +639,18 @@ class FullyDynamicEnv(gym.Env):
         pick_up_penalty = 0.0
         if action == Actions.PICK_UP_BIKE.value:
             if truck_cell.get_critic_score() > 0.0:
-                pick_up_penalty = -1.0
+                pick_up_penalty = -0.1
             else:
-                pick_up_penalty = 0.2
+                pick_up_penalty = 0.1
 
         # ----------------------------
         # Move penalty (e.g. discourage unnecessary movements)
         # ----------------------------
         move_penalty = 0.0
         if action in {Actions.UP.value, Actions.DOWN.value, Actions.LEFT.value, Actions.RIGHT.value}:
-            is_4_step_loop, is_2_step_loop = self._detect_self_loops()
-            if is_4_step_loop:
-                move_penalty = -0.2
-            elif is_2_step_loop:
-                move_penalty = -0.3
+            is_2_step_loop = self._detect_self_loops([action, self.last_move_action])
+            if is_2_step_loop:
+                move_penalty = -0.1
 
         # ----------------------------
         # Bike charging penalty (e.g. discourage charging a bike that isn’t sufficiently discharged)
@@ -646,21 +665,28 @@ class FullyDynamicEnv(gym.Env):
         # stay_penalty = 0.0
         # if action == Actions.STAY.value:
         #     stay_penalty = -0.4
-        truck_cell = self.truck.get_cell()
-        position_penalty = 0.0
-        if truck_cell.get_visits() / self.total_visits > 0.1:
-            position_penalty = -0.1
+        # truck_cell = self.truck.get_cell()
+        # position_penalty = 0.0
+        # if truck_cell.get_visits() / self.total_visits > 0.1:
+        #     position_penalty = -0.1
 
         stay_penalty = 0.0
         if action == Actions.STAY.value:
-            if truck_cell.get_critic_score() > 0.0 and self.truck.get_load() > 0.0:
+            if truck_cell.get_critic_score() > 0.0:
                 stay_penalty = -1.0
+
+        # ----------------------------
+        # Position penalty
+        # ----------------------------
+        position_penalty = 0.0
+        if truck_cell.eligibility_score > 0.7 and truck_cell.get_critic_score() <= 0.0:
+            position_penalty = -0.1
 
         # ----------------------------
         # Combine all reward components with their weights
         # ----------------------------
         reward = (
-            1.0
+            0.0
             + stay_penalty
             + position_penalty
             + move_penalty
@@ -715,11 +741,13 @@ class FullyDynamicEnv(gym.Env):
 
             # Update attributes in the subgraph
             if center_node in self.cell_subgraph:
-                self.cell_subgraph.nodes[center_node]['surplus_score'] = cell.get_mismatch_score() / self.maximum_number_of_bikes
+                self.cell_subgraph.nodes[center_node]['truck_cell'] = 1.0 if cell_id == self.truck.get_cell().get_id() else 0.0
+                # self.cell_subgraph.nodes[center_node]['surplus_score'] = cell.get_mismatch_score() / self.maximum_number_of_bikes
                 # self.cell_subgraph.nodes[center_node]['low_battery_bikes'] = low_battery_bikes
                 self.cell_subgraph.nodes[center_node]['total_bikes'] = bike_load
-                self.cell_subgraph.nodes[center_node]['critic_score'] = cell.get_mismatch_score()
+                self.cell_subgraph.nodes[center_node]['critic_score'] = cell.get_critic_score()
                 self.cell_subgraph.nodes[center_node]['visits'] = cell.get_visits() / self.total_visits
+                self.cell_subgraph.nodes[center_node]['eligibility_score'] = cell.eligibility_score
             else:
                 raise ValueError(f"Node {center_node} not found in the subgraph.")
 
@@ -747,27 +775,27 @@ class FullyDynamicEnv(gym.Env):
                 self.depot[bike.get_bike_id()] = bike
 
 
-    def _detect_self_loops(self) -> tuple[bool, bool]:
+    def _detect_self_loops(self, actions: tuple) -> bool:
         # Define valid 4-step self-loop sequences
-        self_loop_patterns_4 = [
-            [Actions.UP.value, Actions.UP.value, Actions.DOWN.value, Actions.DOWN.value],
-            [Actions.UP.value, Actions.DOWN.value, Actions.UP.value, Actions.DOWN.value],
-            [Actions.DOWN.value, Actions.DOWN.value, Actions.UP.value, Actions.UP.value],
-            [Actions.DOWN.value, Actions.UP.value, Actions.DOWN.value, Actions.UP.value],
-            [Actions.LEFT.value, Actions.LEFT.value, Actions.RIGHT.value, Actions.RIGHT.value],
-            [Actions.LEFT.value, Actions.RIGHT.value, Actions.LEFT.value, Actions.RIGHT.value],
-            [Actions.RIGHT.value, Actions.RIGHT.value, Actions.LEFT.value, Actions.LEFT.value],
-            [Actions.RIGHT.value, Actions.LEFT.value, Actions.RIGHT.value, Actions.LEFT.value],
-
-            [Actions.UP.value, Actions.RIGHT.value, Actions.DOWN.value, Actions.LEFT.value],
-            [Actions.UP.value, Actions.LEFT.value, Actions.DOWN.value, Actions.RIGHT.value],
-            [Actions.RIGHT.value, Actions.DOWN.value, Actions.LEFT.value, Actions.UP.value],
-            [Actions.RIGHT.value, Actions.UP.value, Actions.LEFT.value, Actions.DOWN.value],
-            [Actions.DOWN.value, Actions.LEFT.value, Actions.UP.value, Actions.RIGHT.value],
-            [Actions.DOWN.value, Actions.RIGHT.value, Actions.UP.value, Actions.LEFT.value],
-            [Actions.LEFT.value, Actions.UP.value, Actions.RIGHT.value, Actions.DOWN.value],
-            [Actions.LEFT.value, Actions.DOWN.value, Actions.RIGHT.value, Actions.UP.value]
-        ]
+        # self_loop_patterns_4 = [
+        #     [Actions.UP.value, Actions.UP.value, Actions.DOWN.value, Actions.DOWN.value],
+        #     [Actions.UP.value, Actions.DOWN.value, Actions.UP.value, Actions.DOWN.value],
+        #     [Actions.DOWN.value, Actions.DOWN.value, Actions.UP.value, Actions.UP.value],
+        #     [Actions.DOWN.value, Actions.UP.value, Actions.DOWN.value, Actions.UP.value],
+        #     [Actions.LEFT.value, Actions.LEFT.value, Actions.RIGHT.value, Actions.RIGHT.value],
+        #     [Actions.LEFT.value, Actions.RIGHT.value, Actions.LEFT.value, Actions.RIGHT.value],
+        #     [Actions.RIGHT.value, Actions.RIGHT.value, Actions.LEFT.value, Actions.LEFT.value],
+        #     [Actions.RIGHT.value, Actions.LEFT.value, Actions.RIGHT.value, Actions.LEFT.value],
+        #
+        #     [Actions.UP.value, Actions.RIGHT.value, Actions.DOWN.value, Actions.LEFT.value],
+        #     [Actions.UP.value, Actions.LEFT.value, Actions.DOWN.value, Actions.RIGHT.value],
+        #     [Actions.RIGHT.value, Actions.DOWN.value, Actions.LEFT.value, Actions.UP.value],
+        #     [Actions.RIGHT.value, Actions.UP.value, Actions.LEFT.value, Actions.DOWN.value],
+        #     [Actions.DOWN.value, Actions.LEFT.value, Actions.UP.value, Actions.RIGHT.value],
+        #     [Actions.DOWN.value, Actions.RIGHT.value, Actions.UP.value, Actions.LEFT.value],
+        #     [Actions.LEFT.value, Actions.UP.value, Actions.RIGHT.value, Actions.DOWN.value],
+        #     [Actions.LEFT.value, Actions.DOWN.value, Actions.RIGHT.value, Actions.UP.value]
+        # ]
 
         # Define valid 2-step back-and-forth patterns (opposite moves)
         self_loop_patterns_2 = [
@@ -775,10 +803,10 @@ class FullyDynamicEnv(gym.Env):
             [Actions.LEFT.value, Actions.RIGHT.value], [Actions.RIGHT.value, Actions.LEFT.value]
         ]
 
-        is_4_step_loop = len(self.history_4) == 4 and list(self.history_4) in self_loop_patterns_4
-        is_2_step_loop = len(self.history_4) >= 2 and list(self.history_4)[-2:] in self_loop_patterns_2
+        # is_4_step_loop = len(self.history_4) == 4 and list(self.history_4) in self_loop_patterns_4
+        is_2_step_loop = actions in self_loop_patterns_2
 
-        return is_4_step_loop, is_2_step_loop
+        return is_2_step_loop
 
 
     def _net_flow_based_repositioning(self, upper_bound: int = None) -> dict:

@@ -3,8 +3,7 @@ import numpy as np
 import os
 import pickle
 
-from torch_geometric.data import Data
-
+from torch_geometric.data import Data, Batch
 
 class PairData(Data):
     def __inc__(self, key, value, *args, **kwargs):
@@ -79,7 +78,8 @@ class ReplayBuffer:
             - List of transitions sampled from the buffer (on the specified device).
         """
         indices = np.random.randint(0, len(self.buffer), size=batch_size)
-        batch = [self.buffer[i] for i in indices]
+        batch_list = [self.buffer[i] for i in indices]
+        batch = Batch.from_data_list(batch_list, follow_batch=['x_s', 'x_t'])
 
         return batch
 

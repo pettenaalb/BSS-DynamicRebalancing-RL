@@ -4,8 +4,7 @@ import random
 
 from torch.nn import functional as F
 
-from VanillaDQN import DQN
-from torch_geometric.loader import DataLoader
+from VanillaDQN import DQN, DQNv2
 
 class DQNAgent:
 
@@ -24,15 +23,18 @@ class DQNAgent:
             - lr: Learning rate for the optimizer (default=0.1).
             - device: Target device for computation (default='cpu').
         """
-        self.train_model = DQN(num_actions).to(device)
-        self.target_model = DQN(num_actions).to(device)
+        self.train_model = DQNv2(num_actions).to(device)
+        self.target_model = DQNv2(num_actions).to(device)
         self.target_model.load_state_dict(self.train_model.state_dict())
         self.optimizer = torch.optim.SGD(self.train_model.parameters(), lr=lr)
         # self.optimizer = torch.optim.SGD(self.train_model.parameters(), lr=lr, momentum=0.9)
+        # self.loss_function = torch.nn.HuberLoss()
+        self.loss_function = torch.nn.SmoothL1Loss()
         self.replay_buffer = replay_buffer
         self.num_actions = num_actions
         self.gamma = gamma
         self.epsilon = epsilon_start
+        self.epsilon_max = epsilon_start
         self.epsilon_min = epsilon_end
         self.epsilon_decay = epsilon_decay
         self.steps_done = 0
@@ -100,7 +102,7 @@ class DQNAgent:
         self.steps_done += steps_in_action
 
         if delta_epsilon is None:
-            self.epsilon = self.epsilon_min + (1 - self.epsilon_min) * np.exp(-1.0 * self.steps_done / self.epsilon_decay)
+            self.epsilon = self.epsilon_min + (self.epsilon_max - self.epsilon_min) * np.exp(-1.0 * self.steps_done / self.epsilon_decay)
         else:
             self.epsilon = max(self.epsilon - delta_epsilon, self.epsilon_min)
 
@@ -131,10 +133,11 @@ class DQNAgent:
             return 0
 
         # Sample a batch from the replay buffer
-        b = self.replay_buffer.sample(batch_size)
-        loader = DataLoader(b, batch_size=batch_size, follow_batch=['x_s', 'x_t'])
-        batch = next(iter(loader))
-        batch = batch.to(self.device)
+        batch = self.replay_buffer.sample(batch_size).to(self.device)
+        # b = self.replay_buffer.sample(batch_size)
+        # loader = DataLoader(b, batch_size=batch_size, follow_batch=['x_s', 'x_t'])
+        # batch = next(iter(loader))
+        # batch = batch.to(self.device)
 
         train_q_values = self.train_model(batch, 's').gather(1, batch.actions)
 
@@ -152,7 +155,7 @@ class DQNAgent:
         # Optimize the model
         self.optimizer.zero_grad(set_to_none=True)
         loss.backward()
-        # torch.nn.utils.clip_grad_norm_(self.train_model.parameters(), max_norm=10.0)
+        torch.nn.utils.clip_grad_norm_(self.train_model.parameters(), max_norm=10.0)
         self.optimizer.step()
 
         self.soft_update_target_network(tau=self.tau)

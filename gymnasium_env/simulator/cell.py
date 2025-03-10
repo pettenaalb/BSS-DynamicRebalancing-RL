@@ -21,6 +21,7 @@ class Cell:
         self.critic_score = 0
         self.is_critical = False
         self.surplus_score = 0
+        self.eligibility_score = 0
 
     def __str__(self):
         return f"Cell {self.id}: Bikes: {self.total_bikes}, Critic Score: {self.critic_score}, Visits: {self.visits}"
@@ -119,3 +120,6 @@ class Cell:
 
     def get_surplus_score(self) -> float:
         return self.surplus_score
+
+    def update_eligibility_score(self, eligibility_decay: float):
+        self.eligibility_score *= eligibility_decay
