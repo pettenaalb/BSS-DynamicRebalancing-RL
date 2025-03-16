@@ -28,6 +28,7 @@ class Actions(Enum):
     DOWN = 4
     DROP_BIKE = 5
     PICK_UP_BIKE = 6
+    # TURN OFF THIS TO DISABLE BATTERY CHARGE
     # CHARGE_BIKE = 7
 
 

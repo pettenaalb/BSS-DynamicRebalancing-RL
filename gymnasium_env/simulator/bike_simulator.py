@@ -112,6 +112,7 @@ def arrival_handler(trip: Trip, system_bikes: dict[int, Bike], outside_system_bi
     start_station = trip.get_start_location()
     end_station = trip.get_end_location()
     bike = trip.get_bike()
+    # TURN OFF THIS TO DISABLE BATTERY CHARGE
     # bike.set_battery(bike.get_battery() - trip.get_distance()/1000)
 
     # Move the bike to the outside system if the destination station is outside the system

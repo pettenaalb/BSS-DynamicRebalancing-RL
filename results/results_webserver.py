@@ -318,11 +318,12 @@ def update_epsilon_loss(n_intervals, training_path, n_clicks):
     epsilon = load_results(training_path, metric="epsilon_per_timeslot")
     deployed_bikes = load_results(training_path, metric="deployed_bikes")
     last_episode_folder = get_episode_options(training_path)[-1]
-    las_episode_reward_tracking = load_results(training_path, last_episode_folder['value'], metric="reward_tracking")
+    last_episode_reward_tracking = load_results(training_path, last_episode_folder['value'], metric="reward_tracking")
 
-    reward_per_action = [0] * len(action_bin_labels)
-    for action, _ in enumerate(action_bin_labels):
-        reward_per_action[action] = np.mean(las_episode_reward_tracking[action])
+    actns_len = len(last_episode_reward_tracking)
+    reward_per_action = [0] * actns_len
+    for action, _ in enumerate(action_bin_labels[:actns_len]):
+        reward_per_action[action] = np.mean(last_episode_reward_tracking[action])
 
     epsilon_plot = create_plot(epsilon, "Epsilon over Time", "Epsilon", "Timeslot", cumulative=False)
     loss_plot = create_plot([], "Loss over Time", "Loss", "Timeslot", cumulative=False)

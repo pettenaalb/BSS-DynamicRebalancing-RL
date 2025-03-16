@@ -10,7 +10,6 @@ import gymnasium_env.register_env
 
 import gymnasium as gym
 import numpy as np
-import osmnx as ox
 
 from tqdm.contrib.telegram import tqdm as tqdm_telegram
 from tqdm import tqdm
@@ -41,7 +40,7 @@ params = {
     "num_episodes": 200,                            # Total number of training episodes
     "batch_size": 64,                               # Batch size for replay buffer sampling
     "replay_buffer_capacity": int(1e5),             # Capacity of replay buffer: 0.1 million transitions
-    "gamma": 0.99,                                  # Discount factor
+    "gamma": 0.95,                                  # Discount factor
     "epsilon_start": 1.0,                           # Starting exploration rate
     "epsilon_delta": 0.05,                          # Epsilon decay rate
     "epsilon_end": 0.00,                            # Minimum exploration rate
@@ -49,7 +48,7 @@ params = {
     "exploration_time": 0.6,                        # Fraction of total training time for exploration
     "lr": 1e-4,                                     # Learning rate
     "total_timeslots": 56,                          # Total number of time slots in one episode (1 month)
-    "maximum_number_of_bikes": 255,                 # Maximum number of bikes in the system
+    "maximum_number_of_bikes": 2500,                 # Maximum number of bikes in the system
     "results_path": "../results/",                  # Path to save results
     "soft_update": True,                            # Use soft update for target network
     "tau": 0.005,                                   # Tau parameter for soft update
@@ -95,19 +94,17 @@ def train_dqn(env: gym, agent: DQNAgent, batch_size: int, episode: int, tbar: tq
         'maximum_number_of_bikes': params["maximum_number_of_bikes"],
         'discount_factor': params["gamma"],
         'logging': enable_logging,
-        'depot_id': 18,         # 491 back
-        'initial_cell': 18,     # 185 back
+        'depot_id': 491,         # 491 back
+        'initial_cell': 185,     # 185 back
         'reward_params': reward_params,
     }
 
     node_features = [
         'truck_cell',
-        # 'surplus_score',
-        # 'low_battery_bikes',
-        # 'total_bikes',
         'critic_score',
-        # 'visits',
         'eligibility_score',
+        # TURN OFF THIS TO DISABLE BATTERY CHARGE
+        # 'low_battery_bikes',
     ]
 
     agent_state, info = env.reset(options=options)
@@ -143,10 +140,6 @@ def train_dqn(env: gym, agent: DQNAgent, batch_size: int, episode: int, tbar: tq
         # Remove actions that are not allowed
         avoid_actions = []
 
-        # Avoid dropping bikes if the system is almost full
-        if info['number_of_system_bikes'] >= (params["maximum_number_of_bikes"] - 5):
-            avoid_actions.append(Actions.DROP_BIKE.value)
-
         # Avoid moving in directions where the truck cannot move
         truck_adjacent_cells = info['truck_neighbor_cells']
 
@@ -171,8 +164,6 @@ def train_dqn(env: gym, agent: DQNAgent, batch_size: int, episode: int, tbar: tq
         # Update state with new information
         env_cells_subgraph = info['cells_subgraph']
         next_state = convert_graph_to_data(env_cells_subgraph, node_features=node_features)
-        # critic_score_vector = [env_cells_subgraph.nodes[cell.get_center_node()]['critic_score'] for cell in cell_dict.values()]
-        # next_state.agent_state = np.concatenate([critic_score_vector, agent_state]).astype(np.float32)
         next_state.agent_state = agent_state
         next_state.steps = info['steps']
 
@@ -295,6 +286,8 @@ def validate_dqn(env: gym, agent: DQNAgent, episode: int, tbar: tqdm | tqdm_tele
         'truck_cell',
         'critic_score',
         'eligibility_score',
+        # TURN OFF THIS TO DISABLE BATTERY CHARGE
+        # 'low_battery_bikes',
     ]
 
     agent_state, info = env.reset(options=options)
@@ -328,10 +321,6 @@ def validate_dqn(env: gym, agent: DQNAgent, episode: int, tbar: tqdm | tqdm_tele
 
         # Remove actions that are not allowed
         avoid_actions = []
-
-        # Avoid dropping bikes if the system is almost full
-        if info['number_of_system_bikes'] >= (params["maximum_number_of_bikes"] - 5):
-            avoid_actions.append(Actions.DROP_BIKE.value)
 
         # Avoid moving in directions where the truck cannot move
         truck_adjacent_cells = info['truck_neighbor_cells']
@@ -532,9 +521,8 @@ def main():
         if os.path.exists(validation_results_path):
             shutil.rmtree(validation_results_path)
 
-        best_training_score = 1e3
-        best_validation_score = 1e3
         # Train and validation loop
+        best_validation_score = 1e3
         for episode in range(starting_episode, params["num_episodes"]):
             # Train the agent for one episode
             training_results = train_dqn(env, agent, params["batch_size"], episode, tbar)
@@ -547,13 +535,8 @@ def main():
                 with open(results_path + key + '.pkl', 'wb') as f:
                     pickle.dump(value, f)
 
-            total_train_failures = sum(training_results['failures_per_timeslot'])
-
             # Save checkpoint if the training and validation score is better
-            if total_train_failures < best_training_score:
-                best_training_score = total_train_failures
-
-                # Validate the agent for one episode
+            if agent.epsilon < 0.2:
                 validation_results = validate_dqn(env, agent, episode, tbar)
 
                 val_failures_per_timeslot = validation_results['failures_per_timeslot']
@@ -562,21 +545,28 @@ def main():
                     best_validation_score = total_val_failures
 
                     # Save validation result lists
-                    results_path = validation_results_path + 'data/'+ str(episode).zfill(2) + '/'
+                    results_path = validation_results_path + 'data/' + str(episode).zfill(2) + '/'
                     if not os.path.exists(results_path):
                         os.makedirs(results_path)
                     for key, value in validation_results.items():
                         with open(results_path + key + '.pkl', 'wb') as f:
                             pickle.dump(value, f)
 
-                    # Save checkpoint
-                    if enable_checkpoint:
-                        main_variables = {
-                            'episode': episode,
-                            'tbar_progress': tbar.n,
-                        }
-                        checkpoint_background_thread = threading.Thread(target=save_checkpoint, args=(main_variables, agent, replay_buffer))
-                        checkpoint_background_thread.start()
+                    # Save the trained model
+                    trained_models_folder = validation_results_path + 'trained_models/' + str(episode).zfill(2) + '/'
+                    if not os.path.exists(trained_models_folder):
+                        os.makedirs(trained_models_folder)
+                    agent.save_model(trained_models_folder + 'trained_agent.pt')
+
+            # Save checkpoint
+            if enable_checkpoint:
+                main_variables = {
+                    'episode': episode,
+                    'tbar_progress': tbar.n,
+                }
+                checkpoint_background_thread = threading.Thread(target=save_checkpoint,
+                                                                args=(main_variables, agent, replay_buffer))
+                checkpoint_background_thread.start()
 
             gc.collect()
 

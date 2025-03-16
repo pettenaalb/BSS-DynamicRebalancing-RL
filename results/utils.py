@@ -24,9 +24,9 @@ class Actions(Enum):
     DOWN = 4
     DROP_BIKE = 5
     PICK_UP_BIKE = 6
-    # CHARGE_BIKE = 7
+    CHARGE_BIKE = 7
 
-action_bin_labels = ['STAY', 'RIGHT', 'UP', 'LEFT', 'DOWN', 'DROP_BIKE', 'PICK_UP_BIKE']
+action_bin_labels = ['STAY', 'RIGHT', 'UP', 'LEFT', 'DOWN', 'DROP_BIKE', 'PICK_UP_BIKE', 'CHARGE_BIKE']
 
 # set up matplotlib
 is_ipython = 'inline' in matplotlib.get_backend()

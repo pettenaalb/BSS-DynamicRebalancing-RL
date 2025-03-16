@@ -172,7 +172,48 @@ def pick_up_bike(truck: Truck, station_dict: dict[int, Station], distance_matrix
 
 def charge_bike(truck: Truck, station_dict: dict[int, Station], distance_matrix: pd.DataFrame,
                 mean_velocity: int, depot_node: int, depot: dict, system_bikes: dict) -> tuple[int, int, bool]:
-    return pick_up_bike(truck, station_dict, distance_matrix, mean_velocity, depot_node, depot, system_bikes)
+    cell = truck.get_cell()
+    bike_dict = {}
+    for station_id in cell.get_nodes():
+        bike_dict.update(station_dict[station_id].get_bikes())
+
+    # Flag no bike picked up
+    if cell.get_total_bikes() == 0:
+        return 0, 0, False
+
+    # Find the lowest metric bike
+    bike_charge = {bike_id: bike.get_battery() for bike_id, bike in bike_dict.items()}
+    bike_id = min(bike_charge, key=bike_charge.get)
+    station = bike_dict[bike_id].get_station()
+
+    distance = distance_matrix.loc[truck.get_position(), station.get_station_id()]
+    velocity_kmh = truncated_gaussian(10, 70, mean_velocity, 5)
+    time = int(distance * 3.6 / velocity_kmh)
+
+    bike = station.unlock_bike(bike_id)
+    if bike_id in system_bikes.keys():
+        system_bikes.pop(bike_id)
+    else:
+        raise ValueError("Bike not in system")
+
+    try:
+        truck.load_bike(bike)
+    except ValueError:
+        distance = distance_matrix.loc[truck.get_position(), depot_node]
+        velocity_kmh = truncated_gaussian(10, 70, mean_velocity, 5)
+        t_reload = 2 * int(distance * 3.6 / velocity_kmh)
+        time += t_reload
+        while truck.get_load() > 15:
+            bk = truck.unload_bike()
+            bk.reset()
+            depot[bk.get_bike_id()] = bk
+        truck.load_bike(bike)
+    truck.set_position(station.get_station_id())
+
+    truck.leaving_cell = truck.get_cell()
+
+    # return pick_up_bike(truck, station_dict, distance_matrix, mean_velocity, depot_node, depot, system_bikes)
+    return time, distance, True
 
 
 def stay(truck: Truck) -> int:

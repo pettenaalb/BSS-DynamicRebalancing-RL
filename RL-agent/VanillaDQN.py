@@ -30,7 +30,7 @@ class DQN(nn.Module):
         )
 
         self.agent_fc = nn.Sequential(
-            nn.Linear(63, 256),  # Wider layer
+            nn.Linear(64, 256),  # Wider layer
             nn.ReLU(),
             nn.Linear(256, 128),
             nn.ReLU(),
@@ -104,6 +104,8 @@ class DQNv2(nn.Module):
 
         # First GAT layer:  3 input features -> 64 features, heads=4 -> 64 * 4 = 256 if concat=True
         self.gat1 = GATv2Conv(
+            # TURN OFF THIS TO DISABLE BATTERY CHARGE
+            # in_channels=4,
             in_channels=3,
             out_channels=64,
             heads=4,
@@ -154,7 +156,9 @@ class DQNv2(nn.Module):
         # 4) MLP for Agent State
         # ------------------------------------------------------------------------------
         self.agent_fc = nn.Sequential(
-            nn.Linear(63, 256),
+            # TURN OFF THIS TO DISABLE BATTERY CHARGE
+            # nn.Linear(68, 256),
+            nn.Linear(67, 256),
             nn.ReLU(),
             nn.Linear(256, 256),
             nn.ReLU(),
