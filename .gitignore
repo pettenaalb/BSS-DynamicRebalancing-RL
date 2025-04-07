@@ -21,3 +21,7 @@ other/
 benchmarks/results/
 data_new/
 results/FINAL_RESULTS/
+results/best_training/
+results/best_training_no_recharge/
+results/best_validation/
+results/best_validation_no_recharge/
