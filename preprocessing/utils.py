@@ -88,7 +88,7 @@ def count_specific_day(year: int, month: int, day_name: str) -> int:
 
 # ----------------------------------------------------------------------------------------------------------------------
 
-def plot_graph(graph: nx.MultiDiGraph):
+def plot_graph(graph: nx.MultiDiGraph, path: str = None):
     """
     Plot the OSMnx graph with nodes colored based on total request rates.
 
@@ -99,21 +99,21 @@ def plot_graph(graph: nx.MultiDiGraph):
 
     # Plot the graph using OSMnx
     nodes, edges = ox.graph_to_gdfs(graph, nodes=True, edges=True)
-    fig, ax = plt.subplots(figsize=(15, 12), facecolor='black')
+    fig, ax = plt.subplots(figsize=(15, 12), facecolor='white')
     plt.subplots_adjust(left=0, top=1.02, right=1.2, bottom=0, wspace=0, hspace=0)
 
     # Plot the graph edges in geographic coordinates
-    edges.plot(ax=ax, linewidth=0.5, edgecolor="darkgrey", alpha=1, zorder=1)
+    edges.plot(ax=ax, linewidth=0.5, edgecolor="#DC143C", alpha=1, zorder=1)
     # Plot the graph nodes
-    nodes.plot(ax=ax, markersize=15, color='white', alpha=1, zorder=2)
+    nodes.plot(ax=ax, markersize=15, color='#4169E1', alpha=1, zorder=2)
 
     # Plot specific node
-    node = 64
-    node_coords = (graph.nodes[node]['y'], graph.nodes[node]['x'])
-    ax.plot(node_coords[1], node_coords[0], marker='o', color='red', markersize=4, label=f"Node {node}")
+    # node = 64
+    # node_coords = (graph.nodes[node]['y'], graph.nodes[node]['x'])
+    # ax.plot(node_coords[1], node_coords[0], marker='o', color='red', markersize=4, label=f"Node {node}")
 
     plt.axis('off')
-    plt.show()
+    plt.savefig(path + 'graph.svg', dpi=300, bbox_inches='tight', pad_inches=0.1)
 
 def plot_graph_with_colored_nodes(graph: nx.MultiDiGraph, rate_matrix: pd.DataFrame, axis: int = 0, colormap: str = None):
     """
@@ -208,19 +208,31 @@ def plot_graph_with_grid(graph, cell_dict, plot_center_nodes=False, plot_number_
     cell_gdf.plot(ax=ax, linewidth=0.8, edgecolor="red", facecolor="blue", alpha=0.5)
 
     for cell in cell_dict.values():
-        if plot_center_nodes:
-            center_node = cell.center_node
-            if center_node != 0:
-                node_coords = graph.nodes[center_node]['x'], graph.nodes[center_node]['y']
-                ax.plot(node_coords[0], node_coords[1], marker='o', color='yellow', markersize=4, label=f"Center Node {cell.id}")
+        center_node = cell.center_node
+        if center_node != 0:
+            node_coords = graph.nodes[center_node]['x'], graph.nodes[center_node]['y']
+
+            if plot_center_nodes:
+                ax.plot(node_coords[0], node_coords[1], marker='o', color='yellow', markersize=4,
+                        label=f"Center Node {cell.id}")
+
+            # Connect to adjacent cells' center nodes
+            for direction, adjacent_cell in cell.adjacent_cells.items():
+                if adjacent_cell is not None and adjacent_cell in cell_dict:
+                    adjacent_center_node = cell_dict[adjacent_cell].center_node
+                    if adjacent_center_node != 0:
+                        adj_coords = graph.nodes[adjacent_center_node]['x'], graph.nodes[adjacent_center_node]['y']
+                        ax.plot([node_coords[0], adj_coords[0]], [node_coords[1], adj_coords[1]], color='yellow',
+                                linewidth=1.5, alpha=0.8)
 
         if plot_number_cells:
             center_coords = cell.boundary.centroid.coords[0]
-            ax.text(center_coords[0], center_coords[1], str(cell.id), fontsize=8, color='yellow', ha='center', va='center', weight='bold')
+            ax.text(center_coords[0], center_coords[1], str(cell.id), fontsize=8, color='yellow', ha='center',
+                    va='center', weight='bold')
 
     # Configure plot appearance
     plt.axis('off')
-    plt.show()
+    plt.savefig('../data_new/grid.pdf', dpi=300, bbox_inches='tight', pad_inches=0.1)
 
 # ----------------------------------------------------------------------------------------------------------------------
 
