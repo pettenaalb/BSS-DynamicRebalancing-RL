@@ -104,6 +104,7 @@ class StaticEnv(gym.Env):
         # Set rebalancing hours
         if self.num_rebalancing_events > 0:
             self.rebalancing_hours = [(i+3)%24 for i in range(0, 24, 24 // self.num_rebalancing_events)]
+            self.rebalancing_hours = sorted(self.rebalancing_hours)
         self.timeslots_completed = 0
         self.days_completed = 0
         self.event_buffer = []
@@ -204,7 +205,7 @@ class StaticEnv(gym.Env):
                 total_failures += failure
 
             if self.env_time % 3600 == 0:
-                hour = (self.env_time // 3600) + 1
+                hour = ((self.env_time // 3600) + 1) % 24
                 if hour in self.rebalancing_hours:
                     time_to_rebalance = self._rebalance_system()
                     rebalance_time.append(time_to_rebalance)
@@ -329,7 +330,7 @@ class StaticEnv(gym.Env):
                 deficit_nodes[cell.get_center_node()] = target_bikes - cell_bikes
 
         distance, _ = tsp_rebalancing(surplus_nodes, deficit_nodes, self.depot_node, self.distance_matrix)
-        hour = (self.env_time // 3600) + 1
+        hour = ((self.env_time // 3600) + 1) % 24
         mean_truck_velocity = self.velocity_matrix.loc[hour, self.day]
         velocity_kmh = truncated_gaussian(10, 70, mean_truck_velocity, 5)
         time = int(distance * 3.6 / velocity_kmh)
