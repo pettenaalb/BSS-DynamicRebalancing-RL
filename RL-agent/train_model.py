@@ -5,6 +5,7 @@ import torch
 import argparse
 import gc
 import warnings
+import logging
 
 import gymnasium_env.register_env
 
@@ -48,7 +49,7 @@ params = {
     "exploration_time": 0.6,                        # Fraction of total training time for exploration
     "lr": 1e-4,                                     # Learning rate
     "total_timeslots": 56,                          # Total number of time slots in one episode (1 month)
-    "maximum_number_of_bikes": 2500,                 # Maximum number of bikes in the system
+    "maximum_number_of_bikes": 250,                 # Maximum number of bikes in the system
     "results_path": "../results/",                  # Path to save results
     "soft_update": True,                            # Use soft update for target network
     "tau": 0.005,                                   # Tau parameter for soft update
@@ -70,6 +71,8 @@ CHAT_ID = '16830298'
 enable_checkpoint = False
 restore_from_checkpoint = False
 enable_logging = False
+
+formatter = logging.Formatter('%(asctime)s %(levelname)s %(message)s')
 
 # ----------------------------------------------------------------------------------------------------------------------
 
@@ -94,8 +97,8 @@ def train_dqn(env: gym, agent: DQNAgent, batch_size: int, episode: int, tbar: tq
         'maximum_number_of_bikes': params["maximum_number_of_bikes"],
         'discount_factor': params["gamma"],
         'logging': enable_logging,
-        'depot_id': 491,         # 491 back
-        'initial_cell': 185,     # 185 back
+        'depot_id': 18,         # 491 back
+        'initial_cell': 18,     # 185 back
         'reward_params': reward_params,
     }
 
@@ -104,13 +107,12 @@ def train_dqn(env: gym, agent: DQNAgent, batch_size: int, episode: int, tbar: tq
         'critic_score',
         'eligibility_score',
         # TURN OFF THIS TO DISABLE BATTERY CHARGE
-        # 'low_battery_bikes',
+        'low_battery_bikes',
     ]
 
     agent_state, info = env.reset(options=options)
 
     state = convert_graph_to_data(info['cells_subgraph'], node_features=node_features)
-    # state.agent_state = np.concatenate((np.zeros(len(info['cell_dict'])), agent_state)).astype(np.float32)
     state.agent_state = agent_state
     state.steps = info['steps']
 
@@ -156,7 +158,8 @@ def train_dqn(env: gym, agent: DQNAgent, batch_size: int, episode: int, tbar: tq
             avoid_actions.append(Actions.RIGHT.value)
 
         # Select an action using the agent
-        action = agent.select_action(single_state, avoid_action=avoid_actions)
+        # action = agent.select_action(single_state, avoid_action=avoid_actions)
+        action = agent.select_action(single_state, epsilon_greedy=True, avoid_action=avoid_actions)
 
         # Step the environment with the chosen action
         agent_state, reward, done, timeslot_terminated, info = env.step(action)
@@ -201,7 +204,10 @@ def train_dqn(env: gym, agent: DQNAgent, batch_size: int, episode: int, tbar: tq
             # Update target network periodically
             # if timeslots_completed % 8 == 0:
             #     agent.update_target_network()
-            agent.update_epsilon()
+            if agent.epsilon <= 0.05:
+                agent.epsilon = 0.05
+            elif agent.epsilon > 0.05:
+                agent.update_epsilon()
 
             # Get Q-values for the current state
             with torch.no_grad():
@@ -224,6 +230,7 @@ def train_dqn(env: gym, agent: DQNAgent, batch_size: int, episode: int, tbar: tq
             tbar.set_description(f"Training Episode {episode}, Week {info['week'] % 52}, {info['day'].capitalize()} "
                                  f"at {convert_seconds_to_hours_minutes(info['time'])}")
             tbar.set_postfix({'eps': agent.epsilon})
+
             tbar.update(1)
 
         iterations += 1
@@ -287,7 +294,7 @@ def validate_dqn(env: gym, agent: DQNAgent, episode: int, tbar: tqdm | tqdm_tele
         'critic_score',
         'eligibility_score',
         # TURN OFF THIS TO DISABLE BATTERY CHARGE
-        # 'low_battery_bikes',
+        'low_battery_bikes',
     ]
 
     agent_state, info = env.reset(options=options)
@@ -307,6 +314,8 @@ def validate_dqn(env: gym, agent: DQNAgent, episode: int, tbar: tqdm | tqdm_tele
     cell_graph = initialize_cells_subgraph(cell_dict, nodes_dict, distance_matrix, custom_features)
 
     not_done = True
+
+    previous_epsilon = agent.epsilon
 
     iterations = 0
     while not_done:
@@ -338,7 +347,9 @@ def validate_dqn(env: gym, agent: DQNAgent, episode: int, tbar: tqdm | tqdm_tele
             avoid_actions.append(Actions.RIGHT.value)
 
         # Select an action using the agent
-        action = agent.select_action(single_state, avoid_action=avoid_actions, greedy=True)
+        agent.epsilon = 0.05
+        action = agent.select_action(single_state, epsilon_greedy=True, avoid_action=avoid_actions)
+        # action = agent.select_action(single_state, greedy=True, avoid_action=avoid_actions)
 
         # Step the environment with the chosen action
         agent_state, reward, done, timeslot_terminated, info = env.step(action)
@@ -404,6 +415,8 @@ def validate_dqn(env: gym, agent: DQNAgent, episode: int, tbar: tqdm | tqdm_tele
 
     env.close()
 
+    agent.epsilon = previous_epsilon
+
     results = {
         "rewards_per_timeslot": rewards_per_timeslot,
         "failures_per_timeslot": failures_per_timeslot,
@@ -445,6 +458,18 @@ def restore_checkpoint(agent: DQNAgent, buffer: ReplayBuffer) -> dict:
     print("Replay buffer loaded.")
 
     return main_variables
+
+def setup_logger(name, log_file, level=logging.INFO):
+    """To setup as many loggers as you want"""
+
+    handler = logging.FileHandler(log_file)
+    handler.setFormatter(formatter)
+
+    logger = logging.getLogger(name)
+    logger.setLevel(level)
+    logger.addHandler(handler)
+
+    return logger
 
 # ----------------------------------------------------------------------------------------------------------------------
 
@@ -521,8 +546,18 @@ def main():
         if os.path.exists(validation_results_path):
             shutil.rmtree(validation_results_path)
 
+        if not os.path.exists(training_results_path):
+            os.makedirs(training_results_path)
+
+        if not os.path.exists(validation_results_path):
+            os.makedirs(validation_results_path)
+
+        logger = setup_logger('training_logger', training_results_path + 'training.log', level=logging.INFO)
+
+        logger.info(f"Training started with the following parameters: {params}")
+
         # Train and validation loop
-        best_validation_score = 1e3
+        best_validation_score = 1e4
         for episode in range(starting_episode, params["num_episodes"]):
             # Train the agent for one episode
             training_results = train_dqn(env, agent, params["batch_size"], episode, tbar)
@@ -535,12 +570,27 @@ def main():
                 with open(results_path + key + '.pkl', 'wb') as f:
                     pickle.dump(value, f)
 
+            total_train_failures = sum(training_results['failures_per_timeslot'])
+            mean_train_failures = total_train_failures / params["total_timeslots"]
+
+            logger.info(
+                f"Episode {episode}: Mean Failures = {mean_train_failures:.2f}, Total Failures = {total_train_failures}"
+            )
+
             # Save checkpoint if the training and validation score is better
-            if agent.epsilon < 0.2:
+            if agent.epsilon < 0.2 or mean_train_failures < 15:
                 validation_results = validate_dqn(env, agent, episode, tbar)
 
                 val_failures_per_timeslot = validation_results['failures_per_timeslot']
+                mean_val_failures_per_timeslot = sum(val_failures_per_timeslot) / params["total_timeslots"]
                 total_val_failures = sum(val_failures_per_timeslot)
+
+                logger.info(
+                    f"Episode {episode}: Mean Validation Failures = {mean_val_failures_per_timeslot:.2f}, "
+                    f"Total Validation Failures = {total_val_failures}, "
+                    f"Best Validation Failures = {best_validation_score}"
+                )
+
                 if total_val_failures < best_validation_score:
                     best_validation_score = total_val_failures
 

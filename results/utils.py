@@ -332,7 +332,7 @@ def generate_osmnx_graph(graph: nx.MultiDiGraph, cell_dict: dict, cell_values: d
 
     # Save plot to a bytes buffer
     buf = io.BytesIO()
-    plt.savefig(buf, format="png", bbox_inches="tight", dpi=300)
+    plt.savefig(buf, format="svg", bbox_inches="tight", dpi=300)
     plt.close(fig)
     buf.seek(0)
 

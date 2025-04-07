@@ -105,8 +105,8 @@ class DQNv2(nn.Module):
         # First GAT layer:  3 input features -> 64 features, heads=4 -> 64 * 4 = 256 if concat=True
         self.gat1 = GATv2Conv(
             # TURN OFF THIS TO DISABLE BATTERY CHARGE
-            # in_channels=4,
-            in_channels=3,
+            in_channels=4,
+            # in_channels=3,
             out_channels=64,
             heads=4,
             edge_dim=1,
@@ -157,8 +157,8 @@ class DQNv2(nn.Module):
         # ------------------------------------------------------------------------------
         self.agent_fc = nn.Sequential(
             # TURN OFF THIS TO DISABLE BATTERY CHARGE
-            # nn.Linear(68, 256),
-            nn.Linear(67, 256),
+            nn.Linear(68, 256),
+            # nn.Linear(67, 256),
             nn.ReLU(),
             nn.Linear(256, 256),
             nn.ReLU(),

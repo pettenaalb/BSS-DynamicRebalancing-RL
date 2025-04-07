@@ -41,7 +41,7 @@ def simulate_env(env: gym, episode: int, tbar: tqdm | tqdm_telegram) -> dict:
         'maximum_number_of_bikes': params["maximum_number_of_bikes"],
         'depot_id': 18,         # 491 back
         'initial_cell': 18,     # 185 back
-        'num_rebalancing_events': 8
+        'num_rebalancing_events': 0
     }
 
     env.reset(options=options)

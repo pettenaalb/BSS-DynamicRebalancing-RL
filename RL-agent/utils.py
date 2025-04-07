@@ -29,7 +29,7 @@ class Actions(Enum):
     DROP_BIKE = 5
     PICK_UP_BIKE = 6
     # TURN OFF THIS TO DISABLE BATTERY CHARGE
-    # CHARGE_BIKE = 7
+    CHARGE_BIKE = 7
 
 
 def convert_graph_to_data(graph: nx.MultiDiGraph, node_features: list = None) -> Data:

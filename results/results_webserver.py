@@ -10,12 +10,12 @@ from utils import load_results, get_episode_options, create_plot, action_bin_lab
 # Base paths for two training phases
 BASE_PATH = ""
 TRAINING_PATHS = {
-    "Training Phase 1": os.path.join("training_1", "data"),
     "Training Phase 2": os.path.join("training_2", "data"),
-    "Training Phase 3": os.path.join("training_3", "data"),
-    "Validation Phase 1": os.path.join("validation_1", "data"),
+    "Training Phase 1": os.path.join("training_1", "data"),
+    "Training Phase 1 OK": os.path.join("training_1_OK", "data"),
     "Validation Phase 2": os.path.join("validation_2", "data"),
-    "Validation Phase 3": os.path.join("validation_3", "data"),
+    "Validation Phase 1": os.path.join("validation_1", "data"),
+    "Validation Phase 1 OK": os.path.join("validation_1_OK", "data"),
 }
 
 # Import external stylesheets (Google Fonts)
@@ -315,7 +315,11 @@ def update_q_value_plot(n_intervals, n_clicks, training_path, episode_folder):
 )
 def update_epsilon_loss(n_intervals, training_path, n_clicks):
     # loss = load_results(training_path, metric="losses")
-    epsilon = load_results(training_path, metric="epsilon_per_timeslot")
+    try:
+        epsilon = load_results(training_path, metric="epsilon_per_timeslot")
+        epsilon_plot = create_plot(epsilon, "Epsilon over Time", "Epsilon", "Timeslot", cumulative=False)
+    except FileNotFoundError:
+        epsilon_plot = None
     deployed_bikes = load_results(training_path, metric="deployed_bikes")
     last_episode_folder = get_episode_options(training_path)[-1]
     last_episode_reward_tracking = load_results(training_path, last_episode_folder['value'], metric="reward_tracking")
@@ -325,7 +329,6 @@ def update_epsilon_loss(n_intervals, training_path, n_clicks):
     for action, _ in enumerate(action_bin_labels[:actns_len]):
         reward_per_action[action] = np.mean(last_episode_reward_tracking[action])
 
-    epsilon_plot = create_plot(epsilon, "Epsilon over Time", "Epsilon", "Timeslot", cumulative=False)
     loss_plot = create_plot([], "Loss over Time", "Loss", "Timeslot", cumulative=False)
     reward_action_plot = create_plot(reward_per_action, "Reward per Action", "Reward", "Timeslot", action_plot=True)
     deployed_bikes_plot = create_plot(deployed_bikes, "Deployed Bikes per Timeslot", "Bikes", "Timeslot", cumulative=False)
@@ -407,6 +410,12 @@ def update_osmnx_graph(training_path, metric, n_clicks):
     # Initialize the cells
     with open('../data_cambridge_medium/utils/cell_data.pkl', 'rb') as file:
         cells = pickle.load(file)
+
+    # if training_path == "training_2/data" or training_path == "validation_2/data":
+    #     graph = initialize_graph('../data_cambridge_full/utils/cambridge_network.graphml')
+    #     # Initialize the cells
+    #     with open('../data_cambridge_full/utils/cell_data.pkl', 'rb') as file:
+    #         cells = pickle.load(file)
 
     last_episode_folder = get_episode_options(training_path)[-1]
     cell_subgraph = load_results(training_path, last_episode_folder['value'], metric="cell_subgraph")

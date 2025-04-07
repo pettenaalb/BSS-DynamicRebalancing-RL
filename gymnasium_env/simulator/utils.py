@@ -32,7 +32,7 @@ class Actions(Enum):
     DROP_BIKE = 5
     PICK_UP_BIKE = 6
     # TURN OFF THIS TO DISABLE BATTERY CHARGE
-    # CHARGE_BIKE = 7
+    CHARGE_BIKE = 7
 
 
 # Action History Encoder with Embeddings
@@ -50,9 +50,13 @@ class ActionHistoryEncoder(nn.Module):
 
 class Logger:
     def __init__(self, log_file: str, is_logging: bool = False):
-        logging.basicConfig(filename=log_file, level=logging.INFO, filemode='w')
-        self.logger = logging.getLogger('env_logger')
-        self.is_logging = is_logging
+        if is_logging:
+            logging.basicConfig(filename=log_file, level=logging.INFO, filemode='w')
+            self.logger = logging.getLogger('env_logger')
+            self.is_logging = is_logging
+        else:
+            self.logger = None
+            self.is_logging = False
 
     def new_log_line(self):
         if self.is_logging:
