@@ -283,10 +283,10 @@ def main():
     # <-- END OF SECTION -->
 
     graph = initialize_graph(params['place'], params['network_type'], params['data_path'] + params['graph_file'],
-                             remove_isolated_nodes=True, simplify_network=True, nodes_to_remove=params['nodes_to_remove'],
-                             bbox=bbox)
+                             remove_isolated_nodes=True, simplify_network=True, nodes_to_remove=params['nodes_to_remove'])
 
-    plot_graph(graph)
+    # plot_graph(graph, path=params['data_path'])
+    # raise Exception("Graph plotted")
 
     print(f'\nProcessing data for year {params["year"]} and month {params["month"]}...')
     trip_df = pd.DataFrame()
@@ -339,7 +339,7 @@ def main():
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Preprocess the data for the RL agent.")
-    parser.add_argument('--data_path', type=str, default="../data/", help="Path to the data directory.")
+    parser.add_argument('--data_path', type=str, default="../data_new/", help="Path to the data directory.")
 
     args = parser.parse_args()
     if args.data_path:

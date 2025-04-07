@@ -187,7 +187,7 @@ def main():
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Interpolate the rate matrices to build the PMF matrices.")
-    parser.add_argument('--data_path', type=str, default="../data/", help="The path to the data directory.")
+    parser.add_argument('--data_path', type=str, default="../data_new/", help="The path to the data directory.")
 
     args = parser.parse_args()
     if args.data_path:
