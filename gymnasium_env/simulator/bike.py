@@ -122,3 +122,9 @@ class Bike:
         list: A list of log entries.
         """
         return self.log
+
+    def reset(self, station: "Station" = None, battery: float = None, available: bool = False):
+        # Reset the bike to its initial state
+        self.battery = self.max_battery if battery is None else battery
+        self.available = available
+        self.station = station

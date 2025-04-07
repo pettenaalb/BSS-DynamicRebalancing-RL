@@ -12,3 +12,12 @@ graph_images/
 simulator/
 plots/
 dummy_file.py
+data_cambridge/
+results/training/
+data_cambridge_full/
+data_cambridge_medium/
+data_cambridge_small/
+other/
+benchmarks/results/
+data_new/
+results/FINAL_RESULTS/

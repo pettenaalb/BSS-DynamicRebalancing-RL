@@ -1,8 +1,9 @@
 # gymnasium_env/envs/__init__.py
-from .City_Environment import BostonCity
+from .FullyDynamicEnvironment import FullyDynamicEnv
+from .StaticEnvironment import StaticEnv
 
 # Package metadata
-__version__ = "1.0.0"
+__version__ = "1.1.0"
 __author__ = "Edoardo Scarpel"
 
-__all__ = ["BostonCity"]
+__all__ = ["FullyDynamicEnv"]

@@ -33,7 +33,7 @@ def main(data_path: str):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Preprocess global rates')
-    parser.add_argument('--data_path', type=str, default='../data/', help='Path to data directory')
+    parser.add_argument('--data_path', type=str, default='../data_new/', help='Path to data directory')
 
     args = parser.parse_args()
     data_path = args.data_path

@@ -16,7 +16,15 @@ class Cell:
         self.diagonal = 0
         self.adjacent_cells = {'up': None, 'down': None, 'left': None, 'right': None}
         self.total_bikes = 0
-        self.capacity = 0
+        self.request_rate = 0
+        self.visits = 0
+        self.critic_score = 0
+        self.is_critical = False
+        self.surplus_score = 0
+        self.eligibility_score = 0
+
+    def __str__(self):
+        return f"Cell {self.id}: Bikes: {self.total_bikes}, Critic Score: {self.critic_score}, Visits: {self.visits}"
 
     def set_center_node(self, graph: nx.MultiDiGraph):
         center_coords = self.boundary.centroid.coords[0]
@@ -59,8 +67,18 @@ class Cell:
     def set_total_bikes(self, total_bikes: int):
         self.total_bikes = total_bikes
 
-    def set_capacity(self, capacity: int):
-        self.capacity = capacity
+    def set_request_rate(self, request_rate: float):
+        self.request_rate = request_rate
+
+    def set_visits(self, visits: int):
+        self.visits = visits
+
+    def set_critic_score(self, critic_score: float):
+        self.critic_score = critic_score
+        if critic_score > 0.5:
+            self.is_critical = True
+        else:
+            self.is_critical = False
 
     def get_id(self) -> int:
         return self.id
@@ -83,8 +101,25 @@ class Cell:
     def get_total_bikes(self) -> int:
         return self.total_bikes
 
-    def get_capacity(self) -> int:
-        return self.capacity
-
     def reset(self):
         self.total_bikes = 0
+        self.request_rate = 0
+        self.visits = 0
+        self.critic_score = 0
+        self.is_critical = False
+        self.surplus_score = 0
+
+    def get_request_rate(self) -> float:
+        return self.request_rate
+
+    def get_visits(self) -> int:
+        return self.visits
+
+    def get_critic_score(self) -> float:
+        return self.critic_score
+
+    def get_surplus_score(self) -> float:
+        return self.surplus_score
+
+    def update_eligibility_score(self, eligibility_decay: float):
+        self.eligibility_score *= eligibility_decay

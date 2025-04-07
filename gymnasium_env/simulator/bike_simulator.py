@@ -11,7 +11,7 @@ from gymnasium_env.simulator.utils import generate_poisson_events, truncated_gau
 
 def event_handler(event: Event, station_dict: dict[int, Station], nearby_nodes_dict: dict[str, dict[str, tuple]],
                   distance_matrix: pd.DataFrame, system_bikes: dict[int, Bike], outside_system_bikes: dict[int, Bike],
-                  next_bike_id: int, logger: Logger) -> tuple[int, int]:
+                  next_bike_id: int, logger: Logger = None) -> tuple[int, int]:
     """
     Handle the event based on its type.
 
@@ -34,8 +34,9 @@ def event_handler(event: Event, station_dict: dict[int, Station], nearby_nodes_d
                                  outside_system_bikes, next_bike_id)
         if trip.is_failed():
             failure = 1
-            logger.log_no_available_bikes(trip.get_start_location().get_station_id(), trip.get_end_location().get_station_id())
-        else:
+            if logger is not None:
+                logger.log_no_available_bikes(trip.get_start_location().get_station_id(), trip.get_end_location().get_station_id())
+        elif logger is not None:
             logger.log_trip(trip)
     else:
         arrival_handler(event.get_trip(), system_bikes, outside_system_bikes)
@@ -111,14 +112,18 @@ def arrival_handler(trip: Trip, system_bikes: dict[int, Bike], outside_system_bi
     start_station = trip.get_start_location()
     end_station = trip.get_end_location()
     bike = trip.get_bike()
+    # TURN OFF THIS TO DISABLE BATTERY CHARGE
+    bike.set_battery(bike.get_battery() - trip.get_distance()/1000)
 
     # Move the bike to the outside system if the destination station is outside the system
     if end_station.get_station_id() == 10000:
+        bike.reset()
         outside_system_bikes[bike.get_bike_id()] = system_bikes.pop(bike.get_bike_id())
         return
 
     # Move the bike back to the system if the starting station is outside the system
     if start_station.get_station_id() == 10000:
+        bike.set_battery(bike.get_max_battery())
         system_bikes[bike.get_bike_id()] = bike
 
     end_station.lock_bike(bike)

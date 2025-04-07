@@ -15,6 +15,8 @@ class Truck:
         self.max_load = max_load
         self.bikes = bikes.copy()
         self.current_load = len(bikes) if bikes is not None else 0
+        self.leaving_cell = cell
+        self.last_charge = 0
 
         Truck.truck_id += 1
 
@@ -25,6 +27,7 @@ class Truck:
         self.position = position
 
     def set_cell(self, cell: "Cell"):
+        self.leaving_cell = self.cell
         self.cell = cell
 
     def set_range(self, r: float):
@@ -36,9 +39,10 @@ class Truck:
 
     def load_bike(self, bike: "Bike"):
         if self.current_load < self.max_load:
-            bike.set_station(None)
-            bike.set_availability(False)
-            bike.set_battery(bike.get_max_battery())
+            bike.reset()
+            max_battery = bike.get_max_battery()
+            self.last_charge = (max_battery - bike.get_battery()) / max_battery
+            bike.set_battery(max_battery)
             self.bikes[bike.bike_id] = bike
             self.current_load += 1
         else:
@@ -57,6 +61,9 @@ class Truck:
 
     def get_cell(self) -> "Cell":
         return self.cell
+
+    def get_leaving_cell(self) -> "Cell":
+        return self.leaving_cell
 
     def get_range(self) -> float:
         return self.range

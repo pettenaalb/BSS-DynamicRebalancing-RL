@@ -6,7 +6,7 @@ if TYPE_CHECKING:
 
 class Station:
     def __init__(self, station_id: int, lat: float, lon: float, name: str = None, capacity: int = 1000,
-                 bikes: {"Bike"} = None, request_rate: float = 0.0, cell: "Cell" = None):
+                 bikes: {"Bike"} = None, request_rate: float = 0.0, arrival_rate: float = 0.0, cell: "Cell" = None):
         """
         Initialize a Station object.
 
@@ -26,6 +26,7 @@ class Station:
         self.capacity = capacity
         self.bikes = bikes if bikes is not None else {}
         self.request_rate = request_rate
+        self.arrival_rate = arrival_rate
         self.cell = cell
         self.number_of_bikes = len(self.bikes)
 
@@ -36,7 +37,7 @@ class Station:
         Returns:
         str: A string describing the station with its ID, name, latitude, and longitude.
         """
-        return f"Station {self.station_id}: ({self.lat}, {self.lon})"
+        return f"Station {self.station_id}: Position ({self.lat}, {self.lon}), Locked Bikes: {len(self.bikes)}"
 
     def set_bikes(self, bikes: {"Bike"}):
         """
@@ -62,6 +63,15 @@ class Station:
         request_rate (float): The rate of bike requests at the station.
         """
         self.request_rate = request_rate
+
+    def set_arrival_rate(self, arrival_rate: float):
+        """
+        Set the request rate of the station.
+
+        Parameters:
+        request_rate (float): The rate of bike requests at the station.
+        """
+        self.arrival_rate = arrival_rate
 
     def set_capacity(self, capacity: int):
         """
@@ -158,6 +168,15 @@ class Station:
         float: The rate of bike requests at the station.
         """
         return self.request_rate
+
+    def get_arrival_rate(self) -> float:
+        """
+        Get the request rate of the station.
+
+        Returns:
+        float: The rate of bike requests at the station.
+        """
+        return self.arrival_rate
 
     def get_cell(self) -> "Cell":
         """

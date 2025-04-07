@@ -67,7 +67,7 @@ def build_pmf_matrix(rate_matrix: pd.DataFrame, nearby_nodes_dict: dict[str, dic
             if len(nearby_non_zero_nodes) != 0:
                 coords = nodes_dict[node_id]
                 distances = np.array([compute_distance(coords, nn_zn_coords) for nn_zn_coords in nearby_non_zero_nodes.values()])
-                rts = np.array([rates.loc[nn_zn_id, :] for nn_zn_id in nearby_non_zero_nodes])
+                rts = np.array([rates.loc[nn_zn_id] for nn_zn_id in nearby_non_zero_nodes])
                 num, den = 0, 0
                 for distance, rate in zip(distances, rts):
                     num += rate/distance
@@ -187,7 +187,7 @@ def main():
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Interpolate the rate matrices to build the PMF matrices.")
-    parser.add_argument('--data_path', type=str, default="../data/", help="The path to the data directory.")
+    parser.add_argument('--data_path', type=str, default="../data_new/", help="The path to the data directory.")
 
     args = parser.parse_args()
     if args.data_path:

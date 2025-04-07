@@ -40,6 +40,7 @@ def process_training_results(base_path: str):
 
     # Get all subfolders in the 'data' directory
     timeslot_folders = [folder for folder in os.listdir(data_path) if os.path.isdir(os.path.join(data_path, folder))]
+    timeslot_folders.sort()
 
     q_values_tuple = []
     total_failures = []
@@ -148,15 +149,30 @@ def process_validation_results(base_path: str):
 # ----------------------------------------------------------------------------------------------------------------------
 
 def main():
-    if MODE == 'train':
-        base_path = 'training'
-        process_training_results(base_path)
-    elif MODE == 'validate':
-        base_path = 'validation'
-        process_validation_results(base_path)
-    else:
-        raise ValueError("Invalid mode. Choose 'train' or 'validate'.")
+    # if MODE == 'train':
+    #     base_path = 'training'
+    #     process_training_results(base_path)
+    # elif MODE == 'validate':
+    #     base_path = 'validation'
+    #     process_validation_results(base_path)
+    # else:
+    #     raise ValueError("Invalid mode. Choose 'train' or 'validate'.")
+    #
+    # if not os.path.exists(os.path.join(base_path, 'plots')):
+    #     os.makedirs(os.path.join(base_path, 'plots'))
+    #
+    # total_failures = []
+    # with open(os.path.join('total_failures_baseline.pkl'), 'rb') as f:
+    #     total_failures = pickle.load(f)
+    #
+    # failures = [f for f, _ in total_failures]
+    #
+    # plot_data_online(failures, idx=6, xlabel='Time Slot', ylabel='Total Failures', save_path=os.path.join('total_failures_baseline.png'))
 
+    with open('../benchmarks/results/rebalance_time.pkl', 'rb') as f:
+        data = pickle.load(f)
+
+    plot_data_online(data, idx=1, xlabel='Time Slot', ylabel='Data')
 
 if __name__ == '__main__':
     main()

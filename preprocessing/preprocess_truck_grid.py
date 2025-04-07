@@ -54,10 +54,11 @@ def divide_graph_into_cells(graph: nx.MultiDiGraph, cell_size: int) -> dict[int,
     x_diagonal_deg = cell_size * np.sqrt(2) / lat_lon_to_meter
     y_diagonal_deg = cell_size * np.sqrt(2) / lat_deg_to_meter
 
-    x_centers_od = np.arange(min_x, max_x, x_diagonal_deg)
-    x_centers_even = np.arange(min_x + x_diagonal_deg/2, max_x, x_diagonal_deg)
-    y_centers_od = np.arange(min_y, max_y + y_diagonal_deg, y_diagonal_deg)
-    y_centers_even = np.arange(min_y + y_diagonal_deg/2, max_y, y_diagonal_deg)
+    # Adjust for boundary to include max_x/max_y correctly
+    x_centers_od = np.arange(min_x, max_x + x_diagonal_deg, x_diagonal_deg)  # Adjust max_x
+    x_centers_even = np.arange(min_x + x_diagonal_deg / 2, max_x + x_diagonal_deg, x_diagonal_deg)  # Adjust max_x
+    y_centers_od = np.arange(min_y, max_y + y_diagonal_deg, y_diagonal_deg)  # Adjust max_y
+    y_centers_even = np.arange(min_y + y_diagonal_deg / 2, max_y + y_diagonal_deg, y_diagonal_deg)  # Adjust max_y
 
     cell_dict = {}
     cell_id = 0
