@@ -6,7 +6,7 @@ import networkx as nx
 from geopy.distance import geodesic
 
 from tqdm import tqdm
-from utils import count_specific_day, connect_disconnected_neighbors, plot_graph
+from .utils import count_specific_day, connect_disconnected_neighbors, plot_graph
 
 params = {
     'place': ["Cambridge, Massachusetts, USA"],
@@ -23,7 +23,7 @@ params = {
 
 # ----------------------------------------------------------------------------------------------------------------------
 
-def initialize_graph(places: [str], network_type: str, graph_path: str = None, simplify_network: bool = False,
+def initialize_graph(places: list[str], network_type: str, graph_path: str = None, simplify_network: bool = False,
                      remove_isolated_nodes: bool = False, nodes_to_remove: list[tuple] = None, bbox = None) -> nx.MultiDiGraph:
     """
     Initialize the graph representing the road network.
@@ -92,7 +92,7 @@ def initialize_graph(places: [str], network_type: str, graph_path: str = None, s
 
 # ----------------------------------------------------------------------------------------------------------------------
 
-def compute_poisson_rates(df: pd.DataFrame, year: int, months: [int], day_of_week: str, time_slot: int) -> pd.DataFrame:
+def compute_poisson_rates(df: pd.DataFrame, year: int, months: list[int], day_of_week: str, time_slot: int) -> pd.DataFrame:
     """
     Compute the Poisson request rates for each station pair on a specific day and time slot.
 

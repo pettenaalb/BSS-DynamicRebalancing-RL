@@ -3,7 +3,7 @@ import pandas as pd
 import argparse
 import pickle
 
-from utils import kahan_sum
+from .utils import kahan_sum
 from tqdm import tqdm
 
 days_of_week = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']

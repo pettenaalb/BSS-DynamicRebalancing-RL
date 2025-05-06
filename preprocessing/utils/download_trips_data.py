@@ -6,7 +6,7 @@ from urllib.parse import urlparse
 from tqdm import tqdm
 import shutil
 
-data_path = "../data/"
+data_path = "../../data/"
 
 # ----------------------------------------------------------------------------------------------------------------------
 

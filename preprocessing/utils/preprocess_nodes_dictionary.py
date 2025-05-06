@@ -5,7 +5,7 @@ import networkx as nx
 import pickle
 
 from tqdm import tqdm
-from utils import nodes_within_radius
+from .utils import nodes_within_radius
 
 def initialize_graph(graph_path: str = None) -> nx.MultiDiGraph:
     if os.path.isfile(graph_path):

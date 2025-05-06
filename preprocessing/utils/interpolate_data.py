@@ -6,7 +6,7 @@ import networkx as nx
 import numpy as np
 
 from tqdm import tqdm
-from utils import compute_distance, kahan_sum, nodes_within_radius
+from .utils import compute_distance, kahan_sum, nodes_within_radius
 
 params = {
     'place': ["Cambridge, Massachusetts, USA"],

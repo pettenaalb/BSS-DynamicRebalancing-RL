@@ -18,3 +18,4 @@ scipy~=1.12.0
 dash~=2.18.2
 plotly~=6.0.0
 psutil~=6.1.1
+scikit-learn~=1.6.1

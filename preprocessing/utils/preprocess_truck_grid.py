@@ -8,7 +8,7 @@ import networkx as nx
 
 from shapely.geometry import Polygon, Point
 from tqdm import tqdm
-from utils import compute_distance, plot_graph_with_grid
+from .utils import compute_distance, plot_graph_with_grid
 from gymnasium_env.simulator.cell import Cell
 
 params = {

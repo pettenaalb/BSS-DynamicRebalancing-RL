@@ -4,8 +4,6 @@ import pandas as pd
 import osmnx as ox
 import networkx as nx
 
-from tqdm import tqdm
-
 params = {
     'place': ["Cambridge, Massachusetts, USA"],
     'network_type': 'bike',

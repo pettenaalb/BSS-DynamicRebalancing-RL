@@ -1,4 +1,3 @@
-
 .DS_Store
 venv/
 .idea/
@@ -6,7 +5,15 @@ __pycache__/
 .vscode/
 osmnx-examples/
 cache/
+
+# Ignore everything in data/
 data/
+# ...except specific files in data/utils/
+!data/utils/
+!data/utils/ev_consumption_matrix.csv
+!data/utils/ev_velocity_matrix.csv
+!data/utils/filtered_stations.csv
+
 gym/
 graph_images/
 simulator/
