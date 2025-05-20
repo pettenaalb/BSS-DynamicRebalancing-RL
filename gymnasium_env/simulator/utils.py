@@ -189,6 +189,15 @@ def load_cells_from_csv(filename) -> dict[int, "Cell"]:
 
 
 def initialize_graph(graph_path: str = None) -> nx.MultiDiGraph:
+    """
+    Initialize a road graph from a saved file.
+
+    Parameters:
+        - graph_path (str):  the file directory
+
+    Returns:
+        - The graph representing the road network.
+    """
     if os.path.isfile(graph_path):
         print("Network file already exists. Loading the network data: ", end="")
         graph = ox.load_graphml(graph_path)
@@ -202,16 +211,20 @@ def initialize_graph(graph_path: str = None) -> nx.MultiDiGraph:
 
 def initialize_bikes(station: "Station" = None, n: int = 0, next_bike_id: int = 0) -> tuple[dict[int, "Bike"], int]:
     """
-    Initialize a list of bikes at a station.
+    Initialize a list of bikes at a station starting from a specified bike_id.
 
     Parameters:
-        - stn (Station): The station where the bikes are located.
+        - station (Station): The station where the bikes are going to be initialized.
         - n (int): The number of bikes to initialize. Default is 0.
+        - next_bike_id (int): The starting bike_id. Default is 0. 
 
     Returns:
-        - dict: A dictionary containing the bikes at the station.
+        - dict: A dictionary containing:
+            - dict of bikes at the station
+            - the next available bike_id
     """
     from gymnasium_env.simulator.bike import Bike
+
     next_id = next_bike_id
     bikes = {}
     for i in range(n):

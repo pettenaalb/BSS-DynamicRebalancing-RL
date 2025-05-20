@@ -230,6 +230,7 @@ def tsp_rebalancing(surplus_nodes: dict, deficit_nodes: dict, starting_node, dis
     if not all_nodes:
         raise ValueError("No valid surplus or deficit nodes to rebalance.")
 
+    # Distance calculation and all edges connections(between nodes in all_nodes)
     for i in range(len(all_nodes)):
         for j in range(i + 1, len(all_nodes)):
             node_i, node_j = all_nodes[i], all_nodes[j]

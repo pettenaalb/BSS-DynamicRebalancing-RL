@@ -18,6 +18,8 @@ class Station:
         capacity (int): Maximum capacity of bikes the station can hold. Default is 1000.
         bikes (list): List of Bike objects at the station. Default is an empty list.
         request_rate (float): Rate of bike requests at the station. Default is 0.0.
+        arrival_rate (float): Rate of bike arrivals at the station. Default is 0.0.
+        cell ("Cell"): #? The parent cell of this station. Default is None.
         """
         self.station_id = station_id
         self.name = name if name is not None else f"Station {station_id}"
@@ -66,10 +68,10 @@ class Station:
 
     def set_arrival_rate(self, arrival_rate: float):
         """
-        Set the request rate of the station.
+        Set the arrival rate of the station.
 
         Parameters:
-        request_rate (float): The rate of bike requests at the station.
+        arrival_rate (float): The rate of bike arriving at the station.
         """
         self.arrival_rate = arrival_rate
 
@@ -96,7 +98,7 @@ class Station:
         Unlock a bike from the station.
 
         Returns:
-        Bike: The bike unlocked from the station.
+        bike (Bike): The bike to be unlocked from the station.
         """
         if len(self.bikes) > 0:
             if bike_id is None:
