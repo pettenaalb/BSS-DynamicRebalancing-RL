@@ -22,11 +22,14 @@ def event_handler(event: Event, station_dict: dict[int, Station], nearby_nodes_d
         - distance_matrix (pd.DataFrame): A DataFrame containing the distance matrix between stations.
         - system_bikes (dict): A dictionary containing the bikes in the system.
         - outside_system_bikes (dict): A dictionary containing the bikes outside the system.
+        - next_bike_id (int): Next free bike_id if further initialization is needed
+        - logger (Logger): To log the event
 
     Returns:
         - bool: A boolean indicating whether the event failed or not.
-        - dict: A dictionary containing the bikes in the system.
-        - dict: A dictionary containing the bikes outside the system.
+        - next_bike_id (int): Next free bike_id
+        ##no dict: A dictionary containing the bikes in the system.
+        ##no dict: A dictionary containing the bikes outside the system.
     """
     failure = 0
     if event.is_departure():
@@ -54,15 +57,19 @@ def departure_handler(trip: Trip, station_dict: dict, nearby_nodes_dict: dict[st
         - station_dict (dict): A dictionary containing the stations in the network.
         - nearby_nodes_dict (dict): A dictionary containing the nearby nodes for each station.
         - distance_matrix (pd.DataFrame): A DataFrame containing the distance matrix between stations.
+        - outside_system_bikes (dict): A dictionary containing the bikes outside the system.
+        - next_bike_id (int): Next free bike_id if further initialization is needed
 
     Returns:
         - Trip: The trip object after processing.
+        - next_bike_id (int): Next free bike_id
     """
     start_station = trip.get_start_location()
     start_station_id = start_station.get_station_id()
 
     # Check if the starting station is outside the system
     if start_station_id == 10000:
+        # Check if there exists more external bikes. If not, generate 100 external bikes.
         if len(outside_system_bikes) == 0:
             bikes, next_bike_id = initialize_bikes(start_station, n=100, next_bike_id=next_bike_id)
             outside_system_bikes.update(bikes)
@@ -71,6 +78,7 @@ def departure_handler(trip: Trip, station_dict: dict, nearby_nodes_dict: dict[st
         trip.set_failed(False)
         return trip, next_bike_id
 
+    # Here starting station is inside the system
     # Check if there are any bikes available at the starting station
     if start_station.get_number_of_bikes() > 0:
         bike = start_station.unlock_bike()
@@ -95,6 +103,7 @@ def departure_handler(trip: Trip, station_dict: dict, nearby_nodes_dict: dict[st
             else:
                 station_dict[node_id].lock_bike(bike)
 
+    # Here the trip departure was inside, the station was empty and all nearby stations were also empty.
     trip.set_failed(True)
     return trip, next_bike_id
 
@@ -123,7 +132,7 @@ def arrival_handler(trip: Trip, system_bikes: dict[int, Bike], outside_system_bi
 
     # Move the bike back to the system if the starting station is outside the system
     if start_station.get_station_id() == 10000:
-        bike.set_battery(bike.get_max_battery())
+        bike.set_battery(bike.get_max_battery())    #unreal: an arriving bike is never at 100%
         system_bikes[bike.get_bike_id()] = bike
 
     end_station.lock_bike(bike)
@@ -136,11 +145,11 @@ def simulate_environment(duration: int, timeslot: int, global_rate: float, pmf: 
     Simulate the environment for a given time interval.
 
     Parameters:
-        - time_interval (int): The time interval to simulate.
+        - duration (int): The time duration to simulate.
         - timeslot (int): The time slot to simulate.
-        - rate (float): The rate of requests.
+        - global_rate (float): The rate of requests.
         - pmf (pd.DataFrame): The PMF matrix.
-        - station_dict (dict): A dictionary containing the stations in the network.
+        - station (dict): A dictionary containing the stations in the network.
         - distance_matrix (pd.DataFrame): A DataFrame containing the distance matrix between stations.
 
     Returns:
@@ -161,6 +170,9 @@ def simulate_environment(duration: int, timeslot: int, global_rate: float, pmf: 
             distance = distance_matrix.at[stn_pair[0], stn_pair[1]]
             travel_time_seconds = int(distance * 3.6 / velocity_kmh)
 
+        #This next line FIXES the "timeslot" design to divide the day in 8 slots [0;7] of 3 hours each with, the first starting at 1AM. 
+        #To modify the slots set-up it is necessary to change the design of the function and the slot number passed as parameter.
+        #The output of the equation is the exact event time of the day in seconds.
         ev_t = event_time + 3600*(3*timeslot + 1)
         trip = Trip(ev_t, ev_t + travel_time_seconds, stations[stn_pair[0]],
                     stations[stn_pair[1]], distance=distance)

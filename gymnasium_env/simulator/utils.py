@@ -159,6 +159,18 @@ def convert_seconds_to_hours_minutes(seconds) -> str:
 
 
 def truncated_gaussian(lower=5, upper=25, mean=15, std_dev=5):
+    """
+    Samples one point from a truncated gaussian.
+
+    Parameters:
+        - lower (int): The lower bound of the truncation.
+        - upper (int): The upper bound of the truncation.
+        - mean (int): The mean value of the gaussian.
+        - std_dev (int): The standard deviation of the gaussian.
+
+    Returns:
+        - speed (int): The sampled value form the truncated gaussian
+    """
     a, b = (lower - mean) / std_dev, (upper - mean) / std_dev
     truncated_normal = truncnorm(a, b, loc=mean, scale=std_dev)
     speed = truncated_normal.rvs()
@@ -196,7 +208,7 @@ def initialize_graph(graph_path: str = None) -> nx.MultiDiGraph:
         - graph_path (str):  the file directory
 
     Returns:
-        - The graph representing the road network.
+        - nx.Graph: The graph representing the road network.
     """
     if os.path.isfile(graph_path):
         print("Network file already exists. Loading the network data: ", end="")

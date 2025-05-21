@@ -18,8 +18,11 @@ class Trip:
         end_time (int): The time the trip ended.
         start_location (tuple): The starting location of the trip.
         end_location (tuple): The ending location of the trip.
-        vehicle_id (int): The ID of the vehicle used for the trip.
-        driver_id (int): The ID of the driver for the trip.
+        bike (int): The ID of the bike used for the trip.
+        distance (int): The discance covered by the trip.
+        failed (bool): Flag indicating if the the trip has failed for any reason.
+        deviated (bool): Flag indicating if the location has changend.
+        deviated_location (tuple): New destination of the trip.
         """
         self.trip_id = Trip.trip_id
         self.start_time = start_time

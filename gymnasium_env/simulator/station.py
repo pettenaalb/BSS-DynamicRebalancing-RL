@@ -173,10 +173,10 @@ class Station:
 
     def get_arrival_rate(self) -> float:
         """
-        Get the request rate of the station.
+        Get the arrival rate of the station.
 
         Returns:
-        float: The rate of bike requests at the station.
+        float: The arrival of bike requests at the station.
         """
         return self.arrival_rate
 
