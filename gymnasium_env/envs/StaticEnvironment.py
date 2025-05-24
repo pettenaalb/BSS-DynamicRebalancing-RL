@@ -117,6 +117,11 @@ class StaticEnv(gym.Env):
         self.next_bike_id = 0
         self.depot_node = self.cells.get(options.get('depot_id', 491) if options else 491).get_center_node()
         self.depot, self.next_bike_id = initialize_bikes(n=self.maximum_number_of_bikes, next_bike_id=self.next_bike_id)
+        """
+        A bit counter intuitive...
+        self.depot_node := is a Station object, is the center node of the cell with the designation depot_id (default = 491)
+        self.depot      := is a list of bike IDs, these bikes have 'None' as designated station because no station parameter is passed during initialization.
+        """
 
         # Create stations dictionary
         from gymnasium_env.simulator.station import Station
@@ -133,6 +138,7 @@ class StaticEnv(gym.Env):
             for node in cell.nodes:
                 self.stations[node].set_cell(cell)
 
+        # Check for 'cell=None' assigned stations
         for station in self.stations.values():
             if station.get_cell() is None and station.get_station_id() != 10000:
                 raise ValueError(f"Station {station} is not assigned to a cell.")
@@ -143,9 +149,11 @@ class StaticEnv(gym.Env):
         # Compute net flow per cell
         net_flow_per_cell = self._compute_net_flow()
 
-        # Assign bikes to cells based on net flow
+        # Assign 5 bikes per cells
         bikes_per_cell = {cell_id: 5 for cell_id in self.cells.keys()}
         left_bikes = self.maximum_number_of_bikes - 5 * len(self.cells)
+
+        # Assign more bikes to cells with negative flow
         total_negative_flow = sum(flow for flow in net_flow_per_cell.values() if flow < 0)
         bike_positioned = 0
         for cell_id, flow in net_flow_per_cell.items():
@@ -154,7 +162,7 @@ class StaticEnv(gym.Env):
                 bikes_per_cell[cell_id] += num_of_bikes
                 bike_positioned += num_of_bikes
 
-        # Assign the remaining bikes to cells with negative flow randomly
+        # Assign the last remaining bikes to cells with negative flow randomly
         if bike_positioned < left_bikes:
             cell_ids = [cell_key for cell_key, flow in net_flow_per_cell.items() if flow < 0]
             random.shuffle(cell_ids)
@@ -191,7 +199,6 @@ class StaticEnv(gym.Env):
 
             # Process all events that occurred before the updated environment time
             while self.event_buffer and self.event_buffer[0].time < self.env_time:
-                # print("Entering in while")
                 event = self.event_buffer.pop(0)
                 failure, self.next_bike_id = event_handler(
                     event=event,
@@ -204,16 +211,19 @@ class StaticEnv(gym.Env):
                 )
                 total_failures += failure
 
+            # Update env_hour. Is it time to rebalance? and how much time_to_rebalance?
             if self.env_time % 3600 == 0:
                 hour = ((self.env_time // 3600) + 1) % 24
                 if hour in self.rebalancing_hours:
                     time_to_rebalance = self._rebalance_system()
                     rebalance_time.append(time_to_rebalance)
 
+            # Update timeslot and day
             if self.env_time >= 3600*3*(self.timeslot + 1):
                 self.timeslot = (self.timeslot + 1) % 8
                 failures_per_timeslot.append(total_failures)
                 total_failures = 0
+                #Update day and initialize_day
                 if self.timeslot == 0:
                     self.day = num2days[(days2num[self.day] + 1) % 7]
                     self.days_completed += 1
@@ -261,6 +271,7 @@ class StaticEnv(gym.Env):
                 event.time += 3600 * 3 * timeslot
             total_events.extend(events)
 
+        # Insort the new events in the global event_buffer, which doesn't get reset when the method is called again
         for event in total_events:
             bisect.insort(self.event_buffer, event, key=lambda x: x.time)
 

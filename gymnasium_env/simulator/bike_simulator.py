@@ -171,7 +171,7 @@ def simulate_environment(duration: int, timeslot: int, global_rate: float, pmf: 
             travel_time_seconds = int(distance * 3.6 / velocity_kmh)
 
         #This next line FIXES the "timeslot" design to divide the day in 8 slots [0;7] of 3 hours each with, the first starting at 1AM. 
-        #To modify the slots set-up it is necessary to change the design of the function and the slot number passed as parameter.
+        #To modify the slots set-up it is necessary to change the design of the function and/or pass the slot number as parameter.
         #The output of the equation is the exact event time of the day in seconds.
         ev_t = event_time + 3600*(3*timeslot + 1)
         trip = Trip(ev_t, ev_t + travel_time_seconds, stations[stn_pair[0]],

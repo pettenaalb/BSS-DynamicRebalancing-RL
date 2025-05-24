@@ -19,7 +19,7 @@ class Station:
         bikes (list): List of Bike objects at the station. Default is an empty list.
         request_rate (float): Rate of bike requests at the station. Default is 0.0.
         arrival_rate (float): Rate of bike arrivals at the station. Default is 0.0.
-        cell ("Cell"): #? The parent cell of this station. Default is None.
+        cell ("Cell"): The parent cell of this station. Default is None.
         """
         self.station_id = station_id
         self.name = name if name is not None else f"Station {station_id}"

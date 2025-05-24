@@ -253,10 +253,15 @@ def initialize_stations(stations: dict, depot: dict, bikes_per_station: dict, ne
     Initialize a list of stations based on the nodes of the graph.
 
     Parameters:
-        - G (nx.MultiDiGraph): The graph representing the road network.
+        - stations (dict): Dictionary containing all the stations of the network plus the outside station with station.id=10000 .
+        - depot (dict): Dictionary of all initialized bikes of the system.
+        - bikes_per_station (dict): Dictionary that specifies ho many bikes are to be assigned to each station.
+        - next_bike_id (int): The next available bike_id
 
     Returns:
-        - dict: A dictionary containing the stations in the network.
+        - dict: A dictionary containing the bikes in the network, each assigned to a station.
+        - dict: A dictionary containing the bikes outside of the network, with bike.station=10000.
+        - int: next_bike_id if more bikes where initialized.
     """
     system_bikes = {}
 

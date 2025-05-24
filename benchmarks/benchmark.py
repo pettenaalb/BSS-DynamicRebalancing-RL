@@ -93,7 +93,7 @@ def main():
     rebalance_time = []
 
     for episode in range(0, params["num_episodes"]):
-        results = simulate_env(env, episode, tbar)
+        results = simulate_env(env, episode, tbar)      # This is the sauce
         total_failures.extend(results['failures'])
         rebalance_time.extend(results['rebalance_time'])
 
