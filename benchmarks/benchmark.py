@@ -24,8 +24,8 @@ torch.manual_seed(seed)
 
 params = {
     "num_episodes": 1,                  # Total number of training episodes
-    "total_timeslots": 56,              # Total number of time slots in one episode (1 month)
-    "maximum_number_of_bikes": 155,     # Maximum number of bikes in the system
+    "total_timeslots": 168,              # Total number of time slots in one episode (1 month)
+    "maximum_number_of_bikes": 160,     # Maximum number of bikes in the system
     "fixed_rebal_bikes_per_cell": 4     # Min bikes per cell after static rebalancing
 }
 
@@ -40,6 +40,7 @@ def simulate_env(env: gym, episode: int, tbar: tqdm | tqdm_telegram) -> dict:
     options ={
         'total_timeslots': params["total_timeslots"],
         'maximum_number_of_bikes': params["maximum_number_of_bikes"],
+        'total_timeslots': params["total_timeslots"],
         'fixed_rebal_bikes_per_cell': params["fixed_rebal_bikes_per_cell"],
         'depot_id': 18,         # 491 back
         'initial_cell': 18,     # 185 back
@@ -84,7 +85,7 @@ def main():
     env.unwrapped.seed(seed)
 
     tbar = tqdm(
-        range(7*params["num_episodes"]),
+        range(int(params["total_timeslots"]/8) * params["num_episodes"]),
         desc="Training Episode 0, Week 0, Monday at 01:00:00",
         position=0,
         leave=True,
