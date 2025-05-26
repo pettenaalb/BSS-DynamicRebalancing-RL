@@ -15,7 +15,7 @@ from utils import convert_seconds_to_hours_minutes
 
 # ----------------------------------------------------------------------------------------------------------------------
 
-data_path = "../data/"
+data_path = "data/"
 
 # set seed
 seed = 31
@@ -25,7 +25,8 @@ torch.manual_seed(seed)
 params = {
     "num_episodes": 1,                  # Total number of training episodes
     "total_timeslots": 56,              # Total number of time slots in one episode (1 month)
-    "maximum_number_of_bikes": 140,     # Maximum number of bikes in the system
+    "maximum_number_of_bikes": 155,     # Maximum number of bikes in the system
+    "fixed_rebal_bikes_per_cell": 4     # Min bikes per cell after static rebalancing
 }
 
 def simulate_env(env: gym, episode: int, tbar: tqdm | tqdm_telegram) -> dict:
@@ -39,6 +40,7 @@ def simulate_env(env: gym, episode: int, tbar: tqdm | tqdm_telegram) -> dict:
     options ={
         'total_timeslots': params["total_timeslots"],
         'maximum_number_of_bikes': params["maximum_number_of_bikes"],
+        'fixed_rebal_bikes_per_cell': params["fixed_rebal_bikes_per_cell"],
         'depot_id': 18,         # 491 back
         'initial_cell': 18,     # 185 back
         'num_rebalancing_events': 2
@@ -50,7 +52,7 @@ def simulate_env(env: gym, episode: int, tbar: tqdm | tqdm_telegram) -> dict:
 
     while not_done:
         # Step the environment with the chosen action
-        *_, done, terminated, info = env.step(0)
+        *_, done, terminated, info = env.step(0)        # this is the step
 
         # Check if the episode is complete
         not_done = not done
@@ -83,7 +85,7 @@ def main():
 
     tbar = tqdm(
         range(7*params["num_episodes"]),
-        desc="Training Episode 1, Week 1, Monday at 01:00:00",
+        desc="Training Episode 0, Week 0, Monday at 01:00:00",
         position=0,
         leave=True,
         dynamic_ncols=True
@@ -102,9 +104,9 @@ def main():
     if not os.path.exists('results'):
         os.makedirs('results')
 
-    with open('results/total_failures.pkl', 'wb') as f:
+    with open('benchmarks/results/total_failures.pkl', 'wb') as f:
         pickle.dump(total_failures, f)
-    with open('results/rebalance_time.pkl', 'wb') as f:
+    with open('benchmarks/results/rebalance_time.pkl', 'wb') as f:
         pickle.dump(rebalance_time, f)
 
     # Print the rewards after training
@@ -114,7 +116,7 @@ def main():
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Benchmark file')
-    parser.add_argument('--data_path', type=str, default="../data/", help='Path to the data folder')
+    parser.add_argument('--data_path', type=str, default="data/", help='Path to the data folder')
 
     args = parser.parse_args()
     if args.data_path:

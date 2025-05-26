@@ -169,7 +169,7 @@ def main():
     #
     # plot_data_online(failures, idx=6, xlabel='Time Slot', ylabel='Total Failures', save_path=os.path.join('total_failures_baseline.png'))
 
-    with open('../benchmarks/results/rebalance_time.pkl', 'rb') as f:
+    with open('benchmarks/results/rebalance_time.pkl', 'rb') as f:
         data = pickle.load(f)
 
     plot_data_online(data, idx=1, xlabel='Time Slot', ylabel='Data')

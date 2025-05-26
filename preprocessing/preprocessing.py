@@ -13,7 +13,7 @@ params = {
     'place': ["Cambridge, Massachusetts, USA"],
     'network_type': 'bike',
 
-    'data_path': "../data/",
+    'data_path': "data/",
     'graph_file': "utils/cambridge_network.graphml",
     'cell_data_path': "utils/cell_data.pkl",
     'global_rates_path': "utils/global_rates.pkl",
@@ -43,8 +43,8 @@ def main():
             download_and_extract(url, save_path, tbar)
         tbar.update(1)
 
-    if os.path.exists(save_path + '__MACOSX'):
-        shutil.rmtree(save_path + '__MACOSX')
+    # if os.path.exists(save_path + '__MACOSX'):
+    #     shutil.rmtree(save_path + '__MACOSX')
 
     # ---------- PREPROCESS TRIP DATA ----------
     print("Finished downloading trip data... Preprocessing trip data.")
@@ -225,7 +225,7 @@ def main():
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Preprocess whole data.")
-    parser.add_argument("--data_path", type=str, default="../data/", help="The directory where the data will be saved.")
+    parser.add_argument("--data_path", type=str, default="data/", help="The directory where the data will be saved.")
 
     args = parser.parse_args()
     if args.data_path:
