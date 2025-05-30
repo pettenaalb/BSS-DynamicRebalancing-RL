@@ -24,9 +24,10 @@ torch.manual_seed(seed)
 
 params = {
     "num_episodes": 1,                  # Total number of training episodes
-    "total_timeslots": 168,              # Total number of time slots in one episode (1 month)
-    "maximum_number_of_bikes": 160,     # Maximum number of bikes in the system
-    "fixed_rebal_bikes_per_cell": 4     # Min bikes per cell after static rebalancing
+    "total_timeslots": 56,              # Total number of time slots in one episode (1 month)
+    "fixed_rebal_bikes_per_cell": 4,    # Min bikes per cell after static rebalancing (deactivated on options!!!)
+    "maximum_number_of_bikes": 140     # Maximum number of bikes in the system
+    
 }
 
 def simulate_env(env: gym, episode: int, tbar: tqdm | tqdm_telegram) -> dict:
@@ -41,7 +42,7 @@ def simulate_env(env: gym, episode: int, tbar: tqdm | tqdm_telegram) -> dict:
         'total_timeslots': params["total_timeslots"],
         'maximum_number_of_bikes': params["maximum_number_of_bikes"],
         'total_timeslots': params["total_timeslots"],
-        'fixed_rebal_bikes_per_cell': params["fixed_rebal_bikes_per_cell"],
+        # 'fixed_rebal_bikes_per_cell': params["fixed_rebal_bikes_per_cell"],
         'depot_id': 18,         # 491 back
         'initial_cell': 18,     # 185 back
         'num_rebalancing_events': 2

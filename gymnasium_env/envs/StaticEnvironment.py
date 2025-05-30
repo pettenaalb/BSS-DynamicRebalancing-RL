@@ -75,31 +75,32 @@ class StaticEnv(gym.Env):
 
         # Initialize simulation state variables
         self.pmf_matrix, self.global_rate, self.global_rate_dict = None, None, None
-        self.system_bikes, self.outside_system_bikes, self.maximum_number_of_bikes = None, None, 0, 
-        self.fixed_rebal_bikes_per_cell= 5
+        self.system_bikes, self.outside_system_bikes = None, None
+        self.maximum_number_of_bikes, self.fixed_rebal_bikes_per_cell = 0, 5
         self.env_time, self.timeslot, self.day = 0, 0, 'monday'
-        self.timeslots_completed, self.days_completed, self.total_timeslots = 0, 0, 0
+        self.timeslots_completed, self.days_completed, self.total_timeslots = 0, 0, 56
         self.depot, self.depot_node = None, None
         self.stations = None
-        self.event_buffer =[]
+        self.event_buffer = []
         self.cell_subgraph = None
         self.next_bike_id = 0
 
-        self.num_rebalancing_events, self.rebalancing_hours = 0, []
+        self.num_rebalancing_events = 1 
+        self.rebalancing_hours = 0, []
 
 
     def reset(self, seed=None, options=None) -> tuple[np.array, dict]:
         # Call parent class reset
         super().reset(seed=seed)
 
-        # Day and time slot options
-        self.day = options.get('day', 'monday') if options else 'monday'
-        self.timeslot = options.get('timeslot', 0) if options else 0
-        self.total_timeslots = options.get('total_timeslots', 56) if options else 56
-        self.num_rebalancing_events = options.get('num_rebalancing_events', 1) if options else 1
-
-        # Bike options
         if options:
+            # Day and time slot options
+            self.day = options.get('day', 'monday')
+            self.timeslot = options.get('timeslot', 0)
+            self.total_timeslots = options.get('total_timeslots', 56)
+            self.num_rebalancing_events = options.get('num_rebalancing_events', 1)
+
+            # Bike options
             self.maximum_number_of_bikes = options.get('maximum_number_of_bikes', self.maximum_number_of_bikes)
             self.fixed_rebal_bikes_per_cell= options.get('fixed_rebal_bikes_per_cell', self.fixed_rebal_bikes_per_cell)
 
@@ -217,7 +218,15 @@ class StaticEnv(gym.Env):
             if self.env_time % 3600 == 0:
                 hour = ((self.env_time // 3600) + 1) % 24
                 if hour in self.rebalancing_hours:
-                    time_to_rebalance = self._rebalance_system()
+                    num_bikes_per_cell = self.fixed_rebal_bikes_per_cell
+                    time_to_rebalance = -1
+                    while time_to_rebalance==-1 :
+                        try:
+                            # print(f"bike per cell: {num_bikes_per_cell}")
+                            time_to_rebalance = self._rebalance_system(num_bikes_per_cell)
+                        except ValueError:
+                            num_bikes_per_cell -= 1
+                    
                     rebalance_time.append(time_to_rebalance)        
 
             # Update timeslot and day
@@ -300,7 +309,7 @@ class StaticEnv(gym.Env):
         return pmf_matrix, global_rate
 
 
-    def _rebalance_system(self) -> int:
+    def _rebalance_system(self,num_bikes_per_cell: int) -> int:
         # Add bikes back to the system
         while len(self.system_bikes) < self.maximum_number_of_bikes:
             bike = self.outside_system_bikes.pop(next(iter(self.outside_system_bikes)))
@@ -310,12 +319,13 @@ class StaticEnv(gym.Env):
         net_flow_per_cell = self._compute_net_flow()
 
         # Assign bikes to cells based on the net flow
-        bikes_per_cell = {cell_id: self.fixed_rebal_bikes_per_cell for cell_id in self.cells.keys()}
+
+        bikes_per_cell = {cell_id: num_bikes_per_cell for cell_id in self.cells.keys()}
         available_bikes = sum([1 for bike in self.system_bikes.values() if bike.available])
-        left_bikes = available_bikes - self.fixed_rebal_bikes_per_cell * len(self.cells)
+        left_bikes = available_bikes - num_bikes_per_cell * len(self.cells)
         # Chech if there are too few bikes
         if left_bikes < 0:
-            raise ValueError("Low on bikes!! \nThe maximum number of bikes set in params is too low to fullfill a minimum bike rebalancing of 5 bikes per cell. \nTry to raise the value of maximum_number_of_bikes")
+            raise ValueError("Low on bikes!! \nThe maximum number of bikes set in params is too low to fullfill a minimum bike rebalancing \nTry to raise the value of maximum_number_of_bikes")
         total_negative_flow = sum(flow for flow in net_flow_per_cell.values() if flow < 0)
         used_bikes = 0
         for cell_id, flow in net_flow_per_cell.items():

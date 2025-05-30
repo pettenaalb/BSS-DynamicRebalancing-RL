@@ -5,6 +5,8 @@ __pycache__/
 .vscode/
 osmnx-examples/
 cache/
+*.log
+
 
 # Ignore everything in data/
 data/
@@ -15,8 +17,9 @@ data/
 !data/utils/filtered_stations.csv
 
 gym/
+gymnasium_env.egg-info/
 graph_images/
-simulator/
+# gimnasium_env/simulator/
 plots/
 dummy_file.py
 data_cambridge/
@@ -25,10 +28,14 @@ data_cambridge_full/
 data_cambridge_medium/
 data_cambridge_small/
 other/
-benchmarks/results/
+
 data_new/
+benchmarks/results/
+benchmarks/results/rebalance_time.pkl
+benchmarks/results/total_failures.pkl
 results/FINAL_RESULTS/
 results/best_training/
 results/best_training_no_recharge/
 results/best_validation/
 results/best_validation_no_recharge/
+
