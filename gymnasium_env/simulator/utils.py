@@ -286,9 +286,10 @@ def initialize_cells_subgraph(cells: dict[int, "Cell"], nodes_dict: dict[int, tu
     Initialize a subgraph of the road network based on the cells.
 
     Parameters:
-        - graph (nx.MultiDiGraph): The road network graph.
         - cells (dict): A dictionary of cells in the network.
         - nodes_dict (dict): A dictionary of nodes and their coordinates.
+        - distance_matrix (pd.DataFrame): Dictionary of station to station distances.
+        - node_feature (dict): Features of each node.
 
     Returns:
         - nx.Graph: A subgraph of the road network containing the center nodes of the cells.
@@ -308,7 +309,7 @@ def initialize_cells_subgraph(cells: dict[int, "Cell"], nodes_dict: dict[int, tu
         "demand_rate": 0.0,
         "arrival_rate": 0.0,
         "bike_load": 0.0,
-        "visits": 0.0,
+        "si": 0.0,
         "critic_score": 0.0,
     }
 

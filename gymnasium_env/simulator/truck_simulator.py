@@ -9,7 +9,20 @@ from gymnasium_env.simulator.truck import Truck
 from gymnasium_env.simulator.station import Station
 
 # ----------------------------------------------------------------------------------------------------------------------
+"""
+    This description is valid for the methods: move_up, move_down, move_left, move right
+    Moves the truck in the rispective direction and calculates the time and distance costs of this actions.
 
+    Parameters:
+        - truck (Truck): The truck to move
+        - distance_matrix (pd.DataFrame): Dictionary of the distance between two stations.
+        - cell_dict (dict): Dictionary of the Cells of the map
+        - mean_velocity (int): Mean velocity of the truck moving to the next cell
+
+    Returns:
+        - time (int): Value of the time to move the destination cell
+        - distance (int): Value of the total distance covered by the truck
+    """
 def move_up(truck: Truck, distance_matrix: pd.DataFrame, cell_dict: dict[int, Cell], mean_velocity: int) -> tuple[int, int]:
     cell = truck.get_cell()
     up_cell = cell_dict.get(cell.get_adjacent_cells().get('up'))
@@ -80,12 +93,28 @@ def move_right(truck: Truck, distance_matrix: pd.DataFrame, cell_dict: dict[int,
 
 def drop_bike(truck: Truck, distance_matrix: pd.DataFrame, mean_velocity: int, depot_node: int,
               depot: dict, node: int = None) -> tuple[int, int]:
+    """
+    Unloads a bike to a station. If the truck is empty, go get more bikes at the depot.
+
+    Parameters:
+        - truck (Truck): The truck to move
+        - distance_matrix (pd.DataFrame): Dictionary of the distance between two stations.
+        - mean_velocity (int): Mean velocity of the truck moving to the next cell
+        - depot_node (int): Station ID of the depot.
+        - depot (int): Number of bikes at the depot.
+        - node (int): Station ID for the bike drop. 
+
+    Returns:
+        - int: Value of the time round trip to the depot if more bikes are needed, else = 0 
+        - int: Value of the total distance round trip to the depot if more bikes are needed, else = 0
+    """
     time = 0
     distance = 0
 
     position = truck.get_position()
     target_node = truck.get_cell().get_center_node() if node is None else node
 
+    # check if the truck is empty. If so, go get more bikes.
     if truck.get_load() == 0:
         distance = distance_matrix.loc[truck.get_position(), depot_node]
         velocity_kmh = truncated_gaussian(10, 70, mean_velocity, 5)
@@ -96,11 +125,12 @@ def drop_bike(truck: Truck, distance_matrix: pd.DataFrame, mean_velocity: int, d
         position = depot_node
 
     if position != target_node:
-        distance = distance_matrix.loc[position, target_node]
+        distance = distance_matrix.loc[position, target_node]           # isn't it "distance += distance_matrix..."
         velocity_kmh = truncated_gaussian(10, 70, mean_velocity, 5)
         time += int(distance * 3.6 / velocity_kmh)
         truck.set_position(target_node)
 
+    # at what point do we unload??
     truck.leaving_cell = truck.get_cell()
 
     return time, distance
@@ -108,6 +138,24 @@ def drop_bike(truck: Truck, distance_matrix: pd.DataFrame, mean_velocity: int, d
 
 def pick_up_bike(truck: Truck, station_dict: dict[int, Station], distance_matrix: pd.DataFrame,
                  mean_velocity: int, depot_node: int, depot: dict, system_bikes: dict) -> tuple[int, int, bool]:
+    """
+    Piks up a bike to a station based on the lowest "bike_metric".
+    The "bikes_metric" is a dictionary where the value of each bike is a normalized value proportional to distance and battery value.
+
+    Parameters:
+        - truck (Truck): The truck to move
+        - station_dict (dict): Dictionary of system's stations.
+        - distance_matrix (pd.DataFrame): Dictionary of the distance between two stations.
+        - mean_velocity (int): Mean velocity of the truck moving to the next cell
+        - depot_node (int): Station ID of the depot.
+        - depot (int): Number of bikes at the depot.
+        - system_bikes (dict): Dictionary of bikes inside the system.
+
+    Returns:
+        - int: Value of the time round trip to the depot if more bikes are needed, else = 0 
+        - int: Value of the total distance round trip to the depot if more bikes are needed, else = 0
+        - bool = True
+    """
     cell = truck.get_cell()
     bike_dict = {}
     for station_id in cell.get_nodes():
@@ -172,6 +220,23 @@ def pick_up_bike(truck: Truck, station_dict: dict[int, Station], distance_matrix
 
 def charge_bike(truck: Truck, station_dict: dict[int, Station], distance_matrix: pd.DataFrame,
                 mean_velocity: int, depot_node: int, depot: dict, system_bikes: dict) -> tuple[int, int, bool]:
+    """
+    Piks up a bike to a station based on ???
+
+    Parameters:
+        - truck (Truck): The truck to move
+        - station_dict (dict): Dictionary of system's stations.
+        - distance_matrix (pd.DataFrame): Dictionary of the distance between two stations.
+        - mean_velocity (int): Mean velocity of the truck moving to the next cell
+        - depot_node (int): Station ID of the depot.
+        - depot (int): Number of bikes at the depot.
+        - system_bikes (dict): Dictionary of bikes inside the system.
+
+    Returns:
+        - int: Value of the time round trip to the depot if more bikes are needed, else = 0 
+        - int: Value of the total distance round trip to the depot if more bikes are needed, else = 0
+        - bool = True
+    """
     cell = truck.get_cell()
     bike_dict = {}
     for station_id in cell.get_nodes():
@@ -223,6 +288,19 @@ def stay(truck: Truck) -> int:
 # ----------------------------------------------------------------------------------------------------------------------
 
 def tsp_rebalancing(surplus_nodes: dict, deficit_nodes: dict, starting_node, distance_matrix: pd.DataFrame):
+    """
+    Computes the system rebalancing using the traveling_salesman_problem algorithm to calculate the total time and the total path of the truck.
+
+    Parameters:
+        - surplus_nodes (dict): Dictionary of the nodes with eccess bikes
+        - deficit_nodes (dict): Dictionary of the nodes with deficit bikes
+        - starting_node (int): Station ID to be the first station visited
+        - distance_matrix (dict): Dictionary of the distance between two stations.
+
+    Returns:
+        - total_distance (int): Value of the total distance covered by the truck for the rebalancing
+        - final_route (dict): Ordered dictionary of the stations to visit
+    """
     all_nodes = list(surplus_nodes.keys()) + list(deficit_nodes.keys())
     tsp_graph = nx.Graph()
 

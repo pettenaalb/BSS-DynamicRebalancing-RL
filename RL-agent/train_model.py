@@ -22,7 +22,7 @@ from gymnasium_env.simulator.utils import initialize_cells_subgraph
 
 # ----------------------------------------------------------------------------------------------------------------------
 
-data_path = "../data/"
+data_path = "data/"
 run_id = 0
 
 # if GPU is to be used
@@ -31,7 +31,7 @@ device = torch.device(
     # "mps" if torch.backends.mps.is_available() else
     "cpu"
 )
-
+print("Device available: " + device.__getattribute__("type"))
 # set seed
 seed = 31
 np.random.seed(seed)
@@ -115,7 +115,6 @@ def train_dqn(env: gym, agent: DQNAgent, batch_size: int, episode: int, tbar: tq
     state = convert_graph_to_data(info['cells_subgraph'], node_features=node_features)
     state.agent_state = agent_state
     state.steps = info['steps']
-
     cell_dict = info['cell_dict']
     nodes_dict = info['nodes_dict']
     distance_matrix = info['distance_matrix']
@@ -302,7 +301,6 @@ def validate_dqn(env: gym, agent: DQNAgent, episode: int, tbar: tqdm | tqdm_tele
     state = convert_graph_to_data(info['cells_subgraph'], node_features=node_features)
     state.agent_state = agent_state
     state.steps = info['steps']
-
     cell_dict = info['cell_dict']
     nodes_dict = info['nodes_dict']
     distance_matrix = info['distance_matrix']
@@ -398,6 +396,8 @@ def validate_dqn(env: gym, agent: DQNAgent, episode: int, tbar: tqdm | tqdm_tele
             tbar.set_description(f"Validating Episode {episode}, Week {info['week'] % 52}, {info['day'].capitalize()} "
                                  f"at {convert_seconds_to_hours_minutes(info['time'])}")
             tbar.set_postfix({'eps': agent.epsilon})
+
+            # tbar.update(1)
 
         iterations += 1
         if done:

@@ -205,7 +205,7 @@ class FullyDynamicEnv(gym.Env):
         for index, row in gdf_nodes.iterrows():
             station = Station(index, row['y'], row['x'])
             stns[index] = station
-        stns[10000] = Station(10000, 0, 0)
+        stns[10000] = Station(10000, 0, 0)      # the "out of the system" station
         self.stations = stns
 
         # Set the cell for each station
@@ -213,6 +213,7 @@ class FullyDynamicEnv(gym.Env):
             for node in cell.nodes:
                 self.stations[node].set_cell(cell)
 
+        # Check for 'cell=None' assigned stations
         for station in self.stations.values():
             if station.get_cell() is None and station.get_station_id() != 10000:
                 raise ValueError(f"Station {station} is not assigned to a cell.")
@@ -347,6 +348,7 @@ class FullyDynamicEnv(gym.Env):
         # Handle specific actions post-environment update
         # TURN OFF THIS TO DISABLE BATTERY CHARGE
         # if action in {Actions.DROP_BIKE.value, Actions.CHARGE_BIKE.value}:
+        
         if bike_picked_up or (action == Actions.DROP_BIKE.value and not self.invalid_drop_action):
             station = self.stations.get(self.truck.get_position())
             bike = self.truck.unload_bike()
@@ -450,7 +452,7 @@ class FullyDynamicEnv(gym.Env):
             distance_matrix=self.distance_matrix,
         )
 
-        # Update time of each event
+        # Shift the 'next_event_buffer' times to the next slot
         for event in self.next_event_buffer:
             event.time += 3600 * 3
 
@@ -504,8 +506,7 @@ class FullyDynamicEnv(gym.Env):
                 stations=self.stations,
                 distance_matrix=self.distance_matrix,
             )
-
-            # Update time of each event
+            # Shift the 'next_event_buffer' times to the next slot
             for event in self.next_event_buffer:
                 event.time += 3600 * 3
 
@@ -521,7 +522,12 @@ class FullyDynamicEnv(gym.Env):
 
 
     def _load_pmf_matrix_global_rate(self, day: str, timeslot: int) -> tuple[pd.DataFrame, float]:
-        # Load the PMF matrix and global rate for a given day and time slot
+        """
+        Load the PMF matrix and global rate for a given day and time slot
+        Returns:
+            - pd.DataFrame: Probability mass function matrix
+            - float: Global requesst rate
+        """
         matrix_path = self.data_path + params['matrices_folder'] + '/' + str(timeslot).zfill(2) + '/'
         pmf_matrix = pd.read_csv(matrix_path + day.lower() + '-pmf-matrix.csv', index_col='osmid')
 
@@ -547,6 +553,7 @@ class FullyDynamicEnv(gym.Env):
             # Increment the environment time by 30 seconds
             self.env_time += 30
 
+            # Update eligibility_score of each cell
             for cell_id, cell in self.cells.items():
                 cell.update_eligibility_score(self.eligibility_decay)
                 if cell_id == self.truck.get_cell().get_id():
@@ -600,7 +607,7 @@ class FullyDynamicEnv(gym.Env):
             [1 if truck_cell_id == cell_id else 0 for cell_id in sorted_cells_keys],
             dtype=np.float32
         )
-        # cell_embedding = self.encoder(torch.tensor(self.zone_id_to_index[truck_cell_id])).detach().numpy()
+        # cell_embedding = self.encoder(torch.tensor(self.zone_id_to_index[truck_cell_id])).detach().numpy()  # """id]).to('cpu')).detach()""" if CUDA gives errors
 
         # Combine all features into a single observation array
         observation = np.concatenate([
@@ -730,6 +737,8 @@ class FullyDynamicEnv(gym.Env):
                 if is_critical:
                     bike_charge_penalty += 0.5
                     # bike_charge_penalty += 0.2
+                # else:
+                #     bike_charge_penalty +=0.1
 
         # ----------------------------
         # Stay penalty
@@ -753,7 +762,7 @@ class FullyDynamicEnv(gym.Env):
         # Combine all reward components with their weights
         # ----------------------------
         reward = (
-            1.0
+            1.0     # Base reward
             + stay_penalty
             + position_penalty
             + action_penalty
@@ -822,6 +831,9 @@ class FullyDynamicEnv(gym.Env):
 
 
     def _get_truck_position(self) -> tuple[float, float]:
+        """
+        Gets the truck position in coordinates and converts them in normalized coordinates.
+        """
         truck_coords = self.nodes_dict.get(self.truck.get_position())
         normalized_coords = ((truck_coords[0] - self.min_lat) / (self.max_lat - self.min_lat),
                              (truck_coords[1] - self.min_lon) / (self.max_lon - self.min_lon))
@@ -844,7 +856,10 @@ class FullyDynamicEnv(gym.Env):
                 self.depot[bike.get_bike_id()] = bike
 
     def _net_flow_based_repositioning(self, upper_bound: int = None) -> dict:
-        # Compute net flow per cell
+        """
+        Compute net flow per cell
+        - dict: Dictionary of number of bikes for each cell (for repositioning)
+        """
         net_flow_per_cell = {cell_id: 0 for cell_id in self.cells.keys()}
         for event in self.event_buffer:
             if upper_bound is not None and event.time > upper_bound:
