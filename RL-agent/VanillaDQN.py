@@ -157,7 +157,7 @@ class DQNv2(nn.Module):
         # ------------------------------------------------------------------------------
         self.agent_fc = nn.Sequential(
             # TURN OFF THIS TO DISABLE BATTERY CHARGE
-            nn.Linear(68, 256),
+            nn.Linear(72, 256),
             # nn.Linear(67, 256),
             nn.ReLU(),
             nn.Linear(256, 256),

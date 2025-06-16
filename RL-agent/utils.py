@@ -22,10 +22,14 @@ plt.ion()
 
 class Actions(Enum):
     STAY = 0
-    RIGHT = 1
-    UP = 2
+    # RIGHT = 1
+    # UP = 2
+    # LEFT = 3
+    # DOWN = 4
+    UP = 1
+    DOWN = 2
     LEFT = 3
-    DOWN = 4
+    RIGHT = 4
     DROP_BIKE = 5
     PICK_UP_BIKE = 6
     # TURN OFF THIS TO DISABLE BATTERY CHARGE

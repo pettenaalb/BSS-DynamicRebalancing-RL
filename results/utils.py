@@ -109,8 +109,8 @@ def plot_data_online(data, show_result=False, idx=1, xlabel='Step', ylabel='Rewa
                 display.clear_output(wait=True)
             else:
                 display.display(plt.gcf())
-
-    plt.show(block=True)
+        else :
+            plt.show(block=True)
 
 
 def plot_confusion_matrix(data: pd.DataFrame, title="Heatmap", x_label = "", y_label = "", cbar_label = "", cmap="YlGnBu", save_path=None):

@@ -23,7 +23,7 @@ from gymnasium_env.simulator.utils import initialize_cells_subgraph
 # ----------------------------------------------------------------------------------------------------------------------
 
 data_path = "data/"
-run_id = 0
+run_id = 1
 
 # if GPU is to be used
 device = torch.device(
@@ -41,6 +41,7 @@ params = {
     "num_episodes": 200,                            # Total number of training episodes
     "batch_size": 64,                               # Batch size for replay buffer sampling
     "replay_buffer_capacity": int(1e5),             # Capacity of replay buffer: 0.1 million transitions
+    # "input_dimentions": 72,
     "gamma": 0.95,                                  # Discount factor
     "epsilon_start": 1.0,                           # Starting exploration rate
     "epsilon_delta": 0.05,                          # Epsilon decay rate
@@ -140,10 +141,12 @@ def train_dqn(env: gym, agent: DQNAgent, batch_size: int, episode: int, tbar: tq
 
         # Remove actions that are not allowed
         avoid_actions = []
+        # Border flags implementation
+        # borders = info['borders']
 
         # Avoid moving in directions where the truck cannot move
         truck_adjacent_cells = info['truck_neighbor_cells']
-
+        
         if truck_adjacent_cells['down'] is None:
             avoid_actions.append(Actions.DOWN.value)
 
@@ -158,7 +161,7 @@ def train_dqn(env: gym, agent: DQNAgent, batch_size: int, episode: int, tbar: tq
 
         # Select an action using the agent
         # action = agent.select_action(single_state, avoid_action=avoid_actions)
-        action = agent.select_action(single_state, epsilon_greedy=True, avoid_action=avoid_actions)
+        action = agent.select_action(single_state, epsilon_greedy=True)#, avoid_action=avoid_actions)
 
         # Step the environment with the chosen action
         agent_state, reward, done, timeslot_terminated, info = env.step(action)
@@ -329,6 +332,7 @@ def validate_dqn(env: gym, agent: DQNAgent, episode: int, tbar: tqdm | tqdm_tele
         # Remove actions that are not allowed
         avoid_actions = []
 
+        # CENSORING
         # Avoid moving in directions where the truck cannot move
         truck_adjacent_cells = info['truck_neighbor_cells']
 
@@ -504,6 +508,7 @@ def main():
         device=device,
         tau=params["tau"],
         soft_update=params["soft_update"],
+        # input_dim=params["input_dimension"],
     )
 
     # Restore from checkpoint

@@ -269,6 +269,7 @@ class FullyDynamicEnv(gym.Env):
             'steps': 0,
             'number_of_system_bikes': len(self.system_bikes),
             'truck_neighbor_cells': self.truck.get_cell().get_adjacent_cells(),
+            'borders': self._get_borders(),
             'distance_matrix': self.distance_matrix,
             'truck_load': self.truck.get_load(),
         }
@@ -391,6 +392,7 @@ class FullyDynamicEnv(gym.Env):
             'number_of_system_bikes': len(self.system_bikes),
             'steps': steps,
             'truck_neighbor_cells': self.truck.get_cell().get_adjacent_cells(),
+            'borders': self._get_borders(),
             'truck_load': self.truck.get_load(),
         }
 
@@ -590,9 +592,10 @@ class FullyDynamicEnv(gym.Env):
     def _get_obs(self, action: int = None) -> np.array:
         # Encode time slot and day
         hour = divmod((self.timeslot * 3 + 1) * 3600 + self.env_time, 3600)[0]
-        ohe_hour = np.array([1 if hour == i else 0 for i in range(24)], dtype=np.float32)
-        ohe_day = np.array([1 if self.day == d else 0 for d in days2num.keys()], dtype=np.float32)
+        ohe_hour = np.array([1 if hour == i else 0 for i in range(24)], dtype=np.float32)           # hour flags
+        ohe_day = np.array([1 if self.day == d else 0 for d in days2num.keys()], dtype=np.float32)  # day flags
 
+        # previous move flags
         if action is None:
             ohe_previous_move_action = np.zeros(self.action_space.n, dtype=np.float32)
         else:
@@ -601,6 +604,7 @@ class FullyDynamicEnv(gym.Env):
                 dtype=np.float32
             )
 
+        # cell position flags
         truck_cell_id = self.truck.get_cell().get_id()
         sorted_cells_keys = sorted(self.cells.keys())
         ohe_cell_position = np.array(
@@ -609,14 +613,19 @@ class FullyDynamicEnv(gym.Env):
         )
         # cell_embedding = self.encoder(torch.tensor(self.zone_id_to_index[truck_cell_id])).detach().numpy()  # """id]).to('cpu')).detach()""" if CUDA gives errors
 
+        # borders flags
+        truck_adiacent_cells = self.truck.get_cell().get_adjacent_cells()
+        ohe_borders = self._get_borders()
+
         # Combine all features into a single observation array
         observation = np.concatenate([
-            np.array([self.truck.get_load() / self.truck.max_load], dtype=np.float32),
-            np.array([1 if len(self.system_bikes) > self.maximum_number_of_bikes - 5 else 0], dtype=np.float32),
+            np.array([self.truck.get_load() / self.truck.max_load], dtype=np.float32),                              # truck load float
+            np.array([1 if len(self.system_bikes) > self.maximum_number_of_bikes - 5 else 0], dtype=np.float32),    # sys bikes flag
             ohe_day,
             ohe_hour,
             ohe_previous_move_action,
             ohe_cell_position,
+            ohe_borders,
             # cell_embedding,
         ])
 
@@ -632,7 +641,7 @@ class FullyDynamicEnv(gym.Env):
             if event.time > self.env_time + 3600 * 3:
                 break
             if event.is_departure():
-                start_location = event.get_trip().get_start_location(ntia)
+                start_location = event.get_trip().get_start_location()
                 if start_location.get_station_id() != 10000:
                     cell = start_location.get_cell()
                     cell_id = cell.get_id()
@@ -838,6 +847,16 @@ class FullyDynamicEnv(gym.Env):
         normalized_coords = ((truck_coords[0] - self.min_lat) / (self.max_lat - self.min_lat),
                              (truck_coords[1] - self.min_lon) / (self.max_lon - self.min_lon))
         return normalized_coords
+    
+    def _get_borders(self) -> np.array:
+        """ 
+        Returns an array of flags where an adjacent cell is missing 
+        """
+        ohe_borders = np.array(
+            [1 if adiacent_cell is None else 0 for adiacent_cell in self.truck.get_cell().get_adjacent_cells().values()],
+            dtype=np.float32
+        )
+        return ohe_borders
 
 
     def _adjust_depot_system_discrepancy(self):
