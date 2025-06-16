@@ -23,7 +23,7 @@ graph_images/
 plots/
 dummy_file.py
 data_cambridge/
-results/training/
+results/
 data_cambridge_full/
 data_cambridge_medium/
 data_cambridge_small/
