@@ -8,14 +8,14 @@ from dash.dependencies import Input, Output
 from utils import load_results, get_episode_options, create_plot, action_bin_labels, generate_osmnx_graph, initialize_graph
 
 # Base paths for two training phases
-BASE_PATH = ""
+BASE_PATH = "results/"
 TRAINING_PATHS = {
-    "Training Phase 2": os.path.join("training_2", "data"),
-    "Training Phase 1": os.path.join("training_1", "data"),
-    "Training Phase 1 OK": os.path.join("training_1_OK", "data"),
-    "Validation Phase 2": os.path.join("validation_2", "data"),
-    "Validation Phase 1": os.path.join("validation_1", "data"),
-    "Validation Phase 1 OK": os.path.join("validation_1_OK", "data"),
+    "Training Phase 0": os.path.join(BASE_PATH, "training_0", "data"),
+    # "Training Phase 1": os.path.join("training_1", "data"),
+    # "Training Phase 1 OK": os.path.join("training_1_OK", "data"),
+    "Validation Phase 0": os.path.join(BASE_PATH, "validation_0", "data"),
+    # "Validation Phase 1": os.path.join("validation_1", "data"),
+    # "Validation Phase 1 OK": os.path.join("validation_1_OK", "data"),
 }
 
 # Import external stylesheets (Google Fonts)
@@ -380,7 +380,7 @@ def update_action_plot(n_intervals, n_clicks, training_path, episode_folder):
 )
 
 def update_failures_baseline_plot(interval, n_clicks):
-    with open(os.path.join('../benchmarks/results/total_failures.pkl'), 'rb') as f:
+    with open(os.path.join(BASE_PATH, 'benchmarks/results/total_failures.pkl'), 'rb') as f:
         failures = pickle.load(f)
     return create_plot(failures, "Failures", "Failures", "Timeslot", cumulative=True,
                        failures_plot=True)
@@ -406,9 +406,9 @@ def update_reward_tracking_plot(n_intervals, n_clicks, training_path, action):
      Input("update-btn-osmnx", "n_clicks")]
 )
 def update_osmnx_graph(training_path, metric, n_clicks):
-    graph = initialize_graph('../data_cambridge_medium/utils/cambridge_network.graphml')
+    graph = initialize_graph('data/utils/cambridge_network.graphml')
     # Initialize the cells
-    with open('../data_cambridge_medium/utils/cell_data.pkl', 'rb') as file:
+    with open('data/utils/cell_data.pkl', 'rb') as file:
         cells = pickle.load(file)
 
     # if training_path == "training_2/data" or training_path == "validation_2/data":

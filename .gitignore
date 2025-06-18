@@ -16,6 +16,16 @@ data/
 !data/utils/ev_velocity_matrix.csv
 !data/utils/filtered_stations.csv
 
+# ignore local results
+results/
+benchmarks/results/
+benchmarks/results/rebalance_time.pkl
+benchmarks/results/total_failures.pkl
+# ...except spersific files
+!results/concatenation_results.py
+!results/process_results.py
+!results/results_webserver.py
+
 gym/
 gymnasium_env.egg-info/
 graph_images/
@@ -23,19 +33,11 @@ graph_images/
 plots/
 dummy_file.py
 data_cambridge/
-results/
 data_cambridge_full/
 data_cambridge_medium/
 data_cambridge_small/
 other/
-
 data_new/
-benchmarks/results/
-benchmarks/results/rebalance_time.pkl
-benchmarks/results/total_failures.pkl
-results/FINAL_RESULTS/
-results/best_training/
-results/best_training_no_recharge/
-results/best_validation/
-results/best_validation_no_recharge/
+
+
 
