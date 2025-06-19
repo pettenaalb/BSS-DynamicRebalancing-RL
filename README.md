@@ -2,7 +2,8 @@
 
 This repository contains code and data for implementing a dynamic rebalancing model in a Bike Sharing System (BSS) using Reinforcement Learning (RL). The goal is to optimize bicycle distribution across stations based on demand patterns.
 
-To correctly install the project follow these steps:\
+To correctly install the project follow these steps:
+
 0. make shure to have Anaconda (or Miniconda) and python installed
 1. create a new enviroment with python=3.11
 2. copy the repository from github with the link -> a new folder BSS-DYNAMICREBALANCING-RL will be created with the project inside
