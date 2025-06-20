@@ -1,7 +1,9 @@
+print("Hello\nRight... python works...\n Now for the hard stuff:")
+
 import torch
-# import matplotlib.pyplot as plt
-# import numpy as np
-# from gymnasium_env.simulator.utils import generate_poisson_events 
+import matplotlib.pyplot as plt
+import numpy as np
+from gymnasium_env.simulator.utils import generate_poisson_events 
 
 print("\nI guess you know how this works\n")
 print("Device available:   ")

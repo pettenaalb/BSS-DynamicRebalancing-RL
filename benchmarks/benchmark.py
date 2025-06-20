@@ -26,7 +26,7 @@ params = {
     "num_episodes": 1,                  # Total number of training episodes
     "total_timeslots": 56,              # Total number of time slots in one episode (1 month)
     "fixed_rebal_bikes_per_cell": 4,    # Min bikes per cell after static rebalancing (deactivated on options!!!)
-    "maximum_number_of_bikes": 140     # Maximum number of bikes in the system
+    "maximum_number_of_bikes": 140      # Maximum number of bikes in the system
     
 }
 
