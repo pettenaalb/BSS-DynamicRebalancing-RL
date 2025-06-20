@@ -238,13 +238,14 @@ def charge_bike(truck: Truck, station_dict: dict[int, Station], distance_matrix:
         - bool = True
     """
     cell = truck.get_cell()
-    bike_dict = {}
-    for station_id in cell.get_nodes():
-        bike_dict.update(station_dict[station_id].get_bikes())
-
+    
     # Flag no bike picked up
     if cell.get_total_bikes() == 0:
         return 0, 0, False
+
+    bike_dict = {}
+    for station_id in cell.get_nodes():
+        bike_dict.update(station_dict[station_id].get_bikes())
 
     # Find the lowest metric bike
     bike_charge = {bike_id: bike.get_battery() for bike_id, bike in bike_dict.items()}

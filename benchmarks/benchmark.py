@@ -15,7 +15,7 @@ from utils import convert_seconds_to_hours_minutes
 
 # ----------------------------------------------------------------------------------------------------------------------
 
-data_path = "data/"
+data_path = "../data/"
 
 # set seed
 seed = 31

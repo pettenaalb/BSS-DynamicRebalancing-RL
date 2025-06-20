@@ -51,7 +51,7 @@ params = {
     "lr": 1e-4,                                     # Learning rate
     "total_timeslots": 56,                          # Total number of time slots in one episode (1 month)
     "maximum_number_of_bikes": 250,                 # Maximum number of bikes in the system
-    "results_path": "../results/",                  # Path to save results
+    "results_path": "results/",                     # Path to save results
     "soft_update": True,                            # Use soft update for target network
     "tau": 0.005,                                   # Tau parameter for soft update
 }
@@ -139,25 +139,24 @@ def train_dqn(env: gym, agent: DQNAgent, batch_size: int, episode: int, tbar: tq
             batch=torch.zeros(state.x.size(0), dtype=torch.long).to(device),
         )
 
+        # CENSORING
         # Remove actions that are not allowed
-        avoid_actions = []
-        # Border flags implementation
-        # borders = info['borders']
+        # avoid_actions = []
 
         # Avoid moving in directions where the truck cannot move
-        truck_adjacent_cells = info['truck_neighbor_cells']
+        # truck_adjacent_cells = info['truck_neighbor_cells']
         
-        if truck_adjacent_cells['down'] is None:
-            avoid_actions.append(Actions.DOWN.value)
+        # if truck_adjacent_cells['down'] is None:
+        #     avoid_actions.append(Actions.DOWN.value)
 
-        if truck_adjacent_cells['up'] is None:
-            avoid_actions.append(Actions.UP.value)
+        # if truck_adjacent_cells['up'] is None:
+        #     avoid_actions.append(Actions.UP.value)
 
-        if truck_adjacent_cells['left'] is None:
-            avoid_actions.append(Actions.LEFT.value)
+        # if truck_adjacent_cells['left'] is None:
+        #     avoid_actions.append(Actions.LEFT.value)
 
-        if truck_adjacent_cells['right'] is None:
-            avoid_actions.append(Actions.RIGHT.value)
+        # if truck_adjacent_cells['right'] is None:
+        #     avoid_actions.append(Actions.RIGHT.value)
 
         # Select an action using the agent
         # action = agent.select_action(single_state, avoid_action=avoid_actions)
@@ -329,28 +328,28 @@ def validate_dqn(env: gym, agent: DQNAgent, episode: int, tbar: tqdm | tqdm_tele
             batch=torch.zeros(state.x.size(0), dtype=torch.long).to(device),
         )
 
-        # Remove actions that are not allowed
-        avoid_actions = []
-
         # CENSORING
+        # Remove actions that are not allowed
+        # avoid_actions = []
+
         # Avoid moving in directions where the truck cannot move
-        truck_adjacent_cells = info['truck_neighbor_cells']
+        # truck_adjacent_cells = info['truck_neighbor_cells']
 
-        if truck_adjacent_cells['down'] is None:
-            avoid_actions.append(Actions.DOWN.value)
+        # if truck_adjacent_cells['down'] is None:
+        #     avoid_actions.append(Actions.DOWN.value)
 
-        if truck_adjacent_cells['up'] is None:
-            avoid_actions.append(Actions.UP.value)
+        # if truck_adjacent_cells['up'] is None:
+        #     avoid_actions.append(Actions.UP.value)
 
-        if truck_adjacent_cells['left'] is None:
-            avoid_actions.append(Actions.LEFT.value)
+        # if truck_adjacent_cells['left'] is None:
+        #     avoid_actions.append(Actions.LEFT.value)
 
-        if truck_adjacent_cells['right'] is None:
-            avoid_actions.append(Actions.RIGHT.value)
+        # if truck_adjacent_cells['right'] is None:
+        #     avoid_actions.append(Actions.RIGHT.value)
 
         # Select an action using the agent
         agent.epsilon = 0.05
-        action = agent.select_action(single_state, epsilon_greedy=True, avoid_action=avoid_actions)
+        action = agent.select_action(single_state, epsilon_greedy=True)
         # action = agent.select_action(single_state, greedy=True, avoid_action=avoid_actions)
 
         # Step the environment with the chosen action

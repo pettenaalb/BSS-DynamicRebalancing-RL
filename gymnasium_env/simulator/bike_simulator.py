@@ -132,12 +132,13 @@ def arrival_handler(trip: Trip, system_bikes: dict[int, Bike], outside_system_bi
 
     # Move the bike back to the system if the starting station is outside the system
     if start_station.get_station_id() == 10000:
-        bike.set_battery(bike.get_max_battery())    #unreal: an arriving bike is never at 100%
+        bike.set_battery(bike.get_max_battery())
         system_bikes[bike.get_bike_id()] = bike
 
     end_station.lock_bike(bike)
 
 # ----------------------------------------------------------------------------------------------------------------------
+# Only for benchmark 
 
 def simulate_environment(duration: int, timeslot: int, global_rate: float, pmf: pd.DataFrame, stations: dict,
                          distance_matrix: pd.DataFrame) -> list[Event]:
