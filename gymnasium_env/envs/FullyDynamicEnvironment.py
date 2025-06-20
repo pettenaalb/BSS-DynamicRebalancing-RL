@@ -131,6 +131,7 @@ class FullyDynamicEnv(gym.Env):
         self.background_thread = None
         self.discount_factor = 0.99
         self.eligibility_decay = 0.9968
+        self.borders_eligibility_decay = 0.99
         self.zero_bikes_penalty = []
         self.reward_params = None
         self.total_visits = 1
@@ -557,9 +558,13 @@ class FullyDynamicEnv(gym.Env):
 
             # Update eligibility_score of each cell
             for cell_id, cell in self.cells.items():
-                cell.update_eligibility_score(self.eligibility_decay)
-                if cell_id == self.truck.get_cell().get_id():
-                    cell.eligibility_score = 1.0
+                if all(adj is None for adj in cell.get_adjacent_cells().values()): 
+                    cell.update_eligibility_score(self.eligibility_decay)
+                else :
+                    cell.update_eligibility_score(self.borders_eligibility_decay)
+                # if cell_id == self.truck.get_cell().get_id():
+                #     cell.eligibility_score = 1.0
+            self.truck.get_cell().eligibility_score = 1.0
 
             total_failures = 0
             # Process all events that occurred before the updated environment time
