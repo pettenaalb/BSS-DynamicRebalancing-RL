@@ -23,7 +23,7 @@ from gymnasium_env.simulator.utils import initialize_cells_subgraph
 # ----------------------------------------------------------------------------------------------------------------------
 
 data_path = "data/"
-run_id = 1
+run_id = 999
 
 # if GPU is to be used
 device = torch.device(
