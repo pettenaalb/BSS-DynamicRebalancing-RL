@@ -50,13 +50,12 @@ class ActionHistoryEncoder(nn.Module):
 
 class Logger:
     def __init__(self, log_file: str, is_logging: bool = False):
-        if is_logging:
-            logging.basicConfig(filename=log_file, level=logging.INFO, filemode='w')
-            self.logger = logging.getLogger('env_logger')
-            self.is_logging = is_logging
-        else:
-            self.logger = None
-            self.is_logging = False
+        logging.basicConfig(filename=log_file, level=logging.INFO, filemode='w')
+        self.logger = logging.getLogger('env_logger')   
+        self.is_logging = is_logging
+
+    def set_logging(self, is_logging: bool):
+        self.is_logging = is_logging
 
     def new_log_line(self):
         if self.is_logging:
@@ -64,10 +63,7 @@ class Logger:
 
     def log_starting_action(self, action: str, t: int):
         if self.is_logging:
-            self.logger.info(f'START ACTION: '
-                             f'\n - {action}'
-                             f'\n - Time: {t}'
-                             f'\n - Steps needed: {int(math.ceil(t / 30))}')
+            self.logger.info(f'ACTION: {action} at Time: {t} - Steps needed: {int(math.ceil(t / 30))}')
 
     def log_ending_action(self, time: str):
         if self.is_logging:
@@ -79,10 +75,7 @@ class Logger:
 
     def log_truck(self, truck: "Truck"):
         if self.is_logging:
-            self.logger.info(f"\nTRUCK:"
-                             f"\n - CELL: {truck.cell.get_id()} - {truck.cell.get_center_node()}"
-                             f"\n - POSITION: {truck.position}"
-                             f"\n - LOAD: {truck.current_load} bikes")
+            self.logger.info(f"TRUCK in CELL: {truck.cell.get_id()} (center_node = {truck.cell.get_center_node()}) - POSITION: {truck.position} - LOAD: {truck.current_load} bikes")
 
     def log_no_available_bikes(self, start_station: int, end_station: int):
         if self.is_logging:
@@ -90,14 +83,23 @@ class Logger:
 
     def log_trip(self, trip: "Trip"):
         if self.is_logging:
-            self.logger.info("Trip scheduled %s", trip)
+            self.logger.info("Trip: %s", trip)
+    
+    def log_terminated(self, time: str):
+        if self.is_logging:
+            self.logger.info('#################################################'
+                            f'###### Slot TERMINATED - Time: {time}'
+                             '#################################################')
+
+    def log_done(self, time: str):
+        if self.is_logging:
+            self.logger.info('#################################################'
+                            f'###### THE EPISODE IS DONE - Time: {time}'
+                             '#################################################')
 
     def log(self, message: str):
         if self.is_logging:
-            self.logger.info(f"\n{message}\n")
-
-    def set_logging(self, is_logging: bool):
-        self.is_logging = is_logging
+            self.logger.info(f"{message}\n")
 
 # ----------------------------------------------------------------------------------------------------------------------
 
