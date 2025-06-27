@@ -65,7 +65,7 @@ class Logger:
             log = ("--------------------------------------------------------")
             if timeslot is not None:
                 log += (f" Timeslot = {timeslot}")
-        self.logger.info(log)
+            self.logger.info(log)
 
     def log_starting_action(self, action: str, t: int):
         if self.is_logging:
