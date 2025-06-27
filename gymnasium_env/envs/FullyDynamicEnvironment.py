@@ -37,6 +37,7 @@ params = {
 
 days2num = {'monday': 0, 'tuesday': 1, 'wednesday': 2, 'thursday': 3, 'friday': 4, 'saturday': 5, 'sunday': 6}
 num2days = {0: 'monday', 1: 'tuesday', 2: 'wednesday', 3: 'thursday', 4: 'friday', 5: 'saturday', 6: 'sunday'}
+enable_state_and_trips_logging = False
 
 # ----------------------------------------------------------------------------------------------------------------------
 
@@ -280,7 +281,7 @@ class FullyDynamicEnv(gym.Env):
 
     def step(self, action) -> tuple[np.array, float, bool, bool, dict]:
         # Log the start of the step
-        self.logger.new_log_line()
+        self.logger.new_log_line(timeslot=(8*days2num[self.day] + self.timeslot))
 
         # Check for discrepancies in the depot + system bikes between total bikes
         self._adjust_depot_system_discrepancy()
@@ -337,10 +338,11 @@ class FullyDynamicEnv(gym.Env):
 
         # Calculate steps and log the state
         steps = math.ceil(t / 30)
-        self.logger.log_state(
-            step=int(self.env_time / 30),
-            time=convert_seconds_to_hours_minutes((self.timeslot * 3 + 1) * 3600 + self.env_time)
-        )
+        if enable_state_and_trips_logging:
+            self.logger.log_state(
+                step=int(self.env_time / 30),
+                time=convert_seconds_to_hours_minutes((self.timeslot * 3 + 1) * 3600 + self.env_time)
+            )
 
         self.zero_bikes_penalty = []
 
@@ -382,6 +384,9 @@ class FullyDynamicEnv(gym.Env):
         observation = self._get_obs(action)
         self._update_graph()
 
+        # Log the reward
+        self.logger.log(message=f"--> Reward = {reward}, Total bikes = {len(self.system_bikes)}")
+
         info = {
             'cells_subgraph': self.cell_subgraph,
             'agent_position': self._get_truck_position(),
@@ -411,12 +416,19 @@ class FullyDynamicEnv(gym.Env):
             self.env_time = env_time_diff
             self.timeslots_completed += 1
             terminated = True
+            # Log Termination
+            self.logger.log_terminated(
+                time=convert_seconds_to_hours_minutes((self.timeslot * 3 + 1) * 3600 + self.env_time)
+            )
 
 
         done = True if self.timeslots_completed == self.total_timeslots else False
 
         if done:
             reward -= (self.total_failures / self.total_timeslots) / 10.0
+            self.logger.log_done(
+                time=convert_seconds_to_hours_minutes((self.timeslot * 3 + 1) * 3600 + self.env_time)
+            )
 
         # Return the step results
         return observation, reward, done, terminated, info
@@ -579,16 +591,18 @@ class FullyDynamicEnv(gym.Env):
                     system_bikes=self.system_bikes,
                     outside_system_bikes=self.outside_system_bikes,
                     logger=self.logger,
+                    enable_state_and_trips_logging=enable_state_and_trips_logging,
                     next_bike_id=self.next_bike_id
                 )
                 total_failures += failure
             failures.append(total_failures)
 
             # Log the updated state after processing events
-            self.logger.log_state(
-                step=int(self.env_time / 30),
-                time=convert_seconds_to_hours_minutes((self.timeslot * 3 + 1) * 3600 + self.env_time)
-            )
+            if enable_state_and_trips_logging:
+                self.logger.log_state(
+                    step=int(self.env_time / 30),
+                    time=convert_seconds_to_hours_minutes((self.timeslot * 3 + 1) * 3600 + self.env_time)
+                )
 
         # Return the total number of failures encountered
         return failures

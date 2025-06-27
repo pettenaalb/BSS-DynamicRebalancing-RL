@@ -25,13 +25,16 @@ if TYPE_CHECKING:
 
 class Actions(Enum):
     STAY = 0
-    RIGHT = 1
-    UP = 2
+    # RIGHT = 1
+    # UP = 2
+    # LEFT = 3
+    # DOWN = 4
+    UP = 1
+    DOWN = 2
     LEFT = 3
-    DOWN = 4
+    RIGHT = 4
     DROP_BIKE = 5
     PICK_UP_BIKE = 6
-    # TURN OFF THIS TO DISABLE BATTERY CHARGE
     CHARGE_BIKE = 7
 
 
@@ -57,13 +60,16 @@ class Logger:
     def set_logging(self, is_logging: bool):
         self.is_logging = is_logging
 
-    def new_log_line(self):
+    def new_log_line(self, timeslot=None, time=None, day=None):
         if self.is_logging:
-            self.logger.info("--------------------------------------------------------")
+            log = ("--------------------------------------------------------")
+            if timeslot is not None:
+                log += (f" Timeslot = {timeslot}")
+        self.logger.info(log)
 
     def log_starting_action(self, action: str, t: int):
         if self.is_logging:
-            self.logger.info(f'ACTION: {action} at Time: {t} - Steps needed: {int(math.ceil(t / 30))}')
+            self.logger.info(f'ACTION: {action} --> Time to complete: {t}s - Steps needed: {int(math.ceil(t / 30))}')
 
     def log_ending_action(self, time: str):
         if self.is_logging:
@@ -75,11 +81,11 @@ class Logger:
 
     def log_truck(self, truck: "Truck"):
         if self.is_logging:
-            self.logger.info(f"TRUCK in CELL: {truck.cell.get_id()} (center_node = {truck.cell.get_center_node()}) - POSITION: {truck.position} - LOAD: {truck.current_load} bikes")
+            self.logger.info(f"TRUCK in CELL: {truck.cell.get_id()} (center_node = {truck.cell.get_center_node()}, cell_bikes = {truck.cell.get_total_bikes()}) - POSITION: {truck.position} - LOAD: {truck.current_load} bikes")
 
     def log_no_available_bikes(self, start_station: int, end_station: int):
         if self.is_logging:
-            self.logger.warning(f"No bike available from station {start_station} to station {end_station}")
+            self.logger.warning(f"TRIP FAILED: No bikes from station {start_station} to station {end_station}")
 
     def log_trip(self, trip: "Trip"):
         if self.is_logging:
@@ -88,13 +94,13 @@ class Logger:
     def log_terminated(self, time: str):
         if self.is_logging:
             self.logger.info('#################################################'
-                            f'###### Slot TERMINATED - Time: {time}'
+                            f'###### Slot TERMINATED - Time: {time} '
                              '#################################################')
 
     def log_done(self, time: str):
         if self.is_logging:
             self.logger.info('#################################################'
-                            f'###### THE EPISODE IS DONE - Time: {time}'
+                            f'###### THE EPISODE IS DONE - Time: {time} '
                              '#################################################')
 
     def log(self, message: str):

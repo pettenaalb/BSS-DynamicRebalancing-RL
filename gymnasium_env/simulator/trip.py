@@ -43,7 +43,7 @@ class Trip:
         """
         from gymnasium_env.simulator.utils import convert_seconds_to_hours_minutes
         log = (f"TRIP {self.trip_id}: from {self.start_location} to {self.end_location} - Time: {convert_seconds_to_hours_minutes(self.start_time)} to {convert_seconds_to_hours_minutes(self.end_time)}")
-        if self.deviated:
+        if self.deviated and not self.failed:
             return log + f"\n - Starting station deviated to {self.deviated_location}"
 
         return log
