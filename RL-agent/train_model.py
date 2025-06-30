@@ -66,8 +66,8 @@ reward_params = {
 }
 
 enable_telegram = False
-BOT_TOKEN = '7911945908:AAHkp-x7at3fIadrlmahcTB1G6_ni2awbt4'
-CHAT_ID = '16830298'
+BOT_TOKEN = '7963966364:AAFfUAeWj40QrtL8KRYN8BJIXhHD15bnsNU'    # Aquarum2 bot
+CHAT_ID = '671757146'                                           # Alberto Pettena chat
 
 enable_checkpoint = False
 restore_from_checkpoint = False
@@ -228,7 +228,9 @@ def train_dqn(env: gym, agent: DQNAgent, batch_size: int, episode: int, tbar: tq
             timeslot = 0 if timeslot == 7 else timeslot + 1
 
             # Update progress bar
-            tbar.set_description(f"Training Episode {episode}, Week {info['week'] % 52}, {info['day'].capitalize()} "
+            # tbar.set_description(f"Training Episode {episode}, Week {info['week'] % 52}, {info['day'].capitalize()} "
+            #                      f"at {convert_seconds_to_hours_minutes(info['time'])}")
+            tbar.set_description(f"Run {run_id} cuda {args.cuda_device}. Epis {episode}, Week {info['week'] % 52}, {info['day'].capitalize()} "
                                  f"at {convert_seconds_to_hours_minutes(info['time'])}")
             tbar.set_postfix({'eps': agent.epsilon})
 
@@ -523,7 +525,7 @@ def main():
         if enable_telegram:
             tbar = tqdm_telegram(
                 range(params["total_timeslots"]*params["num_episodes"]),
-                desc="Training Episode 1, Week 1, Monday at 01:00:00",
+                desc="Training computation is starting ",
                 initial=starting_episode*params["total_timeslots"],
                 position=0,
                 leave=True,
@@ -534,7 +536,7 @@ def main():
         else:
             tbar = tqdm(
                 range(params["total_timeslots"]*params["num_episodes"]),
-                desc="Training Episode 1, Week 1, Monday at 01:00:00",
+                desc="Training computation is starting ... ... ... ...",
                 initial=starting_episode*params["total_timeslots"],
                 position=0,
                 leave=True,
@@ -649,9 +651,9 @@ def main():
         checkpoint_background_thread.join()
 
     # Print the rewards after training
-    print("\nTraining completed.")
+    print(f"\nTraining {run_id} completed.")
     if enable_telegram:
-        send_telegram_message("Training completed.", BOT_TOKEN, CHAT_ID)
+        send_telegram_message(f"Training run_id = {run_id} completed.", BOT_TOKEN, CHAT_ID)
 
 
 if __name__ == '__main__':
@@ -683,6 +685,8 @@ if __name__ == '__main__':
         raise FileNotFoundError(f"The specified data path does not exist: {data_path}")
 
     # Set up the device
+    os.environ["CUDA_VISIBLE_DEVICES"] = str(args.cuda_device )
+    torch.cuda.device_count()  # print 1
     device = torch.device(f"cuda:{args.cuda_device}" if torch.cuda.is_available() else "cpu")
 
     main()
