@@ -48,6 +48,7 @@ def _detect_self_loops(actions: tuple) -> bool:
         (Actions.DOWN.value, Actions.UP.value),
         (Actions.LEFT.value, Actions.RIGHT.value),
         (Actions.RIGHT.value, Actions.LEFT.value),
+        (Actions.STAY.value, Actions.STAY.value),
         (Actions.PICK_UP_BIKE.value, Actions.DROP_BIKE.value),
         (Actions.DROP_BIKE.value, Actions.PICK_UP_BIKE.value)
     ]
@@ -694,11 +695,18 @@ class FullyDynamicEnv(gym.Env):
             for cell in self.cells.values():
                 cell.eligibility_score = 0.0
 
+        #############################
+        # PENALTIES AND REWARD COMPOSITION
+        drop_bonus = 0.0
+        pick_up_penalty = 0.0
+        action_penalty = 0.0
+        bike_charge_penalty = 0.0
+        stay_penalty = 0.0
+        position_penalty = 0.0
         # ----------------------------
-        # Drop / Pick Up penalty
+        # Drop bonus
         # ----------------------------
         truck_cell = self.truck.get_cell()
-        drop_bonus = 0.0
         if action == Actions.DROP_BIKE.value:
             if self.invalid_drop_action:
                 drop_bonus = -1.0
@@ -708,17 +716,10 @@ class FullyDynamicEnv(gym.Env):
                 # drop_bonus = 0.3
                 # drop_bonus = 0.1
 
-        # if action == Actions.DROP_BIKE.value:
-        #     if truck_cell.get_critic_score() > 0.0:
-        #         if self.invalid_drop_action:
-        #             # drop_bonus += -1.0
-        #             drop_bonus += -0.4
-        #         else:
-        #             # drop_bonus += 1.0
-        #             drop_bonus += 0.3
-
-        pick_up_penalty = 0.0
-        if action == Actions.PICK_UP_BIKE.value:
+        # ----------------------------
+        # Pick Up penalty
+        # ----------------------------
+        elif action == Actions.PICK_UP_BIKE.value:
             if truck_cell.get_critic_score() > 0.0:
                 pick_up_penalty += -0.1
                 # pick_up_penalty += -0.05
@@ -729,9 +730,8 @@ class FullyDynamicEnv(gym.Env):
                 # pick_up_penalty += 0.02
 
         # ----------------------------
-        # Move penalty (e.g. discourage unnecessary movements)
+        # Action loop penalty (e.g. discourage unnecessary movements)
         # ----------------------------
-        action_penalty = 0.0
         if action in {Actions.UP.value, Actions.DOWN.value, Actions.LEFT.value, Actions.RIGHT.value}:
             is_2_step_loop = _detect_self_loops((action, self.last_move_action))
             self.last_move_action = action
@@ -739,7 +739,7 @@ class FullyDynamicEnv(gym.Env):
                 action_penalty += -0.1
                 # action_penalty += -0.15
 
-        if action in {Actions.PICK_UP_BIKE.value, Actions.DROP_BIKE.value}:
+        elif action in {Actions.PICK_UP_BIKE.value, Actions.DROP_BIKE.value}:
             is_2_step_loop = _detect_self_loops((action, self.last_move_action))
             self.last_move_action = action
             if is_2_step_loop:
@@ -748,11 +748,10 @@ class FullyDynamicEnv(gym.Env):
                 # action_penalty += -0.5
 
         # ----------------------------
-        # Bike charging penalty (e.g. discourage charging a bike that isn’t sufficiently discharged)
+        # Bike charging bonus/penalty (e.g. discourage charging a bike that is sufficiently discharged)
         # ----------------------------
         # TURN OFF THIS TO DISABLE BATTERY CHARGE
-        bike_charge_penalty = 0.0
-        if action == Actions.CHARGE_BIKE.value:
+        elif action == Actions.CHARGE_BIKE.value:
             is_critical = truck_cell.get_critic_score() > 0.0
             if self.truck.last_charge < 0.8:
                 if is_critical:
@@ -765,38 +764,37 @@ class FullyDynamicEnv(gym.Env):
                 if is_critical:
                     bike_charge_penalty += 0.5
                     # bike_charge_penalty += 0.2
-                # else:
-                #     bike_charge_penalty +=0.1
+                else:
+                    bike_charge_penalty += 0.1
 
         # ----------------------------
-        # Stay penalty
+        # Stay penalty (worse if stay_loop and if is_critical)
         # ----------------------------
-        stay_penalty = 0.0
-        if action == Actions.STAY.value:
+        elif action == Actions.STAY.value:
+            stay_penalty += -0.1
+            if  _detect_self_loops((action, self.last_move_action)):
+                stay_penalty += -0.4
             if truck_cell.get_critic_score() > 0.0:
-                stay_penalty += -1.0
-                # stay_penalty += -0.4
+                stay_penalty += -0.9
 
         # ----------------------------
         # Position penalty
         # ----------------------------
-        position_penalty = 0.0
-        # TRY WITH THIS
         if action in {Actions.UP.value, Actions.DOWN.value, Actions.LEFT.value, Actions.RIGHT.value, Actions.STAY.value}:
-            position_penalty += -0.2 if truck_cell.eligibility_score > 0.7 and truck_cell.get_critic_score() <= 0.0 else 0.0
-            # position_penalty += -0.2 if truck_cell.eligibility_score > 0.8 and truck_cell.get_critic_score() <= 0.0 else 0.0
+            if truck_cell.eligibility_score > 0.7 and truck_cell.get_critic_score() <= 0.0: #sum(self._get_borders)<3 and
+                position_penalty += -0.2
 
         # ----------------------------
         # Combine all reward components with their weights
         # ----------------------------
         reward = (
             1.0     # Base reward
-            + stay_penalty
-            + position_penalty
-            + action_penalty
             + drop_bonus
             + pick_up_penalty
+            + action_penalty
             + bike_charge_penalty
+            + stay_penalty
+            + position_penalty
         )
 
         return reward
