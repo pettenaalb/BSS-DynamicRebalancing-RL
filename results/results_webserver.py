@@ -7,16 +7,27 @@ from dash import dcc, html
 from dash.dependencies import Input, Output
 from utils import load_results, get_episode_options, create_plot, action_bin_labels, generate_osmnx_graph, initialize_graph
 
+# insert here the training runs to evaluate
+phases = [3,4,5,9,11,12,13]
+
+
 # Base paths for two training phases
 BASE_PATH = "results/"
-TRAINING_PATHS = {
-    "Training Phase 2": os.path.join(BASE_PATH, "training_2", "data"),
-    "Training Phase 3": os.path.join(BASE_PATH, "training_3", "data"),
-    "Training Phase 4": os.path.join(BASE_PATH, "training_4", "data"),
-    "Validation Phase 2": os.path.join(BASE_PATH, "validation_2", "data"),
-    "Validation Phase 3": os.path.join(BASE_PATH, "validation_3", "data"),
-    "Validation Phase 4": os.path.join(BASE_PATH, "validation_4", "data"),
-}
+TRAINING_PATHS = {}
+for n in phases :
+    label = f"Phase {n} Training"
+    folder = f"training_{n}"
+    TRAINING_PATHS.update({label: os.path.join(BASE_PATH, folder, "data")})
+    label = f"Phase {n} Validation"
+    folder = f"validation_{n}"
+    TRAINING_PATHS.update({label: os.path.join(BASE_PATH, folder, "data")})
+    # "Training Phase 3": os.path.join(BASE_PATH, "training_3", "data"),
+    # "Training Phase 3": os.path.join(BASE_PATH, "training_3", "data"),
+    # "Training Phase 4": os.path.join(BASE_PATH, "training_4", "data"),
+    # "Validation Phase 2": os.path.join(BASE_PATH, "validation_2", "data"),
+    # "Validation Phase 3": os.path.join(BASE_PATH, "validation_3", "data"),
+    # "Validation Phase 4": os.path.join(BASE_PATH, "validation_4", "data"),
+
 
 # Import external stylesheets (Google Fonts)
 external_stylesheets = ['https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap']
