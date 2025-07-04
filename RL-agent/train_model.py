@@ -398,7 +398,7 @@ def validate_dqn(env: gym, agent: DQNAgent, episode: int, tbar: tqdm | tqdm_tele
             timeslot = 0 if timeslot == 7 else timeslot + 1
 
             # Update progress bar
-            tbar.set_description(f"Run {run_id} cuda {args.cuda_device}. VALIDATING Episode {episode} {info['day'].capitalize()} "
+            tbar.set_description(f"Validating Episode {episode}, Week {info['week'] % 52}, {info['day'].capitalize()} "
                                  f"at {convert_seconds_to_hours_minutes(info['time'])}")
             tbar.set_postfix({'eps': agent.epsilon})
 
@@ -432,36 +432,6 @@ def validate_dqn(env: gym, agent: DQNAgent, episode: int, tbar: tqdm | tqdm_tele
     }
 
     return results
-
-def validation_pass(validation_results_path, logger,  best_validation_score, env, agent, episode, tbar: tqdm | tqdm_telegram):
-    validation_results = validate_dqn(env, agent, episode, tbar)
-
-    val_failures_per_timeslot = validation_results['failures_per_timeslot']
-    mean_val_failures_per_timeslot = sum(val_failures_per_timeslot) / params["total_timeslots"]
-    total_val_failures = sum(val_failures_per_timeslot)
-
-    logger.info(
-        f"Episode {episode}: Mean Validation Failures = {mean_val_failures_per_timeslot:.2f}, "
-        f"Total Validation Failures = {total_val_failures}, "
-        f"Best Validation Failures = {best_validation_score}"
-    )
-
-    if total_val_failures < best_validation_score:
-        best_validation_score = total_val_failures
-
-        # Save validation result lists
-        results_path = validation_results_path + 'data/' + str(episode).zfill(2) + '/'
-        if not os.path.exists(results_path):
-            os.makedirs(results_path)
-        for key, value in validation_results.items():
-            with open(results_path + key + '.pkl', 'wb') as f:
-                pickle.dump(value, f)
-
-        # Save the trained model
-        trained_models_folder = validation_results_path + 'trained_models/' + str(episode).zfill(2) + '/'
-        if not os.path.exists(trained_models_folder):
-            os.makedirs(trained_models_folder)
-        agent.save_model(trained_models_folder + 'trained_agent.pt')
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -615,14 +585,34 @@ def main():
 
             # Save checkpoint if the training and validation score is better
             if agent.epsilon < 0.2 or mean_train_failures < 15:
-            # if episode%10 == 0 and episode > 0 :
-                validation_pass(validation_results_path, logger, best_validation_score, env, agent, episode, tbar)
-                # THE FOLLOWING PARALLELIZATION DOESN'T WORK BY NOW. USE WITH CAUTION.
-                # validation_background_thread = threading.Thread(target=validation_pass,
-                #                                                 args=(validation_results_path, logger, best_validation_score, env, agent, episode, tbar))
-                # validation_background_thread.start()
+                validation_results = validate_dqn(env, agent, episode, tbar)
 
+                val_failures_per_timeslot = validation_results['failures_per_timeslot']
+                mean_val_failures_per_timeslot = sum(val_failures_per_timeslot) / params["total_timeslots"]
+                total_val_failures = sum(val_failures_per_timeslot)
 
+                logger.info(
+                    f"Episode {episode}: Mean Validation Failures = {mean_val_failures_per_timeslot:.2f}, "
+                    f"Total Validation Failures = {total_val_failures}, "
+                    f"Best Validation Failures = {best_validation_score}"
+                )
+
+                if total_val_failures < best_validation_score:
+                    best_validation_score = total_val_failures
+
+                    # Save validation result lists
+                    results_path = validation_results_path + 'data/' + str(episode).zfill(2) + '/'
+                    if not os.path.exists(results_path):
+                        os.makedirs(results_path)
+                    for key, value in validation_results.items():
+                        with open(results_path + key + '.pkl', 'wb') as f:
+                            pickle.dump(value, f)
+
+                    # Save the trained model
+                    trained_models_folder = validation_results_path + 'trained_models/' + str(episode).zfill(2) + '/'
+                    if not os.path.exists(trained_models_folder):
+                        os.makedirs(trained_models_folder)
+                    agent.save_model(trained_models_folder + 'trained_agent.pt')
 
             # Save checkpoint
             if enable_checkpoint:
