@@ -584,7 +584,7 @@ def main():
             )
 
             # Save checkpoint if the training and validation score is better
-            if agent.epsilon < 0.2 or mean_train_failures < 15:
+            if episode%10 == 0 and (agent.epsilon < 0.2 or mean_train_failures < 15):
                 validation_results = validate_dqn(env, agent, episode, tbar)
 
                 val_failures_per_timeslot = validation_results['failures_per_timeslot']
