@@ -8,8 +8,8 @@ from dash.dependencies import Input, Output
 from utils import load_results, get_episode_options, create_plot, action_bin_labels, generate_osmnx_graph, initialize_graph
 
 # insert here the training runs to evaluate
-phases = [3,4,5,9,11,12,13]
-
+phases = [3,4,6,8,9,10]
+port = 8050
 
 # Base paths for two training phases
 BASE_PATH = "results/"
@@ -447,4 +447,4 @@ def update_osmnx_graph(training_path, metric, n_clicks):
 
 # Run the Dash app
 if __name__ == '__main__':
-    app.run_server(debug=True, host='0.0.0.0', port=8050)
+    app.run_server(debug=True, host='0.0.0.0', port=port)
