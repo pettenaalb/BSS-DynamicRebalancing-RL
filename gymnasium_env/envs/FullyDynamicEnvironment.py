@@ -570,7 +570,7 @@ class FullyDynamicEnv(gym.Env):
 
             # Update eligibility_score of each cell
             for cell_id, cell in self.cells.items():
-                if all(adj is None for adj in cell.get_adjacent_cells().values()): 
+                if all(adj is not None for adj in cell.get_adjacent_cells().values()): 
                     cell.update_eligibility_score(self.eligibility_decay)
                 else :
                     cell.update_eligibility_score(self.borders_eligibility_decay)
