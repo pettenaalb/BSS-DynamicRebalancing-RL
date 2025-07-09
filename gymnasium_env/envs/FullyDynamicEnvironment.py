@@ -346,6 +346,7 @@ class FullyDynamicEnv(gym.Env):
 
         self.zero_bikes_penalty = []
 
+        self.logger.log(message=f"Eligibilty score of cell {self.truck.get_cell().get_id()} before update is {old_eligibility_score}")
         # Update the environment state
         failures = self._jump_to_next_state(steps)
 
@@ -385,7 +386,7 @@ class FullyDynamicEnv(gym.Env):
         self._update_graph()
 
         # Log the reward
-        self.logger.log(message=f"--> Reward = {reward}, Total bikes = {len(self.system_bikes)}")
+        self.logger.log(message=f"--> Reward = {reward}, System bikes = {len(self.system_bikes)}, Depot bikes = {len(self.depot)}\n")
 
         info = {
             'cells_subgraph': self.cell_subgraph,
@@ -798,7 +799,7 @@ class FullyDynamicEnv(gym.Env):
             + pick_up_penalty
             + bike_charge_penalty
         )
-
+        self.logger.log(message=f"split reward {stay_penalty} {position_penalty} {action_penalty} {drop_bonus} {pick_up_penalty} {bike_charge_penalty}")
         return reward
 
 
@@ -892,6 +893,8 @@ class FullyDynamicEnv(gym.Env):
                 bike = self.outside_system_bikes.pop(next(iter(self.outside_system_bikes)))
                 bike.reset()
                 self.depot[bike.get_bike_id()] = bike
+            
+            self.logger.warning(message=f" ---------> System has been adjusted to max_number_number_of_bikes adding {n_bikes} bikes")
 
     def _net_flow_based_repositioning(self, upper_bound: int = None) -> dict:
         """
