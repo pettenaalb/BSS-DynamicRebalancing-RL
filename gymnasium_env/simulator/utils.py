@@ -105,8 +105,11 @@ class Logger:
 
     def log(self, message: str):
         if self.is_logging:
-            self.logger.info(f"{message}\n")
+            self.logger.info(f"{message}")
 
+    def warning(self, message: str):
+        if self.is_logging:
+            self.logger.warning(f"{message}")
 # ----------------------------------------------------------------------------------------------------------------------
 
 def kahan_sum(arr):
