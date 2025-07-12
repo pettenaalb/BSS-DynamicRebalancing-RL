@@ -48,6 +48,7 @@ def _detect_self_loops(actions: tuple) -> bool:
         (Actions.DOWN.value, Actions.UP.value),
         (Actions.LEFT.value, Actions.RIGHT.value),
         (Actions.RIGHT.value, Actions.LEFT.value),
+        (Actions.STAY.value, Actions.STAY.value),
         (Actions.PICK_UP_BIKE.value, Actions.DROP_BIKE.value),
         (Actions.DROP_BIKE.value, Actions.PICK_UP_BIKE.value)
     ]
@@ -697,6 +698,7 @@ class FullyDynamicEnv(gym.Env):
                 cell.eligibility_score = 0.0
             self.logger.warning(message=f" ---------> Cell {truck_cell} has been rebalanced. Now all eligibility scores are 0.0 ###################################")
 
+        '''
         # ----------------------------
         # Drop / Pick Up penalty
         # ----------------------------
@@ -802,6 +804,106 @@ class FullyDynamicEnv(gym.Env):
             + bike_charge_penalty
         )
         self.logger.log(message=f"split reward {stay_penalty} {position_penalty} {action_penalty} {drop_bonus} {pick_up_penalty} {bike_charge_penalty}")
+
+        '''
+        # ----------------------------
+        # Reward composition
+        # ----------------------------
+        drop_reward = 0.0           # reward for dropping in critical cell or penalty for invalid_drop
+        pick_up_reward = 0.0        # reward to incentivise pick_ups and for pick_up in exiding cells or penalty for pick_up in critical cells
+        bike_charge_reward = 0.0    # reward for usefull charge of a bike or penaly for useless charge 
+        eligibility_penalty = 0.0   # penalty for visiting just seen cells (high eligibility score)
+        stay_penalty = 0.0          # penalty for stay action
+        loop_penalty = 0.0          # penalty if _detect_self_loops = True (different for every scenario)
+        border_hit_penalty = 0.0    # penalty if moving against map border        
+
+        # ----------------------------
+        # Drop Reward
+        # ----------------------------
+        if action == Actions.DROP_BIKE.value:
+            if self.invalid_drop_action:
+                drop_bonus = -1.0
+            elif truck_cell.get_critic_score() > 0.0:
+                drop_bonus = 1.0
+
+        # ----------------------------
+        # Pick-Up Reward
+        # ----------------------------
+        elif action == Actions.PICK_UP_BIKE.value:
+            if truck_cell.get_critic_score() > 0.0:
+                pick_up_penalty = -0.1
+            else:
+                pick_up_penalty = 0.1
+        
+        # ----------------------------
+        # Bike charging Reward (e.g. discourage charging a bike that isn’t sufficiently discharged)
+        # ----------------------------
+        elif action == Actions.CHARGE_BIKE.value:
+            is_critical = truck_cell.get_critic_score() > 0.0
+            # useless charge -> bad reward
+            if self.truck.last_charge < 0.8:
+                if is_critical:
+                    bike_charge_penalty = -0.1
+                else:
+                    bike_charge_penalty = -0.3
+            # usefull charge -> good reward
+            else:
+                if is_critical:
+                    bike_charge_penalty = -0.5
+                # else:
+                #     bike_charge_penalty = -0.3
+
+        # ----------------------------
+        # Eligibility low score penalty (when visiting a cell just visited a few step before)
+        # -- Applies for Stay and movements actions, Doesn't apply if the cell is critical
+        # ----------------------------
+        # TRY WITH THIS
+        elif action in {Actions.UP.value, Actions.DOWN.value, Actions.LEFT.value, Actions.RIGHT.value, Actions.STAY.value}:
+            if old_eligibility_score > 0.7 and truck_cell.get_critic_score() <= 0.0 :
+                eligibility_penalty = -0.2 
+
+        # ----------------------------
+        # Stay penalty
+        # ----------------------------
+            if action == Actions.STAY.value:
+                stay_penalty = -0.1
+                if truck_cell.get_critic_score() > 0.0:
+                    stay_penalty = -1.0
+
+        # ----------------------------
+        # Loop penalty
+        # ----------------------------
+        if _detect_self_loops((action, self.last_move_action)):
+            if action in {Actions.UP.value, Actions.DOWN.value, Actions.LEFT.value, Actions.RIGHT.value}:
+                loop_penalty = -0.1
+            elif action in {Actions.PICK_UP_BIKE.value, Actions.DROP_BIKE.value}:
+                loop_penalty = -0.25
+            elif action in {Actions.STAY.value}:
+                loop_penalty = -0.5
+            else:
+                print(f"Detect loops was triggered with action:{action} and last_action{self.last_move_action} but no penalty was given.")
+
+        # ----------------------------
+        # Border hit penalty
+        # ----------------------------
+        # if border_hit and action in {Actions.UP.value, Actions.DOWN.value, Actions.LEFT.value, Actions.RIGHT.value}:
+        #     border_hit_penalty = -2.0
+        
+        # ----------------------------
+        # Combine all reward components with their weights
+        # ----------------------------
+        reward = (
+            1.0                     # Base reward
+            + drop_reward
+            + pick_up_reward
+            + bike_charge_reward
+            + eligibility_penalty
+            + stay_penalty
+            + loop_penalty
+            + border_hit_penalty
+
+        ) 
+        self.logger.log(message=f"split reward {drop_reward} {pick_up_reward} {bike_charge_reward} {eligibility_penalty} {stay_penalty} {loop_penalty} {border_hit_penalty}")
         return reward
 
 
