@@ -346,6 +346,7 @@ class FullyDynamicEnv(gym.Env):
 
         self.zero_bikes_penalty = []
 
+        old_eligibility_score = self.truck.get_cell().eligibility_score
         self.logger.log(message=f"Eligibilty score of cell {self.truck.get_cell().get_id()} before update is {old_eligibility_score}")
         # Update the environment state
         failures = self._jump_to_next_state(steps)
@@ -381,7 +382,7 @@ class FullyDynamicEnv(gym.Env):
         self.logger.log_truck(self.truck)
 
         # Compute the outputs
-        reward = self._get_reward(action)
+        reward = self._get_reward(action, old_eligibility_score)
         observation = self._get_obs(action)
         self._update_graph()
 
@@ -652,7 +653,7 @@ class FullyDynamicEnv(gym.Env):
         return observation.astype(np.float32)
 
 
-    def _get_reward(self, action: int) -> float:
+    def _get_reward(self, action: int, old_eligibility_score: float) -> float:
         # ----------------------------
         # Compute expected departures per cell
         # ----------------------------
@@ -785,7 +786,7 @@ class FullyDynamicEnv(gym.Env):
         position_penalty = 0.0
         # TRY WITH THIS
         if action in {Actions.UP.value, Actions.DOWN.value, Actions.LEFT.value, Actions.RIGHT.value, Actions.STAY.value}:
-            position_penalty += -0.2 if truck_cell.eligibility_score > 0.7 and truck_cell.get_critic_score() <= 0.0 else 0.0
+            position_penalty += -0.2 if old_eligibility_score > 0.7 and truck_cell.get_critic_score() <= 0.0 else 0.0
             # position_penalty += -0.2 if truck_cell.eligibility_score > 0.8 and truck_cell.get_critic_score() <= 0.0 else 0.0
 
         # ----------------------------
