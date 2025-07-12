@@ -239,7 +239,8 @@ def plot_graph_with_grid(graph, cell_dict, plot_center_nodes=False, plot_number_
 
     # Configure plot appearance
     plt.axis('off')
-    plt.savefig('../data_new/grid.pdf', dpi=300, bbox_inches='tight', pad_inches=0.1)
+    plt.savefig('data/grid.png', dpi=300, bbox_inches='tight', pad_inches=0.1)
+    # plt.show()
 
 # ----------------------------------------------------------------------------------------------------------------------
 

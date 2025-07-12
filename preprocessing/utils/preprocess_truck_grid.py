@@ -8,14 +8,14 @@ import networkx as nx
 
 from shapely.geometry import Polygon, Point
 from tqdm import tqdm
-from .utils import compute_distance, plot_graph_with_grid
+from utils import compute_distance, plot_graph_with_grid
 from gymnasium_env.simulator.cell import Cell
 
 params = {
     'place': ["Cambridge, Massachusetts, USA"],
     'network_type': 'bike',
-    'data_path': "../data/",
-    'graph_file': "utils/cambridge_network.graphml",
+    'data_path': "data/",
+    'graph_file': "data/utils/cambridge_network.graphml",
 }
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -150,7 +150,7 @@ def save_cells_to_csv(cells, filename):
 def main():
     # Initialize the graph
     print("Initializing the graph... ")
-    graph = initialize_graph(params['data_path'] + params['graph_file'])
+    graph = initialize_graph(params['graph_file'])
 
     # Divide the graph into cells
     print("Dividing the graph into cells... ")
@@ -176,10 +176,10 @@ def main():
 
     plot_graph_with_grid(graph, cell_dict, plot_number_cells=True)
 
-    plot_graph_with_grid(graph, cell_dict, plot_center_nodes=True)
+    # plot_graph_with_grid(graph, cell_dict, plot_center_nodes=True)
 
     # Save dictionary to a file
-    with open(params['data_path'] + 'utils/cell_data.pkl', 'wb') as file:
+    with open('data/utils/cell_data.pkl', 'wb') as file:
         pickle.dump(cell_dict, file)
 
 
