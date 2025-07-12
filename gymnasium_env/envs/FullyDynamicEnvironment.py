@@ -658,6 +658,7 @@ class FullyDynamicEnv(gym.Env):
         # ----------------------------
         # Compute expected departures per cell
         # ----------------------------
+        truck_cell = self.truck.get_cell()
         expected_departures_per_cell = {}
         for event in self.event_buffer:
             if event.time > self.env_time + 3600 * 3:
@@ -679,7 +680,7 @@ class FullyDynamicEnv(gym.Env):
         # Update critic scores and compute a penalty for critical zones
         # ----------------------------
         # global_critic_penalty = 0.0
-        truck_cell_previous_critic_score = self.truck.get_cell().get_critic_score()
+        truck_cell_previous_critic_score = truck_cell.get_critic_score()
         for cell_id, cell in self.cells.items():
             critic_score = 0.0
             expected = 0
@@ -693,7 +694,7 @@ class FullyDynamicEnv(gym.Env):
             cell.set_critic_score(critic_score)
             # global_critic_penalty += critic_score
 
-        if truck_cell_previous_critic_score > 0.0 >= self.truck.get_cell().get_critic_score():
+        if truck_cell_previous_critic_score > 0.0 >= truck_cell.get_critic_score():
             for cell in self.cells.values():
                 cell.eligibility_score = 0.0
             self.logger.warning(message=f" ---------> Cell {truck_cell} has been rebalanced. Now all eligibility scores are 0.0 ###################################")
@@ -702,7 +703,6 @@ class FullyDynamicEnv(gym.Env):
         # ----------------------------
         # Drop / Pick Up penalty
         # ----------------------------
-        truck_cell = self.truck.get_cell()
         drop_bonus = 0.0
         if action == Actions.DROP_BIKE.value:
             if self.invalid_drop_action:
