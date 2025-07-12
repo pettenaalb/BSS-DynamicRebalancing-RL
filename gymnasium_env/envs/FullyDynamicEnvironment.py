@@ -1,7 +1,7 @@
 import math
 import pickle
 import threading
-import random
+# import random
 import bisect
 import torch
 
@@ -932,7 +932,7 @@ class FullyDynamicEnv(gym.Env):
         # Assign the remaining bikes to cells with negative flow randomly
         if bike_positioned < left_bikes:
             cell_ids = [cell_key for cell_key, flow in net_flow_per_cell.items() if flow < 0]
-            random.shuffle(cell_ids)
+            np.random.shuffle(cell_ids)
             for cell_id in cell_ids:
                 bikes_per_cell[cell_id] += 1
                 bike_positioned += 1

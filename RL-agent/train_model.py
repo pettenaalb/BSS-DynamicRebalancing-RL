@@ -6,6 +6,7 @@ import argparse
 import gc
 import warnings
 import logging
+import random
 
 import gymnasium_env.register_env
 
@@ -32,10 +33,25 @@ device = torch.device(
     "cpu"
 )
 print("Device available: " + device.__getattribute__("type"))
-# set seed
+# SEED SETTING (Some setting are put after the generation of the enviroment)
 seed = 31
+random.seed(seed)
 np.random.seed(seed)
 torch.manual_seed(seed)
+torch.use_deterministic_algorithms(True)
+torch.cuda.manual_seed(seed)
+torch.cuda.manual_seed_all(seed)
+os.environ['PYTHONHASHSEED'] = str(seed)
+torch.backends.cudnn.deterministic = True
+torch.backends.cudnn.benchmark = False
+"""
+ The following is not a real command but it's already satisified from
+ - random.seed(seed)
+ - np.random.seed(seed)
+ - torch.manual_seed(seed)
+ >>'chatGPT'
+"""
+# torch.geometric.seed(seed) 
 
 params = {
     "num_episodes": 200,                            # Total number of training episodes
@@ -490,6 +506,8 @@ def main():
     # Create the environment
     env = gym.make('gymnasium_env/FullyDynamicEnv-v0', data_path=data_path)
     env.unwrapped.seed(seed)
+    env.action_space.seed(seed)
+    env.observation_space.seed(seed)
 
     # Set up replay buffer
     replay_buffer = ReplayBuffer(params["replay_buffer_capacity"])
