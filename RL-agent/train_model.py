@@ -38,7 +38,7 @@ seed = 31
 random.seed(seed)
 np.random.seed(seed)
 torch.manual_seed(seed)
-torch.use_deterministic_algorithms(True)
+# torch.use_deterministic_algorithms(True)
 torch.cuda.manual_seed(seed)
 torch.cuda.manual_seed_all(seed)
 os.environ['PYTHONHASHSEED'] = str(seed)
@@ -93,7 +93,7 @@ formatter = logging.Formatter('%(asctime)s %(levelname)s %(message)s')
 
 # ----------------------------------------------------------------------------------------------------------------------
 
-def train_dqn(env: gym, agent: DQNAgent, batch_size: int, episode: int, tbar: tqdm | tqdm_telegram) -> dict:
+def train_dqn(env: gym, agent: DQNAgent, batch_size: int, episode: int, tbar = None) -> dict:
     # Initialize episode metrics
     timeslot = 0
     timeslots_completed = 0
@@ -244,13 +244,14 @@ def train_dqn(env: gym, agent: DQNAgent, batch_size: int, episode: int, tbar: tq
             timeslot = 0 if timeslot == 7 else timeslot + 1
 
             # Update progress bar
-            # tbar.set_description(f"Training Episode {episode}, Week {info['week'] % 52}, {info['day'].capitalize()} "
-            #                      f"at {convert_seconds_to_hours_minutes(info['time'])}")
-            tbar.set_description(f"Run {run_id} cuda {args.cuda_device}. Epis {episode}, Week {info['week'] % 52}, {info['day'].capitalize()} "
-                                 f"at {convert_seconds_to_hours_minutes(info['time'])}")
-            tbar.set_postfix({'eps': agent.epsilon})
+            if isinstance(tbar, (tqdm, tqdm_telegram)):
+                # tbar.set_description(f"Training Episode {episode}, Week {info['week'] % 52}, {info['day'].capitalize()} "
+                #                      f"at {convert_seconds_to_hours_minutes(info['time'])}")
+                tbar.set_description(f"Run {run_id} cuda {args.cuda_device}. Epis {episode}, Week {info['week'] % 52}, {info['day'].capitalize()} "
+                                    f"at {convert_seconds_to_hours_minutes(info['time'])}")
+                tbar.set_postfix({'eps': agent.epsilon})
 
-            tbar.update(1)
+                tbar.update(1)
 
         iterations += 1
 
@@ -542,9 +543,9 @@ def main():
         # Progress bar for the episode
         if enable_telegram:
             tbar = tqdm_telegram(
-                range(params["total_timeslots"]*params["num_episodes"]),
-                desc="Training computation is starting ",
-                initial=starting_episode*params["total_timeslots"],
+                range(params["num_episodes"]),
+                desc="Training is starting - TELEGRAM ENABLED ",
+                initial=starting_episode,
                 position=0,
                 leave=True,
                 dynamic_ncols=True,
@@ -579,12 +580,22 @@ def main():
         logger = setup_logger('training_logger', training_results_path + 'training.log', level=logging.INFO)
 
         logger.info(f"Training started with the following parameters: {params}")
+        if enable_telegram:
+            tbar.set_description(f"Run {run_id} cuda {args.cuda_device}. Epis 0")
+            tbar.set_postfix({'eps': agent.epsilon})
 
         # Train and validation loop
         best_validation_score = 1e4
         for episode in range(starting_episode, params["num_episodes"]):
             # Train the agent for one episode
-            training_results = train_dqn(env, agent, params["batch_size"], episode, tbar)
+            if enable_telegram:
+                training_results = train_dqn(env, agent, params["batch_size"], episode)
+                tbar.set_description(f"Run {run_id} cuda {args.cuda_device}. Epis {episode}")
+                tbar.set_postfix({'eps': agent.epsilon})
+
+                tbar.update(1)
+            else:
+                training_results = train_dqn(env, agent, params["batch_size"], episode, tbar)
 
             # Save training result lists
             results_path = training_results_path + 'data/'+ str(episode).zfill(2) + '/'
