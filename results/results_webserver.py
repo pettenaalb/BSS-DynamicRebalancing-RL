@@ -8,7 +8,7 @@ from dash.dependencies import Input, Output
 from utils import load_results, get_episode_options, create_plot, action_bin_labels, generate_osmnx_graph, initialize_graph
 
 # insert here the training runs to evaluate
-phases = [3,4,6,8,9,10]
+phases = [11,12,13,14,15,16]
 port = 8050
 
 # Base paths for two training phases
@@ -18,15 +18,17 @@ for n in phases :
     label = f"Phase {n} Training"
     folder = f"training_{n}"
     TRAINING_PATHS.update({label: os.path.join(BASE_PATH, folder, "data")})
-    label = f"Phase {n} Validation"
-    folder = f"validation_{n}"
-    TRAINING_PATHS.update({label: os.path.join(BASE_PATH, folder, "data")})
-    # "Training Phase 3": os.path.join(BASE_PATH, "training_3", "data"),
-    # "Training Phase 3": os.path.join(BASE_PATH, "training_3", "data"),
-    # "Training Phase 4": os.path.join(BASE_PATH, "training_4", "data"),
-    # "Validation Phase 2": os.path.join(BASE_PATH, "validation_2", "data"),
-    # "Validation Phase 3": os.path.join(BASE_PATH, "validation_3", "data"),
-    # "Validation Phase 4": os.path.join(BASE_PATH, "validation_4", "data"),
+# for n in phases :
+#     label = f"Phase {n} Validation"
+#     folder = f"validation_{n}"
+#     TRAINING_PATHS.update({label: os.path.join(BASE_PATH, folder, "data")})
+
+# "Training Phase 3": os.path.join(BASE_PATH, "training_3", "data"),
+# "Training Phase 3": os.path.join(BASE_PATH, "training_3", "data"),
+# "Training Phase 4": os.path.join(BASE_PATH, "training_4", "data"),
+# "Validation Phase 2": os.path.join(BASE_PATH, "validation_2", "data"),
+# "Validation Phase 3": os.path.join(BASE_PATH, "validation_3", "data"),
+# "Validation Phase 4": os.path.join(BASE_PATH, "validation_4", "data"),
 
 
 # Import external stylesheets (Google Fonts)
@@ -391,7 +393,7 @@ def update_action_plot(n_intervals, n_clicks, training_path, episode_folder):
 )
 
 def update_failures_baseline_plot(interval, n_clicks):
-    with open(os.path.join(BASE_PATH, 'benchmarks/results/total_failures.pkl'), 'rb') as f:
+    with open(os.path.join('benchmarks/results/total_failures.pkl'), 'rb') as f:
         failures = pickle.load(f)
     return create_plot(failures, "Failures", "Failures", "Timeslot", cumulative=True,
                        failures_plot=True)
