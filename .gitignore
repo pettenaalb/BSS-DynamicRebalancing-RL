@@ -36,6 +36,7 @@ data_cambridge/
 data_cambridge_full/
 data_cambridge_medium/
 data_cambridge_small/
+telegram_test.py
 other/
 data_new/
 benchmarks/results/
