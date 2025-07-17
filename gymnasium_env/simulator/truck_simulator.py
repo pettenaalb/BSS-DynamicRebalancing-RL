@@ -22,13 +22,17 @@ from gymnasium_env.simulator.station import Station
     Returns:
         - time (int): Value of the time to move the destination cell
         - distance (int): Value of the total distance covered by the truck
+        - border_hit (flag) : Flag to indicate if the truck tried to exit the map
     """
 def move_up(truck: Truck, distance_matrix: pd.DataFrame, cell_dict: dict[int, Cell], mean_velocity: int) -> tuple[int, int]:
+    """
+        See above description.
+    """
     cell = truck.get_cell()
     up_cell = cell_dict.get(cell.get_adjacent_cells().get('up'))
 
     if up_cell is None:
-        return 0, 0
+        return 0, 0, True
 
     distance = distance_matrix.loc[truck.get_position(), up_cell.get_center_node()]
     velocity_kmh = truncated_gaussian(10, 70, mean_velocity, 5)
@@ -37,15 +41,18 @@ def move_up(truck: Truck, distance_matrix: pd.DataFrame, cell_dict: dict[int, Ce
     truck.set_position(up_cell.get_center_node())
     truck.set_cell(up_cell)
 
-    return time, distance
+    return time, distance, False
 
 
 def move_down(truck: Truck, distance_matrix: pd.DataFrame, cell_dict: dict[int, Cell], mean_velocity: int) -> tuple[int, int]:
+    """
+        See above description.
+    """
     cell = truck.get_cell()
     down_cell = cell_dict.get(cell.get_adjacent_cells().get('down'))
 
     if down_cell is None:
-        return 0, 0
+        return 0, 0, True
 
     distance = distance_matrix.loc[truck.get_position(), down_cell.get_center_node()]
     velocity_kmh = truncated_gaussian(10, 70, mean_velocity, 5)
@@ -54,15 +61,18 @@ def move_down(truck: Truck, distance_matrix: pd.DataFrame, cell_dict: dict[int, 
     truck.set_position(down_cell.get_center_node())
     truck.set_cell(down_cell)
 
-    return time, distance
+    return time, distance, False
 
 
 def move_left(truck: Truck, distance_matrix: pd.DataFrame, cell_dict: dict[int, Cell], mean_velocity: int) -> tuple[int, int]:
+    """
+        See above description.
+    """
     cell = truck.get_cell()
     left_cell = cell_dict.get(cell.get_adjacent_cells().get('left'))
 
     if left_cell is None:
-        return 0, 0
+        return 0, 0, True
 
     distance = distance_matrix.loc[truck.get_position(), left_cell.get_center_node()]
     velocity_kmh = truncated_gaussian(10, 70, mean_velocity, 5)
@@ -71,15 +81,18 @@ def move_left(truck: Truck, distance_matrix: pd.DataFrame, cell_dict: dict[int, 
     truck.set_position(left_cell.get_center_node())
     truck.set_cell(left_cell)
 
-    return time, distance
+    return time, distance, False
 
 
 def move_right(truck: Truck, distance_matrix: pd.DataFrame, cell_dict: dict[int, Cell], mean_velocity: int) -> tuple[int, int]:
+    """
+        See above description.
+    """
     cell = truck.get_cell()
     right_cell = cell_dict.get(cell.get_adjacent_cells().get('right'))
 
     if right_cell is None:
-        return 0, 0
+        return 0, 0, True
 
     distance = distance_matrix.loc[truck.get_position(), right_cell.get_center_node()]
     velocity_kmh = truncated_gaussian(10, 70, mean_velocity, 5)
@@ -88,20 +101,20 @@ def move_right(truck: Truck, distance_matrix: pd.DataFrame, cell_dict: dict[int,
     truck.set_position(right_cell.get_center_node())
     truck.set_cell(right_cell)
 
-    return time, distance
+    return time, distance, False
 
 
 def drop_bike(truck: Truck, distance_matrix: pd.DataFrame, mean_velocity: int, depot_node: int,
               depot: dict, node: int = None) -> tuple[int, int]:
     """
-    Unloads a bike to a station. If the truck is empty, go get more bikes at the depot.
+    Unloads a bike to a station "node" or the center_node. If the truck is empty, go get more bikes at the depot.
 
     Parameters:
         - truck (Truck): The truck to move
         - distance_matrix (pd.DataFrame): Dictionary of the distance between two stations.
         - mean_velocity (int): Mean velocity of the truck moving to the next cell
         - depot_node (int): Station ID of the depot.
-        - depot (int): Number of bikes at the depot.
+        - depot (dict): Dictionary of bikes at the depot.
         - node (int): Station ID for the bike drop. 
 
     Returns:
@@ -139,7 +152,7 @@ def drop_bike(truck: Truck, distance_matrix: pd.DataFrame, mean_velocity: int, d
 def pick_up_bike(truck: Truck, station_dict: dict[int, Station], distance_matrix: pd.DataFrame,
                  mean_velocity: int, depot_node: int, depot: dict, system_bikes: dict) -> tuple[int, int, bool]:
     """
-    Piks up a bike to a station based on the lowest "bike_metric".
+    Piks up a bike from a station based on the lowest "bike_metric".
     The "bikes_metric" is a dictionary where the value of each bike is a normalized value proportional to distance and battery value.
 
     Parameters:
@@ -148,7 +161,7 @@ def pick_up_bike(truck: Truck, station_dict: dict[int, Station], distance_matrix
         - distance_matrix (pd.DataFrame): Dictionary of the distance between two stations.
         - mean_velocity (int): Mean velocity of the truck moving to the next cell
         - depot_node (int): Station ID of the depot.
-        - depot (int): Number of bikes at the depot.
+        - depot (dict): Dictionary of bikes at the depot.
         - system_bikes (dict): Dictionary of bikes inside the system.
 
     Returns:

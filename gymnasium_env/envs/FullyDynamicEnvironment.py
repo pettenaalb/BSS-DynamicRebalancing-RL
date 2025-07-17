@@ -141,6 +141,7 @@ class FullyDynamicEnv(gym.Env):
         # self.history_4 = deque(maxlen=4)
         self.last_move_action = None
         self.invalid_drop_action = False
+        self.last_cell_border_type = 0 # Normal = 0, Edge = 1, Corner = 2, Dead End = 3
 
         self.encoder = nn.Embedding(len(self.cells), 27)
         self.zone_id_to_index = {zone_id: idx for idx, zone_id in enumerate(sorted(self.cells.keys()))}
@@ -272,7 +273,7 @@ class FullyDynamicEnv(gym.Env):
             'steps': 0,
             'number_of_system_bikes': len(self.system_bikes),
             'truck_neighbor_cells': self.truck.get_cell().get_adjacent_cells(),
-            'borders': self._get_borders(),
+            #'borders': self._get_borders(),
             'distance_matrix': self.distance_matrix,
             'truck_load': self.truck.get_load(),
         }
@@ -294,28 +295,29 @@ class FullyDynamicEnv(gym.Env):
         hours = divmod((self.timeslot * 3 + 1) * 3600 + self.env_time, 3600)[0] % 24
         mean_truck_velocity = self.velocity_matrix.loc[hours, self.day]
         bike_picked_up = False
+        border_hit = False
 
         # Perform the action
         if action == Actions.STAY.value:
             t = stay(self.truck)
             self.logger.log_starting_action('STAY', t)
         elif action == Actions.RIGHT.value:
-            t, distance = move_right(self.truck, self.distance_matrix, self.cells, mean_truck_velocity)
+            t, distance, border_hit = move_right(self.truck, self.distance_matrix, self.cells, mean_truck_velocity)
             self.logger.log_starting_action('RIGHT', t)
             # Append last action to history
             # self.history_4.append(action)
         elif action == Actions.UP.value:
-            t, distance = move_up(self.truck, self.distance_matrix, self.cells, mean_truck_velocity)
+            t, distance, border_hit = move_up(self.truck, self.distance_matrix, self.cells, mean_truck_velocity)
             self.logger.log_starting_action('UP', t)
             # Append last action to history
             # self.history_4.append(action)
         elif action == Actions.LEFT.value:
-            t, distance = move_left(self.truck, self.distance_matrix, self.cells, mean_truck_velocity)
+            t, distance, border_hit = move_left(self.truck, self.distance_matrix, self.cells, mean_truck_velocity)
             self.logger.log_starting_action('LEFT', t)
             # Append last action to history
             # self.history_4.append(action)
         elif action == Actions.DOWN.value:
-            t, distance = move_down(self.truck, self.distance_matrix, self.cells, mean_truck_velocity)
+            t, distance, border_hit = move_down(self.truck, self.distance_matrix, self.cells, mean_truck_velocity)
             self.logger.log_starting_action('DOWN', t)
             # Append last action to history
             # self.history_4.append(action)
@@ -383,7 +385,7 @@ class FullyDynamicEnv(gym.Env):
         self.logger.log_truck(self.truck)
 
         # Compute the outputs
-        reward = self._get_reward(action, old_eligibility_score)
+        reward = self._get_reward(action, old_eligibility_score, border_hit)
         observation = self._get_obs(action)
         self._update_graph()
 
@@ -401,11 +403,14 @@ class FullyDynamicEnv(gym.Env):
             'number_of_system_bikes': len(self.system_bikes),
             'steps': steps,
             'truck_neighbor_cells': self.truck.get_cell().get_adjacent_cells(),
-            'borders': self._get_borders(),
+            #'borders': self._get_borders(),
             'truck_load': self.truck.get_load(),
         }
 
+        # Save and Reset some variables
+        self.last_move_action = action
         self.invalid_drop_action = False
+        self.last_cell_border_type = sum(self._get_borders()) 
 
         terminated = False
         if self.env_time >= 3600*3:
@@ -654,7 +659,7 @@ class FullyDynamicEnv(gym.Env):
         return observation.astype(np.float32)
 
 
-    def _get_reward(self, action: int, old_eligibility_score: float) -> float:
+    def _get_reward(self, action: int, old_eligibility_score: float, border_hit: bool) -> float:
         # ----------------------------
         # Compute expected departures per cell
         # ----------------------------
@@ -822,18 +827,18 @@ class FullyDynamicEnv(gym.Env):
         # ----------------------------
         if action == Actions.DROP_BIKE.value:
             if self.invalid_drop_action:
-                drop_bonus = -1.0
+                drop_reward = -1.0
             elif truck_cell.get_critic_score() > 0.0:
-                drop_bonus = 1.0
+                drop_reward = 1.0
 
         # ----------------------------
         # Pick-Up Reward
         # ----------------------------
         elif action == Actions.PICK_UP_BIKE.value:
             if truck_cell.get_critic_score() > 0.0:
-                pick_up_penalty = -0.1
+                pick_up_reward = -0.1
             else:
-                pick_up_penalty = 0.1
+                pick_up_reward = 0.1
         
         # ----------------------------
         # Bike charging Reward (e.g. discourage charging a bike that isn’t sufficiently discharged)
@@ -843,15 +848,15 @@ class FullyDynamicEnv(gym.Env):
             # useless charge -> bad reward
             if self.truck.last_charge < 0.8:
                 if is_critical:
-                    bike_charge_penalty = -0.1
+                    bike_charge_reward = -0.1
                 else:
-                    bike_charge_penalty = -0.3
+                    bike_charge_reward = -0.3
             # usefull charge -> good reward
             else:
                 if is_critical:
-                    bike_charge_penalty = -0.5
+                    bike_charge_reward = 0.5
                 # else:
-                #     bike_charge_penalty = -0.3
+                #     bike_charge_reward = 0.1
 
         # ----------------------------
         # Eligibility low score penalty (when visiting a cell just visited a few step before)
@@ -859,8 +864,11 @@ class FullyDynamicEnv(gym.Env):
         # ----------------------------
         # TRY WITH THIS
         elif action in {Actions.UP.value, Actions.DOWN.value, Actions.LEFT.value, Actions.RIGHT.value, Actions.STAY.value}:
+            # self.logger.log(message=f"Last Border type {self.last_cell_border_type}")
             if old_eligibility_score > 0.7 and truck_cell.get_critic_score() <= 0.0 :
                 eligibility_penalty = -0.2 
+                if self.last_cell_border_type > 0 and not border_hit and action != Actions.STAY.value :
+                    eligibility_penalty += 0.1*self.last_cell_border_type
 
         # ----------------------------
         # Stay penalty
@@ -887,13 +895,13 @@ class FullyDynamicEnv(gym.Env):
         # Border hit penalty
         # ----------------------------
         # if border_hit and action in {Actions.UP.value, Actions.DOWN.value, Actions.LEFT.value, Actions.RIGHT.value}:
-        #     border_hit_penalty = -2.0
+        #     border_hit_penalty = -1.0
         
         # ----------------------------
         # Combine all reward components with their weights
         # ----------------------------
         reward = (
-            1.0                     # Base reward
+            1.0  # Base reward
             + drop_reward
             + pick_up_reward
             + bike_charge_reward
