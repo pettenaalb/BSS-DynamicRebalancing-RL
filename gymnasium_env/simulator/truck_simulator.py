@@ -135,10 +135,11 @@ def drop_bike(truck: Truck, distance_matrix: pd.DataFrame, mean_velocity: int, d
         if len(depot) > 15:
             bikes = {key: depot.pop(key) for key in list(depot.keys())[:15]}
             truck.set_load(bikes)
+        # else: ??
         position = depot_node
 
     if position != target_node:
-        distance = distance_matrix.loc[position, target_node]           # isn't it "distance += distance_matrix..."
+        distance += distance_matrix.loc[position, target_node]
         velocity_kmh = truncated_gaussian(10, 70, mean_velocity, 5)
         time += int(distance * 3.6 / velocity_kmh)
         truck.set_position(target_node)
@@ -170,13 +171,13 @@ def pick_up_bike(truck: Truck, station_dict: dict[int, Station], distance_matrix
         - bool = True
     """
     cell = truck.get_cell()
+    # Flag no bikes in the cell, no bike picked up
+    if cell.get_total_bikes() == 0:
+        return 0, 0, False
+    
     bike_dict = {}
     for station_id in cell.get_nodes():
         bike_dict.update(station_dict[station_id].get_bikes())
-
-    # Flag no bike picked up
-    if cell.get_total_bikes() == 0:
-        return 0, 0, False
 
     # Compute the metric for each bike
     max_distance = 0
@@ -202,6 +203,7 @@ def pick_up_bike(truck: Truck, station_dict: dict[int, Station], distance_matrix
     bike_id = min(bikes_metric, key=bikes_metric.get)
     station = bike_dict[bike_id].get_station()
 
+    # Go get the choosen bike to pick up
     distance = distance_matrix.loc[truck.get_position(), station.get_station_id()]
     velocity_kmh = truncated_gaussian(10, 70, mean_velocity, 5)
     time = int(distance * 3.6 / velocity_kmh)
@@ -215,9 +217,9 @@ def pick_up_bike(truck: Truck, station_dict: dict[int, Station], distance_matrix
     try:
         truck.load_bike(bike)
     except ValueError:
-        distance = distance_matrix.loc[truck.get_position(), depot_node]
+        distance += 2 * distance_matrix.loc[truck.get_position(), depot_node]
         velocity_kmh = truncated_gaussian(10, 70, mean_velocity, 5)
-        t_reload = 2*int(distance * 3.6 / velocity_kmh)
+        t_reload = 2 * int(distance * 3.6 / velocity_kmh)
         time += t_reload
         while truck.get_load() > 15:
             bk = truck.unload_bike()
@@ -234,7 +236,7 @@ def pick_up_bike(truck: Truck, station_dict: dict[int, Station], distance_matrix
 def charge_bike(truck: Truck, station_dict: dict[int, Station], distance_matrix: pd.DataFrame,
                 mean_velocity: int, depot_node: int, depot: dict, system_bikes: dict) -> tuple[int, int, bool]:
     """
-    Piks up a bike to a station based on ???
+    Piks up a bike with lowest battery
 
     Parameters:
         - truck (Truck): The truck to move
@@ -265,6 +267,7 @@ def charge_bike(truck: Truck, station_dict: dict[int, Station], distance_matrix:
     bike_id = min(bike_charge, key=bike_charge.get)
     station = bike_dict[bike_id].get_station()
 
+    # Go get the choosen bike
     distance = distance_matrix.loc[truck.get_position(), station.get_station_id()]
     velocity_kmh = truncated_gaussian(10, 70, mean_velocity, 5)
     time = int(distance * 3.6 / velocity_kmh)
@@ -278,7 +281,7 @@ def charge_bike(truck: Truck, station_dict: dict[int, Station], distance_matrix:
     try:
         truck.load_bike(bike)
     except ValueError:
-        distance = distance_matrix.loc[truck.get_position(), depot_node]
+        distance = 2 * distance_matrix.loc[truck.get_position(), depot_node]
         velocity_kmh = truncated_gaussian(10, 70, mean_velocity, 5)
         t_reload = 2 * int(distance * 3.6 / velocity_kmh)
         time += t_reload
