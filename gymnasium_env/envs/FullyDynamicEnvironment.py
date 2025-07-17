@@ -37,7 +37,7 @@ params = {
 
 days2num = {'monday': 0, 'tuesday': 1, 'wednesday': 2, 'thursday': 3, 'friday': 4, 'saturday': 5, 'sunday': 6}
 num2days = {0: 'monday', 1: 'tuesday', 2: 'wednesday', 3: 'thursday', 4: 'friday', 5: 'saturday', 6: 'sunday'}
-enable_state_and_trips_logging = False
+logging_state_and_trips = False
 
 # ----------------------------------------------------------------------------------------------------------------------
 
@@ -341,7 +341,7 @@ class FullyDynamicEnv(gym.Env):
 
         # Calculate steps and log the state
         steps = math.ceil(t / 30)
-        if enable_state_and_trips_logging:
+        if logging_state_and_trips:
             self.logger.log_state(
                 step=int(self.env_time / 30),
                 time=convert_seconds_to_hours_minutes((self.timeslot * 3 + 1) * 3600 + self.env_time)
@@ -599,14 +599,14 @@ class FullyDynamicEnv(gym.Env):
                     system_bikes=self.system_bikes,
                     outside_system_bikes=self.outside_system_bikes,
                     logger=self.logger,
-                    enable_state_and_trips_logging=enable_state_and_trips_logging,
+                    logging_state_and_trips=logging_state_and_trips,
                     next_bike_id=self.next_bike_id
                 )
                 total_failures += failure
             failures.append(total_failures)
 
             # Log the updated state after processing events
-            if enable_state_and_trips_logging:
+            if logging_state_and_trips:
                 self.logger.log_state(
                     step=int(self.env_time / 30),
                     time=convert_seconds_to_hours_minutes((self.timeslot * 3 + 1) * 3600 + self.env_time)
