@@ -37,7 +37,7 @@ params = {
 
 days2num = {'monday': 0, 'tuesday': 1, 'wednesday': 2, 'thursday': 3, 'friday': 4, 'saturday': 5, 'sunday': 6}
 num2days = {0: 'monday', 1: 'tuesday', 2: 'wednesday', 3: 'thursday', 4: 'friday', 5: 'saturday', 6: 'sunday'}
-logging_state_and_trips = False
+enable_state_and_trips_logging = False
 
 # ----------------------------------------------------------------------------------------------------------------------
 
@@ -334,14 +334,14 @@ class FullyDynamicEnv(gym.Env):
             self.logger.log_starting_action('PICK_UP_BIKE', t)
 
         # TURN OFF THIS TO DISABLE BATTERY CHARGE
-        elif action == Actions.CHARGE_BIKE.value:
-            t, distance, bike_picked_up = charge_bike(self.truck, self.stations, self.distance_matrix, mean_truck_velocity,
-                                                      self.depot_node, self.depot, self.system_bikes)
-            self.logger.log_starting_action('CHARGE_BIKE', t)
+        # elif action == Actions.CHARGE_BIKE.value:
+        #     t, distance, bike_picked_up = charge_bike(self.truck, self.stations, self.distance_matrix, mean_truck_velocity,
+        #                                               self.depot_node, self.depot, self.system_bikes)
+        #     self.logger.log_starting_action('CHARGE_BIKE', t)
 
         # Calculate steps and log the state
         steps = math.ceil(t / 30)
-        if logging_state_and_trips:
+        if enable_state_and_trips_logging:
             self.logger.log_state(
                 step=int(self.env_time / 30),
                 time=convert_seconds_to_hours_minutes((self.timeslot * 3 + 1) * 3600 + self.env_time)
@@ -599,14 +599,14 @@ class FullyDynamicEnv(gym.Env):
                     system_bikes=self.system_bikes,
                     outside_system_bikes=self.outside_system_bikes,
                     logger=self.logger,
-                    logging_state_and_trips=logging_state_and_trips,
+                    enable_state_and_trips_logging=enable_state_and_trips_logging,
                     next_bike_id=self.next_bike_id
                 )
                 total_failures += failure
             failures.append(total_failures)
 
             # Log the updated state after processing events
-            if logging_state_and_trips:
+            if enable_state_and_trips_logging:
                 self.logger.log_state(
                     step=int(self.env_time / 30),
                     time=convert_seconds_to_hours_minutes((self.timeslot * 3 + 1) * 3600 + self.env_time)
@@ -702,7 +702,7 @@ class FullyDynamicEnv(gym.Env):
         if truck_cell_previous_critic_score > 0.0 >= truck_cell.get_critic_score():
             for cell in self.cells.values():
                 cell.eligibility_score = 0.0
-            self.logger.warning(message=f" ---------> {truck_cell} has been rebalanced. Now all eligibility scores are 0.0 ###################################")
+            self.logger.warning(message=f" ---------> Cell {truck_cell} has been rebalanced. Now all eligibility scores are 0.0 ###################################")
 
         '''
         # ----------------------------
