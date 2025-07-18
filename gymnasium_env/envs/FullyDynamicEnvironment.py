@@ -814,7 +814,7 @@ class FullyDynamicEnv(gym.Env):
         # Reward composition
         # ----------------------------
         drop_reward = 0.0           # reward for dropping in critical cell or penalty for invalid_drop
-        pick_up_reward = 0.0        # reward to incentivise pick_ups and for pick_up in exiding cells or penalty for pick_up in critical cells
+        pick_up_reward = 0.0        # reward to incentivise pick_ups or penalty for pick_up in critical cells or failures
         bike_charge_reward = 0.0    # reward for usefull charge of a bike or penaly for useless charge 
         eligibility_penalty = 0.0   # penalty for visiting just seen cells (high eligibility score)
         stay_penalty = 0.0          # penalty for stay action
@@ -835,7 +835,9 @@ class FullyDynamicEnv(gym.Env):
         # ----------------------------
         elif action == Actions.PICK_UP_BIKE.value:
             if truck_cell.get_critic_score() > 0.0:
-                pick_up_reward = -0.1
+                pick_up_reward -= 0.1
+            if self.invalid_action:
+                pick_up_reward -= 0.5
             # else:
             #     pick_up_reward += 0.1
         
