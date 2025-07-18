@@ -11,7 +11,7 @@ from gymnasium_env.simulator.utils import generate_poisson_events, truncated_gau
 
 def event_handler(event: Event, station_dict: dict[int, Station], nearby_nodes_dict: dict[str, dict[str, tuple]],
                   distance_matrix: pd.DataFrame, system_bikes: dict[int, Bike], outside_system_bikes: dict[int, Bike],
-                  next_bike_id: int, logger: Logger = None, enable_state_and_trips_logging: bool = False) -> tuple[int, int]:
+                  next_bike_id: int, logger: Logger = None, logging_state_and_trips: bool = False) -> tuple[int, int]:
     """
     Handle the event based on its type.
 
@@ -35,7 +35,7 @@ def event_handler(event: Event, station_dict: dict[int, Station], nearby_nodes_d
     if event.is_departure():
         trip, next_bike_id = departure_handler(event.get_trip(), station_dict, nearby_nodes_dict, distance_matrix,
                                  outside_system_bikes, next_bike_id)
-        if enable_state_and_trips_logging:
+        if logging_state_and_trips:
             logger.log_trip(trip)
         if trip.is_failed():
             failure = 1
