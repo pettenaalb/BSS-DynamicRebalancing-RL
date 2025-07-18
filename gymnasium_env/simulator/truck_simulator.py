@@ -24,7 +24,7 @@ from gymnasium_env.simulator.station import Station
         - distance (int): Value of the total distance covered by the truck
         - border_hit (flag) : Flag to indicate if the truck tried to exit the map
     """
-def move_up(truck: Truck, distance_matrix: pd.DataFrame, cell_dict: dict[int, Cell], mean_velocity: int) -> tuple[int, int]:
+def move_up(truck: Truck, distance_matrix: pd.DataFrame, cell_dict: dict[int, Cell], mean_velocity: int) -> tuple[int, int, bool]:
     """
         See above description.
     """
@@ -44,7 +44,7 @@ def move_up(truck: Truck, distance_matrix: pd.DataFrame, cell_dict: dict[int, Ce
     return time, distance, False
 
 
-def move_down(truck: Truck, distance_matrix: pd.DataFrame, cell_dict: dict[int, Cell], mean_velocity: int) -> tuple[int, int]:
+def move_down(truck: Truck, distance_matrix: pd.DataFrame, cell_dict: dict[int, Cell], mean_velocity: int) -> tuple[int, int, bool]:
     """
         See above description.
     """
@@ -64,7 +64,7 @@ def move_down(truck: Truck, distance_matrix: pd.DataFrame, cell_dict: dict[int, 
     return time, distance, False
 
 
-def move_left(truck: Truck, distance_matrix: pd.DataFrame, cell_dict: dict[int, Cell], mean_velocity: int) -> tuple[int, int]:
+def move_left(truck: Truck, distance_matrix: pd.DataFrame, cell_dict: dict[int, Cell], mean_velocity: int) -> tuple[int, int, bool]:
     """
         See above description.
     """
@@ -84,7 +84,7 @@ def move_left(truck: Truck, distance_matrix: pd.DataFrame, cell_dict: dict[int, 
     return time, distance, False
 
 
-def move_right(truck: Truck, distance_matrix: pd.DataFrame, cell_dict: dict[int, Cell], mean_velocity: int) -> tuple[int, int]:
+def move_right(truck: Truck, distance_matrix: pd.DataFrame, cell_dict: dict[int, Cell], mean_velocity: int) -> tuple[int, int, bool]:
     """
         See above description.
     """
@@ -173,7 +173,7 @@ def pick_up_bike(truck: Truck, station_dict: dict[int, Station], distance_matrix
     cell = truck.get_cell()
     # Flag no bikes in the cell, no bike picked up
     if cell.get_total_bikes() == 0:
-        return 0, 0, False
+        return 0, 0, True
     
     bike_dict = {}
     for station_id in cell.get_nodes():
@@ -216,7 +216,7 @@ def pick_up_bike(truck: Truck, station_dict: dict[int, Station], distance_matrix
 
     try:
         truck.load_bike(bike)
-    except ValueError:
+    except ValueError:  # The truck is full. Go dump some bikes to the depot
         distance += 2 * distance_matrix.loc[truck.get_position(), depot_node]
         velocity_kmh = truncated_gaussian(10, 70, mean_velocity, 5)
         t_reload = 2 * int(distance * 3.6 / velocity_kmh)
@@ -230,7 +230,7 @@ def pick_up_bike(truck: Truck, station_dict: dict[int, Station], distance_matrix
 
     truck.leaving_cell = truck.get_cell()
 
-    return time, distance, True
+    return time, distance, False
 
 
 def charge_bike(truck: Truck, station_dict: dict[int, Station], distance_matrix: pd.DataFrame,
@@ -256,7 +256,7 @@ def charge_bike(truck: Truck, station_dict: dict[int, Station], distance_matrix:
     
     # Flag no bike picked up
     if cell.get_total_bikes() == 0:
-        return 0, 0, False
+        return 0, 0, True
 
     bike_dict = {}
     for station_id in cell.get_nodes():
@@ -295,7 +295,7 @@ def charge_bike(truck: Truck, station_dict: dict[int, Station], distance_matrix:
     truck.leaving_cell = truck.get_cell()
 
     # return pick_up_bike(truck, station_dict, distance_matrix, mean_velocity, depot_node, depot, system_bikes)
-    return time, distance, True
+    return time, distance, False
 
 
 def stay(truck: Truck) -> int:
