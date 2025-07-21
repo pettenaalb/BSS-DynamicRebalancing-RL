@@ -655,6 +655,8 @@ def main():
 
             gc.collect()
 
+        tbar.set_description(f"Run {run_id} cuda {args.cuda_device}. Epis {episode}")
+        tbar.set_postfix({'eps': agent.epsilon})
         tbar.close()
     except Exception as e:
         if enable_telegram:
