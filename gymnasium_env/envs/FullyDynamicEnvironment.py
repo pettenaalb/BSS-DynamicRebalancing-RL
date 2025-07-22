@@ -659,10 +659,14 @@ class FullyDynamicEnv(gym.Env):
 
 
     def _get_reward(self, action: int, old_eligibility_score: float) -> float:
+        # Copute some common values
+        # ----------------------------
+        truck_cell = self.truck.get_cell()
+        truck_cell_previous_critic_score = truck_cell.get_critic_score()
+
         # ----------------------------
         # Compute expected departures per cell
         # ----------------------------
-        truck_cell = self.truck.get_cell()
         expected_departures_per_cell = {}
         for event in self.event_buffer:
             if event.time > self.env_time + 3600 * 3:
@@ -684,7 +688,7 @@ class FullyDynamicEnv(gym.Env):
         # Update critic scores and compute a penalty for critical zones
         # ----------------------------
         # global_critic_penalty = 0.0
-        truck_cell_previous_critic_score = truck_cell.get_critic_score()
+        # truck_cell_previous_critic_score is already saved above
         for cell_id, cell in self.cells.items():
             critic_score = 0.0
             expected = 0
@@ -694,11 +698,21 @@ class FullyDynamicEnv(gym.Env):
             if expected > 0:
                 # critic_score = max(0.0, 1.0 - (available / expected))
                 critic_score = (expected - available) / (expected + available)
+            elif available > 0:
+                critic_score = -1.0
             cell.surplus_score = available - expected
             cell.set_critic_score(critic_score)
             # global_critic_penalty += critic_score
+        
+        # ----------------------------
+        # Compute critical flags for the truck cell
+        # ----------------------------
+        is_critical = truck_cell.get_critic_score() > 0.0
+        is_surplus = truck_cell.get_critic_score() <= -0.53
 
+        rebalanced_bonus = 0.0
         if truck_cell_previous_critic_score > 0.0 >= truck_cell.get_critic_score():
+            rebalanced_bonus = 1.0
             for cell in self.cells.values():
                 cell.eligibility_score = 0.0
             self.logger.warning(message=f" ---------> Cell {truck_cell} has been rebalanced. Now all eligibility scores are 0.0 ###################################")
@@ -827,17 +841,19 @@ class FullyDynamicEnv(gym.Env):
         if action == Actions.DROP_BIKE.value:
             if self.invalid_action:
                 drop_reward = -1.0
-            elif truck_cell.get_critic_score() > 0.0:
+            elif is_critical:
                 drop_reward = 1.0
+            # elif is_surplus:
+            #     drop_reward = -0.25
 
         # ----------------------------
         # Pick-Up Reward
         # ----------------------------
         elif action == Actions.PICK_UP_BIKE.value:
-            if truck_cell.get_critic_score() > 0.0:
+            if is_critical:
                 pick_up_reward -= 0.1
             if self.invalid_action:
-                pick_up_reward -= 0.5
+                pick_up_reward -= 0.25
             # else:
             #     pick_up_reward += 0.1
         
@@ -845,39 +861,45 @@ class FullyDynamicEnv(gym.Env):
         # Bike charging Reward (e.g. discourage charging a bike that isn’t sufficiently discharged)
         # ----------------------------
         elif action == Actions.CHARGE_BIKE.value:
-            is_critical = truck_cell.get_critic_score() > 0.0
-            # useless charge -> bad reward
-            if self.truck.last_charge < 0.8:
+            if self.invalid_action:                 # if the cell is empty
+                bike_charge_reward -= 0.05
+                if is_critical:
+                    bike_charge_reward -= 0.45
+            elif self.truck.last_charge < 0.8:        # useless charge -> bad reward
                 if is_critical:
                     bike_charge_reward = -0.1
                 else:
                     bike_charge_reward = -0.3
-            # usefull charge -> good reward
-            else:
+            else:                                   # usefull charge -> good reward
                 if is_critical:
                     bike_charge_reward = 0.5
                 # else:
                 #     bike_charge_reward = 0.1
 
         # ----------------------------
-        # Eligibility low score penalty (when visiting a cell just visited a few step before)
-        # -- Applies for Stay and movements actions, Doesn't apply if the cell is critical
+        # Eligibility and Border penalties
         # ----------------------------
-        # TRY WITH THIS
-        elif action in {Actions.UP.value, Actions.DOWN.value, Actions.LEFT.value, Actions.RIGHT.value, Actions.STAY.value}:
+        elif action in {Actions.UP.value, Actions.DOWN.value, Actions.LEFT.value, Actions.RIGHT.value}:
             # self.logger.log(message=f"Last Border type {self.last_cell_border_type}")
-            if old_eligibility_score > 0.7 and truck_cell.get_critic_score() <= 0.0 :
+            
+            # ----------------------------
+            # Border hit penalty
+            if self.invalid_action:
+                border_hit_penalty = -0.4
+
+            # ----------------------------
+            # Eligibility low score penalty (when visiting a cell just visited a few step before)
+            elif old_eligibility_score > 0.7 and not is_critical :
                 eligibility_penalty = -0.2 
-                if self.last_cell_border_type > 0 and not self.invalid_action and action != Actions.STAY.value :
-                    eligibility_penalty += 0.1*self.last_cell_border_type
+                eligibility_penalty += 0.1*self.last_cell_border_type       # Help the truck to exit border cells
 
         # ----------------------------
         # Stay penalty
         # ----------------------------
-            if action == Actions.STAY.value:
-                stay_penalty = -0.1
-                if truck_cell.get_critic_score() > 0.0:
-                    stay_penalty = -1.0
+        elif action == Actions.STAY.value:
+            stay_penalty = -0.3
+            if is_critical:
+                stay_penalty = -1.0
 
         # ----------------------------
         # Loop penalty
@@ -891,12 +913,6 @@ class FullyDynamicEnv(gym.Env):
                 loop_penalty = -0.5
             else:
                 print(f"Detect loops was triggered with action:{action} and last_action{self.last_move_action} but no penalty was given.")
-
-        # ----------------------------
-        # Border hit penalty
-        # ----------------------------
-        # if self.invalid_action and action in {Actions.UP.value, Actions.DOWN.value, Actions.LEFT.value, Actions.RIGHT.value}:
-        #     border_hit_penalty = -1.0
         
         # ----------------------------
         # Combine all reward components with their weights
@@ -999,14 +1015,15 @@ class FullyDynamicEnv(gym.Env):
         """
         depot_load = len(self.depot)
         system_load = len(self.system_bikes)
+        truck_load = self.truck.get_load()
 
-        if depot_load + system_load < self.maximum_number_of_bikes:
-            n_bikes = self.maximum_number_of_bikes - depot_load - system_load
+        if depot_load + system_load + truck_load < self.maximum_number_of_bikes:
+            n_bikes = self.maximum_number_of_bikes - depot_load - system_load - truck_load
             for _ in range(n_bikes):
                 bike = self.outside_system_bikes.pop(next(iter(self.outside_system_bikes)))
                 bike.reset()
                 self.depot[bike.get_bike_id()] = bike
-            
+            print(f" ---------> System has been adjusted to max_number_number_of_bikes adding {n_bikes} bikes")
             self.logger.warning(message=f" ---------> System has been adjusted to max_number_number_of_bikes adding {n_bikes} bikes")
 
     def _net_flow_based_repositioning(self, upper_bound: int = None) -> dict:
