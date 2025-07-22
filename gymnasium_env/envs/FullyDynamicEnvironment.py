@@ -715,7 +715,7 @@ class FullyDynamicEnv(gym.Env):
             rebalanced_bonus = 1.0
             for cell in self.cells.values():
                 cell.eligibility_score = 0.0
-            self.logger.warning(message=f" ---------> Cell {truck_cell} has been rebalanced. Now all eligibility scores are 0.0 ###################################")
+            self.logger.warning(message=f" ---------> {truck_cell} has been rebalanced. Now all eligibility scores are 0.0 ###################################")
 
         '''
         # ----------------------------
