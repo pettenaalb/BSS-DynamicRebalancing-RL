@@ -107,7 +107,8 @@ def move_right(truck: Truck, distance_matrix: pd.DataFrame, cell_dict: dict[int,
 def drop_bike(truck: Truck, distance_matrix: pd.DataFrame, mean_velocity: int, depot_node: int,
               depot: dict, node: int = None) -> tuple[int, int]:
     """
-    Unloads a bike to a station "node" or the center_node. If the truck is empty, go get more bikes at the depot.
+    Unloads a bike to the center_node of the cell where the truck is located or a specified station "node".
+    If the truck is empty, go get more bikes at the depot.
 
     Parameters:
         - truck (Truck): The truck to move
@@ -129,13 +130,15 @@ def drop_bike(truck: Truck, distance_matrix: pd.DataFrame, mean_velocity: int, d
 
     # check if the truck is empty. If so, go get more bikes.
     if truck.get_load() == 0:
-        distance = distance_matrix.loc[truck.get_position(), depot_node]
+        distance += distance_matrix.loc[truck.get_position(), depot_node]
         velocity_kmh = truncated_gaussian(10, 70, mean_velocity, 5)
         time += int(distance * 3.6 / velocity_kmh)
         if len(depot) > 15:
             bikes = {key: depot.pop(key) for key in list(depot.keys())[:15]}
             truck.set_load(bikes)
-        # else: ??
+        else:
+            bikes = {key: depot.pop(key) for key in list(depot.keys())}
+            truck.set_load(bikes)
         position = depot_node
 
     if position != target_node:
@@ -144,7 +147,11 @@ def drop_bike(truck: Truck, distance_matrix: pd.DataFrame, mean_velocity: int, d
         time += int(distance * 3.6 / velocity_kmh)
         truck.set_position(target_node)
 
-    # at what point do we unload??
+    # Unload the bike and lock it in the targhet station
+    # bike = truck.unload_bike()
+    # target_node.lock_bike(bike)
+    # system_bikes[bike.get_bike_id()] = bike 
+    """ ADD SYSTEM BIKES TO ARGUMENTS """
     truck.leaving_cell = truck.get_cell()
 
     return time, distance
@@ -217,10 +224,11 @@ def pick_up_bike(truck: Truck, station_dict: dict[int, Station], distance_matrix
     try:
         truck.load_bike(bike)
     except ValueError:  # The truck is full. Go dump some bikes to the depot
-        distance += 2 * distance_matrix.loc[truck.get_position(), depot_node]
+        distance_to_depot = distance_matrix.loc[truck.get_position(), depot_node]
         velocity_kmh = truncated_gaussian(10, 70, mean_velocity, 5)
-        t_reload = 2 * int(distance * 3.6 / velocity_kmh)
-        time += t_reload
+        t_to_depot =  int(distance_to_depot * 3.6 / velocity_kmh)
+        distance += 2 * distance_to_depot
+        time += 2 * t_to_depot
         while truck.get_load() > 15:
             bk = truck.unload_bike()
             bk.reset()
@@ -292,6 +300,12 @@ def charge_bike(truck: Truck, station_dict: dict[int, Station], distance_matrix:
         truck.load_bike(bike)
     truck.set_position(station.get_station_id())
 
+    # Unload the bike and lock it in the targhet station
+    # bike = truck.unload_bike()
+    # target_node.lock_bike(bike)
+    # system_bikes[bike.get_bike_id()] = bike 
+    """ ADD SYSTEM BIKES TO ARGUMENTS """
+    
     truck.leaving_cell = truck.get_cell()
 
     # return pick_up_bike(truck, station_dict, distance_matrix, mean_velocity, depot_node, depot, system_bikes)
