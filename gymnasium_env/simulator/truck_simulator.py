@@ -109,6 +109,10 @@ def drop_bike(truck: Truck, distance_matrix: pd.DataFrame, mean_velocity: int, d
     """
     Unloads a bike to the center_node of the cell where the truck is located or a specified station "node".
     If the truck is empty, go get more bikes at the depot.
+    WARNING: This function doesn't actially drop the bike, it just calculates the time and distance to reach the dropping station.
+                This is done to avoid the event handler to assign this bike before the truck has reach the station,
+                i.e. the bike cannot be ready before it's dropped.
+    --> Drop the bike manually in the simulator after time 't' is served and the simulation has advanced.
 
     Parameters:
         - truck (Truck): The truck to move
@@ -147,12 +151,12 @@ def drop_bike(truck: Truck, distance_matrix: pd.DataFrame, mean_velocity: int, d
         time += int(distance * 3.6 / velocity_kmh)
         truck.set_position(target_node)
 
-    # Unload the bike and lock it in the targhet station
-    # bike = truck.unload_bike()
-    # target_node.lock_bike(bike)
-    # system_bikes[bike.get_bike_id()] = bike 
-    """ ADD SYSTEM BIKES TO ARGUMENTS """
     truck.leaving_cell = truck.get_cell()
+
+    # If you are asking where the "lock_bike" action is,
+    # this can be found in the simulator after the advancing of the simulation time.
+    # This is trivial since a bike cannot be ready at a station before the truck has reach this station.
+    # This is done to avoid the event handler to assign a bike before is dropped down.
 
     return time, distance
 
@@ -244,7 +248,10 @@ def pick_up_bike(truck: Truck, station_dict: dict[int, Station], distance_matrix
 def charge_bike(truck: Truck, station_dict: dict[int, Station], distance_matrix: pd.DataFrame,
                 mean_velocity: int, depot_node: int, depot: dict, system_bikes: dict) -> tuple[int, int, bool]:
     """
-    Piks up a bike with lowest battery
+    Piks up a bike with lowest battery.
+    WARNING: This function doesn't drop the bike afterwards to avoid the event handler to assign this bike 
+                before the time of the charging is over, i.e. the bike cannot be ready before it's dropped.
+    --> Drop the bike manually from the simulator after time 't' is served and the simulation has advanced.
 
     Parameters:
         - truck (Truck): The truck to move
@@ -299,16 +306,14 @@ def charge_bike(truck: Truck, station_dict: dict[int, Station], distance_matrix:
             depot[bk.get_bike_id()] = bk
         truck.load_bike(bike)
     truck.set_position(station.get_station_id())
-
-    # Unload the bike and lock it in the targhet station
-    # bike = truck.unload_bike()
-    # target_node.lock_bike(bike)
-    # system_bikes[bike.get_bike_id()] = bike 
-    """ ADD SYSTEM BIKES TO ARGUMENTS """
     
     truck.leaving_cell = truck.get_cell()
 
-    # return pick_up_bike(truck, station_dict, distance_matrix, mean_velocity, depot_node, depot, system_bikes)
+    # If you are asking where the "lock_bike" action is,
+    # this can be found in the simulator after the advancing of the simulation time.
+    # This is trivial since a bike cannot be ready at a station before the truck has reach this station.
+    # This is done to avoid the event handler to assign a bike before is dropped down.
+
     return time, distance, False
 
 
