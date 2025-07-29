@@ -24,6 +24,7 @@ from gymnasium_env.simulator.utils import initialize_cells_subgraph
 # ----------------------------------------------------------------------------------------------------------------------
 
 data_path = "data/"
+results_path = "results/"
 run_id = 999
 
 # if GPU is to be used
@@ -67,7 +68,7 @@ params = {
     "lr": 1e-4,                                     # Learning rate
     "total_timeslots": 56,                          # Total number of time slots in one episode (1 month)
     "maximum_number_of_bikes": 250,                 # Maximum number of bikes in the system
-    "results_path": "results/",                     # Path to save results
+    "results_path": results_path,                     # Path to save results
     "soft_update": True,                            # Use soft update for target network
     "tau": 0.005,                                   # Tau parameter for soft update
 }
@@ -224,7 +225,8 @@ def train_dqn(env: gym, agent: DQNAgent, batch_size: int, episode: int, tbar = N
             if agent.epsilon <= 0.05:
                 agent.epsilon = 0.05
             elif agent.epsilon > 0.05:
-                agent.update_epsilon()
+                agent.epsilon = 1 - episode*0.01
+                # agent.update_epsilon()
 
             # Get Q-values for the current state
             with torch.no_grad():
@@ -454,7 +456,7 @@ def validate_dqn(env: gym, agent: DQNAgent, episode: int, tbar: tqdm | tqdm_tele
 # ----------------------------------------------------------------------------------------------------------------------
 
 def save_checkpoint(main_variables: dict, agent: DQNAgent, buffer: ReplayBuffer):
-    checkpoint_path = data_path + 'checkpoints_' + str(run_id) + '/'
+    checkpoint_path = results_path + 'checkpoints_' + str(run_id) + '/'
     if not os.path.exists(checkpoint_path):
         os.makedirs(checkpoint_path)
         # print(f"Directory '{checkpoint_path}' created.")
@@ -469,7 +471,7 @@ def save_checkpoint(main_variables: dict, agent: DQNAgent, buffer: ReplayBuffer)
 
 def restore_checkpoint(agent: DQNAgent, buffer: ReplayBuffer) -> dict:
     print("Restoring checkpoint...", end=' ')
-    checkpoint_path = data_path + 'checkpoints_' + str(run_id) + '/'
+    checkpoint_path = results_path + 'checkpoints_' + str(run_id) + '/'
 
     with open(checkpoint_path + 'main_variables.pkl', 'rb') as f:
         main_variables = pickle.load(f)
@@ -504,8 +506,24 @@ def main():
     print(f"{params}\n")
     print(f"{reward_params}\n")
 
+    # Create results path
+    training_results_path = str(results_path + 'training_' + str(run_id) + '/')
+    validation_results_path = str(results_path + 'validation_' + str(run_id) + '/')
+
+    # Remove existing results
+    if os.path.exists(training_results_path):
+        shutil.rmtree(training_results_path)
+    if os.path.exists(validation_results_path):
+        shutil.rmtree(validation_results_path)
+
+    if not os.path.exists(training_results_path):
+        os.makedirs(training_results_path)
+
+    if not os.path.exists(validation_results_path):
+        os.makedirs(validation_results_path)
+
     # Create the environment
-    env = gym.make('gymnasium_env/FullyDynamicEnv-v0', data_path=data_path)
+    env = gym.make('gymnasium_env/FullyDynamicEnv-v0', data_path=data_path, results_path=training_results_path)
     env.unwrapped.seed(seed)
     env.action_space.seed(seed)
     env.observation_space.seed(seed)
@@ -562,21 +580,6 @@ def main():
                 dynamic_ncols=True
             )
 
-        training_results_path = str(params['results_path'] + 'training_' + str(run_id) + '/')
-        validation_results_path = str(params['results_path'] + 'validation_' + str(run_id) + '/')
-
-        # Remove existing results
-        if os.path.exists(training_results_path):
-            shutil.rmtree(training_results_path)
-        if os.path.exists(validation_results_path):
-            shutil.rmtree(validation_results_path)
-
-        if not os.path.exists(training_results_path):
-            os.makedirs(training_results_path)
-
-        if not os.path.exists(validation_results_path):
-            os.makedirs(validation_results_path)
-
         logger = setup_logger('training_logger', training_results_path + 'training.log', level=logging.INFO)
 
         logger.info(f"Training started with the following parameters: {params}")
@@ -592,17 +595,16 @@ def main():
                 training_results = train_dqn(env, agent, params["batch_size"], episode)
                 tbar.set_description(f"Run {run_id} cuda {args.cuda_device}. Epis {episode}")
                 tbar.set_postfix({'eps': agent.epsilon})
-
                 tbar.update(1)
             else:
                 training_results = train_dqn(env, agent, params["batch_size"], episode, tbar)
 
             # Save training result lists
-            results_path = training_results_path + 'data/'+ str(episode).zfill(2) + '/'
-            if not os.path.exists(results_path):
-                os.makedirs(results_path)
+            ep_results_path = training_results_path + 'data/'+ str(episode).zfill(2) + '/'
+            if not os.path.exists(ep_results_path):
+                os.makedirs(ep_results_path)
             for key, value in training_results.items():
-                with open(results_path + key + '.pkl', 'wb') as f:
+                with open(ep_results_path + key + '.pkl', 'wb') as f:
                     pickle.dump(value, f)
 
             total_train_failures = sum(training_results['failures_per_timeslot'])
@@ -613,7 +615,7 @@ def main():
             )
 
             # Save checkpoint if the training and validation score is better
-            if episode%10 == 0 and (agent.epsilon < 0.2 or mean_train_failures < 15):
+            if episode%10 == 0 and (agent.epsilon < 0.2 or mean_train_failures < 15):               
                 validation_results = validate_dqn(env, agent, episode, tbar)
 
                 val_failures_per_timeslot = validation_results['failures_per_timeslot']
@@ -630,11 +632,11 @@ def main():
                     best_validation_score = total_val_failures
 
                     # Save validation result lists
-                    results_path = validation_results_path + 'data/' + str(episode).zfill(2) + '/'
-                    if not os.path.exists(results_path):
-                        os.makedirs(results_path)
+                    ep_results_path = validation_results_path + 'data/' + str(episode).zfill(2) + '/'
+                    if not os.path.exists(ep_results_path):
+                        os.makedirs(ep_results_path)
                     for key, value in validation_results.items():
-                        with open(results_path + key + '.pkl', 'wb') as f:
+                        with open(ep_results_path + key + '.pkl', 'wb') as f:
                             pickle.dump(value, f)
 
                     # Save the trained model
@@ -669,7 +671,7 @@ def main():
         return
 
     # Save the trained model
-    trained_models_folder = data_path + 'trained_models'
+    trained_models_folder = results_path + 'trained_models'
 
     if not os.path.exists(trained_models_folder):
         os.makedirs(trained_models_folder)
@@ -691,7 +693,8 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Train the Dueling DQN agent.')
     parser.add_argument('--enable_telegram', action='store_true', help='Enable Telegram notifications.')
     parser.add_argument('--data_path', type=str, default=data_path, help='Path to the data folder.')
-    parser.add_argument('--cuda_device', type=int, default=0, help='CUDA device to use.')
+    parser.add_argument('--results_path', type=str, default=results_path, help='Path to the results folder.')
+    parser.add_argument('--cuda_device', type=int, default=1, help='CUDA device to use.')
     parser.add_argument('--enable_logging', action='store_true', help='Enable logging.')
     parser.add_argument('--enable_checkpoint', action='store_true', help='Enable checkpointing.')
     parser.add_argument('--restore_from_checkpoint', action='store_true', help='Restore from checkpoint.')
@@ -704,6 +707,7 @@ if __name__ == '__main__':
     # Assign variables based on the parsed arguments
     enable_telegram = args.enable_telegram
     data_path = args.data_path
+    results_path = args.results_path
     enable_logging = args.enable_logging
     enable_checkpoint = args.enable_checkpoint
     restore_from_checkpoint = args.restore_from_checkpoint
