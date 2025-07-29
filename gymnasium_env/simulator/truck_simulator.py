@@ -109,6 +109,7 @@ def drop_bike(truck: Truck, distance_matrix: pd.DataFrame, mean_velocity: int, d
     """
     Unloads a bike to the center_node of the cell where the truck is located or a specified station "node".
     If the truck is empty, go get more bikes at the depot.
+    WARNING: It is assumed that the deepot + truck load is never zero whern performing this funciton.
     WARNING: This function doesn't actially drop the bike, it just calculates the time and distance to reach the dropping station.
                 This is done to avoid the event handler to assign this bike before the truck has reach the station,
                 i.e. the bike cannot be ready before it's dropped.
