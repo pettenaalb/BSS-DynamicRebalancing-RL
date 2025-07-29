@@ -8,7 +8,7 @@ from dash.dependencies import Input, Output
 from utils import load_results, get_episode_options, create_plot, action_bin_labels, generate_osmnx_graph, initialize_graph
 
 # insert here the training runs to evaluate
-phases = [11,12,13,14,15,16]
+phases = [17,26,27]
 port = 8050
 
 # Base paths for two training phases
