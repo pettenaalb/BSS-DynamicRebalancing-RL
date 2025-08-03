@@ -276,6 +276,8 @@ def train_dqn(env: gym, agent: DQNAgent, batch_size: int, episode: int, tbar = N
     results = {
         "rewards_per_timeslot": rewards_per_timeslot,
         "failures_per_timeslot": failures_per_timeslot,
+        "total_trips": info["total_trips"],
+        "total_out_trips": info["total_out_trips"],
         "q_values_per_timeslot": q_values_per_timeslot,
         "action_per_step": action_per_step,
         "losses": losses,
@@ -444,6 +446,8 @@ def validate_dqn(env: gym, agent: DQNAgent, episode: int, tbar: tqdm | tqdm_tele
     results = {
         "rewards_per_timeslot": rewards_per_timeslot,
         "failures_per_timeslot": failures_per_timeslot,
+        "total_trips": info["total_trips"],
+        "total_out_trips": info["total_out_trips"],
         "action_per_step": action_per_step,
         "reward_tracking": reward_tracking,
         "deployed_bikes": deployed_bikes,
@@ -607,24 +611,28 @@ def main():
                 with open(ep_results_path + key + '.pkl', 'wb') as f:
                     pickle.dump(value, f)
 
+            total_trips = training_results['total_trips']
+            total_out_trips = training_results['total_out_trips']
             total_train_failures = sum(training_results['failures_per_timeslot'])
             mean_train_failures = total_train_failures / params["total_timeslots"]
 
             logger.info(
-                f"Episode {episode}: Mean Failures = {mean_train_failures:.2f}, Total Failures = {total_train_failures}"
+                f"Episode {episode}: Mean Failures = {mean_train_failures:.2f}, Total Failures = {total_train_failures}/{total_trips}, Out trips = {total_out_trips}"
             )
 
             # Save checkpoint if the training and validation score is better
             if episode%10 == 0 and (agent.epsilon < 0.2 or mean_train_failures < 15):               
                 validation_results = validate_dqn(env, agent, episode, tbar)
 
+                total_trips = training_results['total_trips']
+                total_out_trips = training_results['total_out_trips']
                 val_failures_per_timeslot = validation_results['failures_per_timeslot']
                 mean_val_failures_per_timeslot = sum(val_failures_per_timeslot) / params["total_timeslots"]
                 total_val_failures = sum(val_failures_per_timeslot)
 
                 logger.info(
                     f"Episode {episode}: Mean Validation Failures = {mean_val_failures_per_timeslot:.2f}, "
-                    f"Total Validation Failures = {total_val_failures}, "
+                    f"Total Validation Failures = {total_val_failures}/{total_trips}, Out trips = {total_out_trips}, "
                     f"Best Validation Failures = {best_validation_score}"
                 )
 

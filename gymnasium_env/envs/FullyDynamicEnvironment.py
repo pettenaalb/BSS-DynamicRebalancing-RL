@@ -151,6 +151,7 @@ class FullyDynamicEnv(gym.Env):
         self.days_completed = 0
         self.total_visits = 1
         self.total_failures = 0
+        self.total_trips = 0
         self.total_out_trips = 0
 
 
@@ -202,6 +203,7 @@ class FullyDynamicEnv(gym.Env):
         self.days_completed = 0
         self.total_visits = 1
         self.total_failures = 0
+        self.total_trips = 0
         self.total_out_trips = 0
 
         self.event_buffer = None
@@ -291,7 +293,7 @@ class FullyDynamicEnv(gym.Env):
         self.logger.new_log_line(timeslot=(8*days2num[self.day] + self.timeslot))
         
         # Log truck state
-        self.logger.log_truck(self.truck)
+        # self.logger.log_truck(self.truck)
 
         # Check for discrepancies in the depot + system bikes between total bikes
         # i.e. If a bike exits the system, arrival station => 10000, add a bike in the depot
@@ -413,6 +415,8 @@ class FullyDynamicEnv(gym.Env):
             'steps': steps,
             'truck_neighbor_cells': truck_cell.get_adjacent_cells(),
             'truck_load': self.truck.get_load(),
+            'total_trips': self.total_trips,
+            'total_out_trips':self.total_out_trips,
         }
 
         # Save and Reset some variables
@@ -608,8 +612,12 @@ class FullyDynamicEnv(gym.Env):
                     logging_state_and_trips=logging_state_and_trips,
                     next_bike_id=self.next_bike_id
                 )
-                if event.get_trip().get_end_location().get_station_id() == 10000 or event.get_trip().get_start_location().get_station_id() == 10000:
+                self.total_trips += 1
+                if event.get_trip().get_end_location().get_station_id() == 10000:
                     self.total_out_trips += 1
+                    self.logger.log_trip(event.get_trip())
+                elif event.get_trip().get_start_location().get_station_id() == 10000:
+                    self.total_out_trips += 100
                     self.logger.log_trip(event.get_trip())
                 total_failures += failure
             failures.append(total_failures)
@@ -753,15 +761,15 @@ class FullyDynamicEnv(gym.Env):
         # Loop penalty
         # ----------------------------
         if _detect_self_loops((action, self.last_move_action)):
-            # return 0.0
-            if action in {Actions.UP.value, Actions.DOWN.value, Actions.LEFT.value, Actions.RIGHT.value}:
-                loop_penalty = -0.5
-            elif action in {Actions.PICK_UP_BIKE.value, Actions.DROP_BIKE.value}:
-                loop_penalty = -0.5
-            elif action in {Actions.STAY.value}:
-                loop_penalty = -0.1
-            else:
-                print(f"Detect loops was triggered with action:{action} and last_action{self.last_move_action} but no penalty was given.")
+            loop_penalty = -0.5
+            # if action in {Actions.UP.value, Actions.DOWN.value, Actions.LEFT.value, Actions.RIGHT.value}:
+            #     loop_penalty = -0.5
+            # elif action in {Actions.PICK_UP_BIKE.value, Actions.DROP_BIKE.value}:
+            #     loop_penalty = -0.5
+            # elif action in {Actions.STAY.value}:
+            #     loop_penalty = -0.1
+            # else:
+            #     print(f"Detect loops was triggered with action:{action} and last_action{self.last_move_action} but no penalty was given.")
 
         # ----------------------------
         # Drop Reward

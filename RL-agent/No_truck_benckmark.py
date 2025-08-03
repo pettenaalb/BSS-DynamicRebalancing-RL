@@ -54,7 +54,7 @@ torch.backends.cudnn.benchmark = False
 # torch.geometric.seed(seed) 
 
 params = {
-    "num_episodes": 5,                              # Total number of test episodes
+    "num_episodes": 50,                             # Total number of test episodes
     "total_timeslots": 56,                          # Total number of time slots in one episode (1 month)
     "maximum_number_of_bikes": 250,                 # Maximum number of bikes in the system
     "results_path": results_path,                   # Path to save results
@@ -211,6 +211,8 @@ def train_dqn(env: gym, episode: int, tbar = None) -> dict:
     results = {
         "rewards_per_timeslot": rewards_per_timeslot,
         "failures_per_timeslot": failures_per_timeslot,
+        "total_trips": info["total_trips"],
+        "total_out_trips": info["total_out_trips"],
         "q_values_per_timeslot": 0,
         "action_per_step": action_per_step,
         "losses": 0,
@@ -312,11 +314,13 @@ def main():
                 with open(ep_results_path + key + '.pkl', 'wb') as f:
                     pickle.dump(value, f)
 
+            total_trips = test_results['total_trips']
+            total_out_trips = test_results['total_out_trips']
             total_train_failures = sum(test_results['failures_per_timeslot'])
             mean_train_failures = total_train_failures / params["total_timeslots"]
 
             logger.info(
-                f"Episode {episode}: Mean Failures = {mean_train_failures:.2f}, Total Failures = {total_train_failures}"
+                f"Episode {episode}: Mean Failures = {mean_train_failures:.2f}, Failures = {total_train_failures}/{total_trips}, Out trips = {total_out_trips}"
             )
 
             gc.collect()
