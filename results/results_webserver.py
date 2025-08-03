@@ -252,10 +252,13 @@ app.layout = html.Div([
                     })
             ], style={'width': '100%', 'padding': '10px', 'background-color': 'white', 'box-shadow': '0px 1px 3px rgba(0, 0, 0, 0.2)'}),
             html.Div([
-                html.Label("Select Episode for Rewards:", style={'font-weight': 'bold'}),
+                html.Label("Select metric:", style={'font-weight': 'bold'}),
+                dcc.Dropdown(id="episode-selector-graph", value="last", clearable=True, style={'width': '100%'}),
                 dcc.Dropdown(
                     id="metric-selector-graph",
                     options=[{"label": "Visits", "value": "visits"},
+                             {"label": "Time spent", "value": "presence"},
+                             {"label": "Failures", "value": "failures"},
                              {"label": "Critic Score", "value": "critic_score"},
                              {"label": "Num of bikes", "value": "num_bikes"}],
                     value="visits",
@@ -265,7 +268,7 @@ app.layout = html.Div([
                 html.Button("Update OSMnx Graph", id="update-btn-osmnx", n_clicks=0,
                             style={'background-color': '#4A90E2', 'color': 'white', 'border': 'none',
                                    'padding': '10px 20px', 'cursor': 'pointer', 'border-radius': '5px'}),
-                html.Img(id="osmnx-graph", style={'width': '70%', 'border': '1px solid #d3d3d3', 'padding': '10px'})
+                html.Img(id="osmnx-graph", style={'width': '60%', 'border': '1px solid #d3d3d3', 'padding': '10px'})
             ], style={'width': '100%', 'display': 'inline-block', 'vertical-align': 'top', 'padding': '10px', 'box-shadow': '0px 1px 3px rgba(0, 0, 0, 0.2)', 'background-color': 'white'}),
         ], style={'display': 'flex', 'flex-wrap': 'wrap', 'gap': '10px'}),
     ], style={'max-width': '1200px', 'margin': '0 auto'}),
@@ -275,15 +278,16 @@ app.layout = html.Div([
     [Output("episode-selector-reward", "options"),
      Output("episode-selector-failure", "options"),
      Output("episode-selector-q-value", "options"),
-     Output("episode-selector-action", "options")],
+     Output("episode-selector-action", "options"),
+     Output("episode-selector-graph", "options")],
     [Input("training-selector", "value"),
         Input("interval-component", "n_intervals")]
 )
 def update_episode_dropdown(training_path, n_intervals):
     options = get_episode_options(training_path)
-    first_option = options[:1]
-    reversed_options = first_option + options[1:][::-1]
-    return [reversed_options] * 4
+    reversed_options = [{"label": "All Episodes", "value": "all"}] + options[0:][::-1]
+    reversed_graph_options = [{"label": "Last Episode", "value": "last"}] + options[0:][::-1]
+    return [reversed_options] * 4 + [reversed_graph_options]
 
 @app.callback(
     Output("reward-plot", "figure"),
@@ -423,22 +427,17 @@ def update_reward_tracking_plot(n_intervals, n_clicks, training_path, action):
     Output("osmnx-graph", "src"),
     [Input("training-selector", "value"),
      Input("metric-selector-graph", "value"),
+     Input("episode-selector-graph", "value"),
      Input("update-btn-osmnx", "n_clicks")]
 )
-def update_osmnx_graph(training_path, metric, n_clicks):
+def update_osmnx_graph(training_path, metric, episode_folder, n_clicks):
     graph = initialize_graph('data/utils/cambridge_network.graphml')
     # Initialize the cells
     with open('data/utils/cell_data.pkl', 'rb') as file:
         cells = pickle.load(file)
 
-    # if training_path == "training_2/data" or training_path == "validation_2/data":
-    #     graph = initialize_graph('../data_cambridge_full/utils/cambridge_network.graphml')
-    #     # Initialize the cells
-    #     with open('../data_cambridge_full/utils/cell_data.pkl', 'rb') as file:
-    #         cells = pickle.load(file)
-
-    last_episode_folder = get_episode_options(training_path)[-1]
-    cell_subgraph = load_results(training_path, last_episode_folder['value'], metric="cell_subgraph")
+    # episode_folder = get_episode_options(training_path)[-1]
+    cell_subgraph = load_results(training_path, episode_folder, metric="cell_subgraph")
     nodes = ox.graph_to_gdfs(cell_subgraph, nodes=True, edges=False)
 
     cell_values = {}
@@ -451,7 +450,7 @@ def update_osmnx_graph(training_path, metric, n_clicks):
         for cell_id in cell_values.keys():
             cell_values[cell_id] = cell_values[cell_id] / total_visits
 
-    return generate_osmnx_graph(graph, cells, cell_values, percentage=(metric == "visits" or metric == "critic_score"))
+    return generate_osmnx_graph(graph, cells, cell_values)#, percentage=(metric == "visits" or metric == "critic_score"))
 
 
 # Run the Dash app

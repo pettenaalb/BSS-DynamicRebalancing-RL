@@ -18,15 +18,15 @@ from matplotlib import pyplot as plt
 
 class Actions(Enum):
     STAY = 0
-    RIGHT = 1
-    UP = 2
+    UP = 1
+    DOWN = 2
     LEFT = 3
-    DOWN = 4
+    RIGHT = 4
     DROP_BIKE = 5
     PICK_UP_BIKE = 6
     CHARGE_BIKE = 7
 
-action_bin_labels = ['STAY', 'RIGHT', 'UP', 'LEFT', 'DOWN', 'DROP_BIKE', 'PICK_UP_BIKE', 'CHARGE_BIKE']
+action_bin_labels = ['STAY', 'UP', 'DOWN', 'LEFT', 'RIGHT', 'DROP_BIKE', 'PICK_UP_BIKE', 'CHARGE_BIKE']
 
 # set up matplotlib
 is_ipython = 'inline' in matplotlib.get_backend()
@@ -156,7 +156,7 @@ def plot_confusion_matrix(data: pd.DataFrame, title="Heatmap", x_label = "", y_l
 
 # ----------------------------------------------------------------------------------------------------------------------
 
-def get_episode_options(training_path, default_option=True):
+def get_episode_options(training_path):
     if not os.path.exists(training_path):
         return []
 
@@ -165,9 +165,7 @@ def get_episode_options(training_path, default_option=True):
         key=lambda x: int(x)
     )
 
-    options = (
-        [{"label": "All Episodes", "value": "all"}] if default_option else []
-    ) + [{"label": folder, "value": folder} for folder in episode_folders]
+    options = [{"label": folder, "value": folder} for folder in episode_folders]
     return options
 
 def load_results_old(training_path, episode_folder="all"):
@@ -225,6 +223,9 @@ def load_results(training_path, episode_folder="all", metric="rewards_per_timesl
                 for i, inner_rt in enumerate(r):
                     results[i].extend(inner_rt)
         return results
+    elif episode_folder == "last":
+        ef = get_episode_options(training_path)[-1]
+        episode_folder = ef['value']
 
     timeslot_path = os.path.join(training_path, episode_folder)
     if not os.path.exists(timeslot_path):
@@ -317,11 +318,11 @@ def generate_osmnx_graph(graph: nx.MultiDiGraph, cell_dict: dict, cell_values: d
                     label=f"Center Node {cell.id}")
         center_coords = cell.boundary.centroid.coords[0]
         if percentage:
-            ax.text(center_coords[0], center_coords[1], f"{cell_values[cell_id] * 100:.2f}%", fontsize=10,
-                    color='yellow', ha='center', va='center',weight='bold')
+            ax.text(center_coords[0], center_coords[1], f"{cell_values[cell_id] * 100:.2f}%", fontsize=14,
+                    color='black', ha='center', va='center',weight='bold')
         else:
-            ax.text(center_coords[0], center_coords[1], f"{cell_values[cell_id]:.2f}", fontsize=10,
-                    color='yellow', ha='center', va='center',weight='bold')
+            ax.text(center_coords[0], center_coords[1], f"{cell_values[cell_id]:.2f}", fontsize=15,
+                    color='black', ha='center', va='center',weight='bold')
 
     # Hide x-ticks, y-ticks, and labels
     ax.set_xticks([])

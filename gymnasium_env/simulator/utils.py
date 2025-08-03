@@ -25,10 +25,6 @@ if TYPE_CHECKING:
 
 class Actions(Enum):
     STAY = 0
-    # RIGHT = 1
-    # UP = 2
-    # LEFT = 3
-    # DOWN = 4
     UP = 1
     DOWN = 2
     LEFT = 3
