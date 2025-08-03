@@ -8,7 +8,9 @@ from dash.dependencies import Input, Output
 from utils import load_results, get_episode_options, create_plot, action_bin_labels, generate_osmnx_graph, initialize_graph
 
 # insert here the training runs to evaluate
-phases = [17,26,27]
+phases = [17,25,26,27,28,29]
+validation_paths = True
+tests = [0]
 port = 8050
 
 # Base paths for two training phases
@@ -18,10 +20,15 @@ for n in phases :
     label = f"Phase {n} Training"
     folder = f"training_{n}"
     TRAINING_PATHS.update({label: os.path.join(BASE_PATH, folder, "data")})
-# for n in phases :
-#     label = f"Phase {n} Validation"
-#     folder = f"validation_{n}"
-#     TRAINING_PATHS.update({label: os.path.join(BASE_PATH, folder, "data")})
+if validation_paths:
+    for n in phases :
+        label = f"Phase {n} Validation"
+        folder = f"validation_{n}"
+        TRAINING_PATHS.update({label: os.path.join(BASE_PATH, folder, "data")})
+for n in tests :
+    label = f"Test {n}"
+    folder = f"test_{n}"
+    TRAINING_PATHS.update({label: os.path.join(BASE_PATH, folder, "data")})
 
 # "Training Phase 3": os.path.join(BASE_PATH, "training_3", "data"),
 # "Training Phase 3": os.path.join(BASE_PATH, "training_3", "data"),
