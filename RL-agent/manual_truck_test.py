@@ -15,10 +15,12 @@ import numpy as np
 
 from tqdm.contrib.telegram import tqdm as tqdm_telegram
 from tqdm import tqdm
+from agent import DQNAgent
 from utils import convert_graph_to_data, convert_seconds_to_hours_minutes, send_telegram_message, Actions
 from replay_memory import ReplayBuffer
 from torch_geometric.data import Data
 from gymnasium_env.simulator.utils import initialize_cells_subgraph
+from torch.nn import functional as F
 
 # ----------------------------------------------------------------------------------------------------------------------
 
@@ -58,6 +60,17 @@ params = {
     "total_timeslots": 56,                          # Total number of time slots in one episode (1 month)
     "maximum_number_of_bikes": 250,                 # Maximum number of bikes in the system
     "results_path": results_path,                   # Path to save results
+    "batch_size": 64,                               # Batch size for replay buffer sampling
+    "replay_buffer_capacity": int(1e5),             # Capacity of replay buffer: 0.1 million transitions
+    "gamma": 0.95,                                  # Discount factor
+    "epsilon_start": 1.0,                           # Starting exploration rate
+    "epsilon_delta": 0.05,                          # Epsilon decay rate
+    "epsilon_end": 0.00,                            # Minimum exploration rate
+    "epsilon_decay": 1e-5,                          # Epsilon decay constant
+    "exploration_time": 0.6,                        # Fraction of total training time for exploration
+    "lr": 1e-4,                                     # Learning rate
+    "soft_update": True,                            # Use soft update for target network
+    "tau": 0.005,                                   # Tau parameter for soft update
 }
 
 reward_params = {
@@ -81,7 +94,7 @@ formatter = logging.Formatter('%(asctime)s %(levelname)s %(message)s')
 
 # ----------------------------------------------------------------------------------------------------------------------
 
-def train_dqn(env: gym, episode: int, tbar = None) -> dict:
+def train_dqn(env: gym, agent: DQNAgent, batch_size: int, episode: int, tbar = None) -> dict:
     # Initialize episode metrics
     timeslot = 0
     timeslots_completed = 0
@@ -122,6 +135,7 @@ def train_dqn(env: gym, episode: int, tbar = None) -> dict:
     distance_matrix = info['distance_matrix']
     custom_features = {
         'visits': 0.0,
+        'failures': 0,
         'critic_score': 0.0,
         'num_bikes': 0.0,
     }
@@ -131,15 +145,21 @@ def train_dqn(env: gym, episode: int, tbar = None) -> dict:
 
     iterations = 0
     while not_done:
-        # # Prepare the state for the agent
-        # single_state = Data(
-        #     x=state.x.to(device),
-        #     edge_index=state.edge_index.to(device),
-        #     edge_attr=state.edge_attr.to(device),
-        #     agent_state=torch.tensor(state.agent_state, dtype=torch.float32).unsqueeze(dim=0).to(device),
-        #     batch=torch.zeros(state.x.size(0), dtype=torch.long).to(device),
-        # )
+        print(state.x)
+        # Prepare the state for the agent
+        single_state = Data(
+            x=state.x.to(device),
+            edge_index=state.edge_index.to(device),
+            edge_attr=state.edge_attr.to(device),
+            agent_state=torch.tensor(state.agent_state, dtype=torch.float32).unsqueeze(dim=0).to(device),
+            batch=torch.zeros(state.x.size(0), dtype=torch.long).to(device),
+        )
 
+        # What would have done the agent at this point
+        agent_action = agent.select_action(single_state, greedy=True)
+        q_values = agent.get_q_values(single_state).squeeze(0)
+        print(f"The agent suggest action {agent_action}")
+        print(f"Q values of policy net are: {q_values}")
         # Select an action using the agent
         try:
             action = int(input("Choose truck Action.value : "))
@@ -149,9 +169,49 @@ def train_dqn(env: gym, episode: int, tbar = None) -> dict:
         # Step the environment with the chosen action
         agent_state, reward, done, timeslot_terminated, info = env.step(action)
 
-        # Print the reward and state
+        # print the consequences
         print(f"Reward given = {reward}")
-        print(f"State: Load= {agent_state[0]} | Sys_sat= {agent_state[1]}"
+
+
+        # Update state with new information
+        env_cells_subgraph = info['cells_subgraph']
+        next_state = convert_graph_to_data(env_cells_subgraph, node_features=node_features)
+        next_state.agent_state = agent_state
+        state.steps = info['steps']
+
+        # Store the transition in the replay buffer
+        agent.replay_buffer.push(state, action, reward, next_state, done)
+
+        # Agent train step simulaiton
+        # Prepare the next state for the agent
+        single_next_state = Data(
+            x=next_state.x.to(device),
+            edge_index=next_state.edge_index.to(device),
+            edge_attr=next_state.edge_attr.to(device),
+            agent_state=torch.tensor(next_state.agent_state, dtype=torch.float32).unsqueeze(dim=0).to(device),
+            batch=torch.zeros(next_state.x.size(0), dtype=torch.long).to(device),
+        )
+
+        policy_q_value = q_values[action].item()
+        agent_next_actions = agent.select_action(single_next_state, greedy=True)
+        next_q_values = agent.get_q_values(single_next_state).squeeze(0)
+        target_q_value = next_q_values[agent_next_actions].item()
+
+        discount = params["gamma"]*info['steps']
+        bellman_q_target = reward + discount * target_q_value
+
+        print(f"Q(S, a)= {policy_q_value}, Q(S', a')= {target_q_value}, Steps = {info['steps']}")
+        print(f"Discount = gamma * steps = {discount}")
+        print(f"bellman_q_target = reward + discount * target_q_values = {bellman_q_target}")
+
+
+        # Train the agent with a batch from the replay buffer
+        _ = agent.train_step(batch_size)
+
+
+        # Print informations about the next state
+        print("-------------------------------------------------------------------")
+        print(f"State: Sys_sat= {agent_state[0]} | Criticals = {agent_state[1]}"
             f" | day= {ohe2num(agent_state[2:9])} | hour= {ohe2num(agent_state[9:33])}"
             f" | prevous_act= {ohe2num(agent_state[33:41])} | cell position= {ohe2cell(agent_state[41:68])} | borders= {agent_state[68:72]}")
         # print(info['cells_subgraph'])
@@ -160,12 +220,6 @@ def train_dqn(env: gym, episode: int, tbar = None) -> dict:
             print("\n########### TIMESLOT TERMINATED ###############\n")
         if done:
             print("\n########### EPISODE IS DONE ###################\n")
-
-        # Update state with new information
-        env_cells_subgraph = info['cells_subgraph']
-        next_state = convert_graph_to_data(env_cells_subgraph, node_features=node_features)
-        next_state.agent_state = agent_state
-        next_state.steps = info['steps']
 
         # Update the state
         state = next_state
@@ -212,13 +266,14 @@ def train_dqn(env: gym, episode: int, tbar = None) -> dict:
                 center_node = cell.get_center_node()
                 if center_node in cell_graph:
                     cell_graph.nodes[center_node]['visits'] = env_cells_subgraph.nodes[center_node]['visits']
+                    cell_graph.nodes[center_node]['failures'] = env_cells_subgraph.nodes[center_node]['failures']
                     cell_graph.nodes[center_node]['critic_score'] = cell_graph.nodes[center_node]['critic_score'] / iterations
                     cell_graph.nodes[center_node]['num_bikes'] = cell_graph.nodes[center_node]['num_bikes'] / iterations
                 else:
                     raise ValueError(f"Node {center_node} not found in the subgraph.")
 
         # Explicitly delete single_state
-        # del single_state
+        del single_state
 
     env.close()
     torch.cuda.empty_cache()
@@ -299,6 +354,31 @@ def main():
     env.observation_space.seed(seed)
     starting_episode = 0
 
+    # Set up replay buffer
+    replay_buffer = ReplayBuffer(params["replay_buffer_capacity"])
+
+    # Initialize the DQN agent
+    agent = DQNAgent(
+        replay_buffer=replay_buffer,
+        num_actions=env.action_space.n,
+        gamma=params["gamma"],
+        epsilon_start=params["epsilon_start"],
+        epsilon_end=params["epsilon_end"],
+        epsilon_decay=params["epsilon_decay"],
+        lr=params["lr"],
+        device=device,
+        tau=params["tau"],
+        soft_update=params["soft_update"],
+        # input_dim=params["input_dimension"],
+    )
+
+    # Restore from checkpoint
+    starting_episode = 0
+    if restore_from_checkpoint:
+        main_variables = restore_checkpoint(agent, replay_buffer)
+        starting_episode = main_variables['episode'] + 1
+        print(f"Restored from checkpoint. Resuming training from episode {starting_episode}.")
+
     # Train the agent using the test loop
     try:
         # Progress bar for the episode
@@ -333,11 +413,11 @@ def main():
         for episode in range(starting_episode, params["num_episodes"]):
             # Test one episode
             if enable_telegram:
-                test_results = train_dqn(env, episode)
+                test_results = train_dqn(env, agent, params["batch_size"], episode)
                 tbar.set_description(f"Run {run_id} cuda {args.cuda_device}. Epis {episode}")
                 tbar.update(1)
             else:
-                test_results = train_dqn(env, episode, tbar)
+                test_results = train_dqn(env, agent, params["batch_size"], episode, tbar)
 
             # Save test result lists
             ep_results_path = test_results_path + 'data/'+ str(episode).zfill(2) + '/'
@@ -381,6 +461,7 @@ if __name__ == '__main__':
     parser.add_argument('--results_path', type=str, default=results_path, help='Path to the results folder.')
     parser.add_argument('--cuda_device', type=int, default=1, help='CUDA device to use.')
     parser.add_argument('--enable_logging', action='store_true', help='Enable logging.')
+    parser.add_argument('--restore_from_checkpoint', action='store_true', help='Restore from checkpoint.')
     parser.add_argument('--num_episodes', type=int, default=params['num_episodes'], help='Number of episodes to train.')
     parser.add_argument('--run_id', type=int, default=run_id, help='Run ID for the experiment.')
 
@@ -391,6 +472,7 @@ if __name__ == '__main__':
     data_path = args.data_path
     results_path = args.results_path
     enable_logging = True
+    restore_from_checkpoint = args.restore_from_checkpoint
     params["num_episodes"] = args.num_episodes
     run_id = args.run_id
 

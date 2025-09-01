@@ -105,6 +105,7 @@ def departure_handler(trip: Trip, station_dict: dict, nearby_nodes_dict: dict[st
 
     # Here the trip departure was inside, the station was empty and all nearby stations were also empty.
     trip.set_failed(True)
+    start_station.get_cell().add_failure()
     return trip, next_bike_id
 
 

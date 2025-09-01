@@ -8,7 +8,7 @@ from dash.dependencies import Input, Output
 from utils import load_results, get_episode_options, create_plot, action_bin_labels, generate_osmnx_graph, initialize_graph
 
 # insert here the training runs to evaluate
-phases = [17,25,26,27,28,29]
+phases = [27,31]
 validation_paths = True
 tests = [0]
 port = 8050
@@ -338,7 +338,7 @@ def update_q_value_plot(n_intervals, n_clicks, training_path, episode_folder):
      Input("update-btn-plots", "n_clicks")]
 )
 def update_epsilon_loss(n_intervals, training_path, n_clicks):
-    # loss = load_results(training_path, metric="losses")
+    loss = load_results(training_path, metric="losses")
     try:
         epsilon = load_results(training_path, metric="epsilon_per_timeslot")
         epsilon_plot = create_plot(epsilon, "Epsilon over Time", "Epsilon", "Timeslot", cumulative=False)

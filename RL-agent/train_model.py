@@ -124,7 +124,6 @@ def train_dqn(env: gym, agent: DQNAgent, batch_size: int, episode: int, tbar = N
         'truck_cell',
         'critic_score',
         'eligibility_score',
-        # TURN OFF THIS TO DISABLE BATTERY CHARGE
         'low_battery_bikes',
     ]
 
@@ -137,10 +136,11 @@ def train_dqn(env: gym, agent: DQNAgent, batch_size: int, episode: int, tbar = N
     nodes_dict = info['nodes_dict']
     distance_matrix = info['distance_matrix']
     custom_features = {
-        'visits': 0.0,
+        'visits': 0,
+        'failures': 0,
         'critic_score': 0.0,
         'num_bikes': 0.0,
-    }
+    } # to see new custom feature on the results, remember to add them in the webserver
     cell_graph = initialize_cells_subgraph(cell_dict, nodes_dict, distance_matrix, custom_features)
 
     not_done = True
@@ -148,6 +148,7 @@ def train_dqn(env: gym, agent: DQNAgent, batch_size: int, episode: int, tbar = N
     iterations = 0
     while not_done:
         # Prepare the state for the agent
+        # print(state.x)
         single_state = Data(
             x=state.x.to(device),
             edge_index=state.edge_index.to(device),
@@ -186,7 +187,7 @@ def train_dqn(env: gym, agent: DQNAgent, batch_size: int, episode: int, tbar = N
         env_cells_subgraph = info['cells_subgraph']
         next_state = convert_graph_to_data(env_cells_subgraph, node_features=node_features)
         next_state.agent_state = agent_state
-        next_state.steps = info['steps']
+        state.steps = info['steps']
 
         # Store the transition in the replay buffer
         agent.replay_buffer.push(state, action, reward, next_state, done)
@@ -220,13 +221,13 @@ def train_dqn(env: gym, agent: DQNAgent, batch_size: int, episode: int, tbar = N
             timeslots_completed += 1
 
             # Update target network periodically
-            # if timeslots_completed % 8 == 0:
-            #     agent.update_target_network()
+            if timeslots_completed % 8 == 0:
+                agent.update_target_network()
             if agent.epsilon <= 0.05:
                 agent.epsilon = 0.05
             elif agent.epsilon > 0.05:
-                agent.epsilon = 1 - episode*0.01
-                # agent.update_epsilon()
+                agent.update_epsilon()
+                # agent.epsilon = 1 - episode*0.01
 
             # Get Q-values for the current state
             with torch.no_grad():
@@ -262,6 +263,7 @@ def train_dqn(env: gym, agent: DQNAgent, batch_size: int, episode: int, tbar = N
                 center_node = cell.get_center_node()
                 if center_node in cell_graph:
                     cell_graph.nodes[center_node]['visits'] = env_cells_subgraph.nodes[center_node]['visits']
+                    cell_graph.nodes[center_node]['failures'] = env_cells_subgraph.nodes[center_node]['failures']
                     cell_graph.nodes[center_node]['critic_score'] = cell_graph.nodes[center_node]['critic_score'] / iterations
                     cell_graph.nodes[center_node]['num_bikes'] = cell_graph.nodes[center_node]['num_bikes'] / iterations
                 else:
@@ -317,7 +319,6 @@ def validate_dqn(env: gym, agent: DQNAgent, episode: int, tbar: tqdm | tqdm_tele
         'truck_cell',
         'critic_score',
         'eligibility_score',
-        # TURN OFF THIS TO DISABLE BATTERY CHARGE
         'low_battery_bikes',
     ]
 
@@ -331,6 +332,7 @@ def validate_dqn(env: gym, agent: DQNAgent, episode: int, tbar: tqdm | tqdm_tele
     distance_matrix = info['distance_matrix']
     custom_features = {
         'visits': 0.0,
+        'failures': 0.0,
         'critic_score': 0.0,
         'num_bikes': 0.0,
     }
@@ -431,6 +433,7 @@ def validate_dqn(env: gym, agent: DQNAgent, episode: int, tbar: tqdm | tqdm_tele
                 center_node = cell.get_center_node()
                 if center_node in cell_graph:
                     cell_graph.nodes[center_node]['visits'] = env_cells_subgraph.nodes[center_node]['visits']
+                    cell_graph.nodes[center_node]['failures'] = env_cells_subgraph.nodes[center_node]['failures']
                     cell_graph.nodes[center_node]['critic_score'] = cell_graph.nodes[center_node]['critic_score'] / iterations
                     cell_graph.nodes[center_node]['num_bikes'] = cell_graph.nodes[center_node]['num_bikes'] / iterations
                 else:
