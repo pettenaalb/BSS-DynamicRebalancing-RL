@@ -40,7 +40,7 @@ def event_handler(event: Event, station_dict: dict[int, Station], nearby_nodes_d
         if trip.is_failed():
             failure = 1
             # if logger is not None:
-            logger.log_no_available_bikes(trip.get_start_location().get_station_id(), trip.get_end_location().get_station_id())
+            logger.log_no_available_bikes(trip.get_start_location(), trip.get_end_location())
     else:
         arrival_handler(event.get_trip(), system_bikes, outside_system_bikes)
 

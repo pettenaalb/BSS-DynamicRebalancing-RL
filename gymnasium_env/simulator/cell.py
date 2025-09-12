@@ -38,6 +38,7 @@ class Cell:
         self.request_rate = 0
         self.visits = 0
         self.failures = 0
+        self.total_rebalanced = 0
         self.critic_score = 0
         self.is_critical = False
         self.surplus_bikes = 0
@@ -84,6 +85,7 @@ class Cell:
         self.request_rate = 0
         self.visits = 0
         self.failures = 0
+        self.total_rebalanced = 0
         self.critic_score = 0
         self.is_critical = False
         self.surplus_bikes = 0
@@ -91,6 +93,8 @@ class Cell:
     def reset_failures(self):
         self.failures = 0
 
+    def reset_total_rebalanced(self):
+        self.total_rebalanced = 0
 
     def set_diagonal(self):
         """
@@ -122,21 +126,21 @@ class Cell:
         else:
             self.is_critical = False
 
-    # def set_surplus_bikes(self, surplus_threshold: float = 0.67):
-    #     """
-    #     This function sets the surplus score base on the surplus_threshold of the critic_score.
-    #     If the cell is critic or the negative critic_score is not inferior to the treashold, then the cell is not in surplus.
-    #     self.surplus_bikes is the number of bikes in surplus.
+    def set_surplus_bikes(self, surplus_threshold: float = 0.67):
+        """
+        This function sets the surplus score base on the surplus_threshold of the critic_score.
+        If the cell is critic or the negative critic_score is not inferior to the treashold, then the cell is not in surplus.
+        self.surplus_bikes is the number of bikes in surplus.
 
-    #     Parameters:
-    #     surplus_threshold (float): Value of the critic score under which the cell is considered "in surplus"
-    #     """
-    #     if surplus_threshold <= 0.0 or surplus_threshold >= 1.0:
-    #         raise ValueError("Invalid surplus_threshold selected. Must be between 0 and 1 .")
-    #     if self.critic_score > -surplus_threshold:
-    #         self.surplus_bikes = 0
-    #     else:
-    #         self.surplus_bikes = self.total_bikes - math.floor((self.total_bikes*((1 + self.critic_score)/(1 - self.critic_score)))/((1-surplus_threshold)/(1+surplus_threshold)))
+        Parameters:
+        surplus_threshold (float): Value of the critic score under which the cell is considered "in surplus"
+        """
+        if surplus_threshold <= 0.0 or surplus_threshold >= 1.0:
+            raise ValueError("Invalid surplus_threshold selected. Must be between 0 and 1 .")
+        if self.critic_score > -surplus_threshold:
+            self.surplus_bikes = 0
+        else:
+            self.surplus_bikes = self.total_bikes - math.floor((self.total_bikes*((1 + self.critic_score)/(1 - self.critic_score)))/((1-surplus_threshold)/(1+surplus_threshold)))
 
     def get_id(self) -> int:
         return self.id
@@ -168,6 +172,9 @@ class Cell:
     def get_failures(self) -> int:
         return self.failures
 
+    def get_total_rebalanced(self) -> int:
+        return self.total_rebalanced
+
     def get_critic_score(self) -> float:
         return self.critic_score
 
@@ -181,6 +188,12 @@ class Cell:
         f (int): Number of failures to add (default 1)
         """
         self.failures += f
+
+    def update_rebalanced_times(self):
+        """
+        This functions adds one to the counter of the times the cell is rebalanced
+        """
+        self.total_rebalanced += 1
 
     def update_eligibility_score(self, eligibility_decay: float):
         """

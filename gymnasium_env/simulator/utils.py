@@ -63,9 +63,10 @@ class Logger:
                 log += (f" Timeslot = {timeslot}")
             self.logger.info(log)
 
-    def log_starting_action(self, action: str, t: int):
+    def log_starting_action(self, action: str, t: int, cell_id: int, invalid:bool):
         if self.is_logging:
-            self.logger.info(f'ACTION: {action} --> Time to complete: {t}s - Steps needed: {int(math.ceil(t / 30))}')
+            invalid = 'INVALID' if invalid else ''
+            self.logger.info(f'ACTION: {action} on cell {cell_id} {invalid} --> Time to complete: {t}s - Steps needed: {int(math.ceil(t / 30))}')
 
     def log_ending_action(self, time: str):
         if self.is_logging:
@@ -79,9 +80,10 @@ class Logger:
         if self.is_logging:
             self.logger.info(f"TRUCK in CELL: {truck.cell.get_id()} (center_node = {truck.cell.get_center_node()}, cell_bikes = {truck.cell.get_total_bikes()}, critic_score = {truck.cell.get_critic_score()}) - POSITION: {truck.position} - LOAD: {truck.current_load} bikes")
 
-    def log_no_available_bikes(self, start_station: int, end_station: int):
+    def log_no_available_bikes(self, start_station: "Station", end_station: "Station"):
         if self.is_logging:
-            self.logger.warning(f"TRIP FAILED: No bikes from station {start_station} to station {end_station}")
+            self.logger.warning(f"TRIP FAILED: No bikes from station {start_station.get_station_id()} (cell: {start_station.get_cell().get_id()})"
+                                f" to station {end_station.get_station_id()} (cell: {end_station.get_cell().get_id()})")
 
     def log_trip(self, trip: "Trip"):
         if self.is_logging:

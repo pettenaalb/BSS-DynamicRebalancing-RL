@@ -8,7 +8,7 @@ from dash.dependencies import Input, Output
 from utils import load_results, get_episode_options, create_plot, action_bin_labels, generate_osmnx_graph, initialize_graph
 
 # insert here the training runs to evaluate
-phases = [27,31]
+phases = [43,42,41,38,37]
 validation_paths = True
 tests = [0]
 port = 8050
@@ -257,7 +257,7 @@ app.layout = html.Div([
                 dcc.Dropdown(
                     id="metric-selector-graph",
                     options=[{"label": "Visits", "value": "visits"},
-                             {"label": "Time spent", "value": "presence"},
+                             {"label": "Rebalance counter", "value": "rebalanced"},
                              {"label": "Failures", "value": "failures"},
                              {"label": "Critic Score", "value": "critic_score"},
                              {"label": "Num of bikes", "value": "num_bikes"}],

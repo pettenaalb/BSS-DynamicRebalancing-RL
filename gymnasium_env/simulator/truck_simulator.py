@@ -320,7 +320,7 @@ def charge_bike(truck: Truck, station_dict: dict[int, Station], distance_matrix:
 
 def stay(truck: Truck) -> int:
     truck.leaving_cell = truck.get_cell()
-    return 0
+    return 60
 
 # ----------------------------------------------------------------------------------------------------------------------
 

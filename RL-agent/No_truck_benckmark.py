@@ -164,7 +164,7 @@ def train_dqn(env: gym, episode: int, tbar = None) -> dict:
             center_node = cell.get_center_node()
             if center_node in cell_graph:
                 cell_graph.nodes[center_node]['critic_score'] += env_cells_subgraph.nodes[center_node]['critic_score']
-                cell_graph.nodes[center_node]['num_bikes'] += env_cells_subgraph.nodes[center_node]['total_bikes']*params["maximum_number_of_bikes"]
+                cell_graph.nodes[center_node]['num_bikes'] += env_cells_subgraph.nodes[center_node]['bikes']*params["maximum_number_of_bikes"]
             else:
                 raise ValueError(f"Node {center_node} not found in the subgraph.")
 

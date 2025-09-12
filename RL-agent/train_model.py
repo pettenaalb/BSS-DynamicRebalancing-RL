@@ -124,7 +124,7 @@ def train_dqn(env: gym, agent: DQNAgent, batch_size: int, episode: int, tbar = N
         'truck_cell',
         'critic_score',
         'eligibility_score',
-        'low_battery_bikes',
+        'bikes',
     ]
 
     agent_state, info = env.reset(options=options)
@@ -137,6 +137,7 @@ def train_dqn(env: gym, agent: DQNAgent, batch_size: int, episode: int, tbar = N
     distance_matrix = info['distance_matrix']
     custom_features = {
         'visits': 0,
+        'rebalanced': 0,
         'failures': 0,
         'critic_score': 0.0,
         'num_bikes': 0.0,
@@ -213,7 +214,7 @@ def train_dqn(env: gym, agent: DQNAgent, batch_size: int, episode: int, tbar = N
             center_node = cell.get_center_node()
             if center_node in cell_graph:
                 cell_graph.nodes[center_node]['critic_score'] += env_cells_subgraph.nodes[center_node]['critic_score']
-                cell_graph.nodes[center_node]['num_bikes'] += env_cells_subgraph.nodes[center_node]['total_bikes']*params["maximum_number_of_bikes"]
+                cell_graph.nodes[center_node]['num_bikes'] += env_cells_subgraph.nodes[center_node]['bikes']*params["maximum_number_of_bikes"]
             else:
                 raise ValueError(f"Node {center_node} not found in the subgraph.")
 
@@ -263,6 +264,7 @@ def train_dqn(env: gym, agent: DQNAgent, batch_size: int, episode: int, tbar = N
                 center_node = cell.get_center_node()
                 if center_node in cell_graph:
                     cell_graph.nodes[center_node]['visits'] = env_cells_subgraph.nodes[center_node]['visits']
+                    cell_graph.nodes[center_node]['rebalanced'] = env_cells_subgraph.nodes[center_node]['rebalanced']
                     cell_graph.nodes[center_node]['failures'] = env_cells_subgraph.nodes[center_node]['failures']
                     cell_graph.nodes[center_node]['critic_score'] = cell_graph.nodes[center_node]['critic_score'] / iterations
                     cell_graph.nodes[center_node]['num_bikes'] = cell_graph.nodes[center_node]['num_bikes'] / iterations
@@ -279,7 +281,7 @@ def train_dqn(env: gym, agent: DQNAgent, batch_size: int, episode: int, tbar = N
         "rewards_per_timeslot": rewards_per_timeslot,
         "failures_per_timeslot": failures_per_timeslot,
         "total_trips": info["total_trips"],
-        "total_out_trips": info["total_out_trips"],
+        "total_invalid_movements": info["total_invalid_movements"],
         "q_values_per_timeslot": q_values_per_timeslot,
         "action_per_step": action_per_step,
         "losses": losses,
@@ -292,7 +294,7 @@ def train_dqn(env: gym, agent: DQNAgent, batch_size: int, episode: int, tbar = N
     return results
 
 
-def validate_dqn(env: gym, agent: DQNAgent, episode: int, tbar: tqdm | tqdm_telegram) -> dict:
+def validate_dqn(env: gym, agent: DQNAgent, episode: int, tbar: tqdm | tqdm_telegram, enable_val_logging: bool) -> dict:
     # Initialize episode metrics
     timeslot = 0
     timeslots_completed = 0
@@ -309,7 +311,7 @@ def validate_dqn(env: gym, agent: DQNAgent, episode: int, tbar: tqdm | tqdm_tele
         'total_timeslots': params["total_timeslots"],
         'maximum_number_of_bikes': params["maximum_number_of_bikes"],
         'discount_factor': params["gamma"],
-        'logging': enable_logging,
+        'logging': enable_val_logging,
         'depot_id': 18,         # 491 back
         'initial_cell': 18,     # 185 back
         'reward_params': reward_params,
@@ -331,8 +333,9 @@ def validate_dqn(env: gym, agent: DQNAgent, episode: int, tbar: tqdm | tqdm_tele
     nodes_dict = info['nodes_dict']
     distance_matrix = info['distance_matrix']
     custom_features = {
-        'visits': 0.0,
-        'failures': 0.0,
+        'visits': 0,
+        'rebalanced': 0,
+        'failures': 0,
         'critic_score': 0.0,
         'num_bikes': 0.0,
     }
@@ -403,7 +406,7 @@ def validate_dqn(env: gym, agent: DQNAgent, episode: int, tbar: tqdm | tqdm_tele
             center_node = cell.get_center_node()
             if center_node in cell_graph:
                 cell_graph.nodes[center_node]['critic_score'] += env_cells_subgraph.nodes[center_node]['critic_score']
-                cell_graph.nodes[center_node]['num_bikes'] += env_cells_subgraph.nodes[center_node]['total_bikes']*params["maximum_number_of_bikes"]
+                cell_graph.nodes[center_node]['num_bikes'] += env_cells_subgraph.nodes[center_node]['bikes']*params["maximum_number_of_bikes"]
             else:
                 raise ValueError(f"Node {center_node} not found in the subgraph.")
 
@@ -433,6 +436,7 @@ def validate_dqn(env: gym, agent: DQNAgent, episode: int, tbar: tqdm | tqdm_tele
                 center_node = cell.get_center_node()
                 if center_node in cell_graph:
                     cell_graph.nodes[center_node]['visits'] = env_cells_subgraph.nodes[center_node]['visits']
+                    cell_graph.nodes[center_node]['rebalanced'] = env_cells_subgraph.nodes[center_node]['rebalanced']
                     cell_graph.nodes[center_node]['failures'] = env_cells_subgraph.nodes[center_node]['failures']
                     cell_graph.nodes[center_node]['critic_score'] = cell_graph.nodes[center_node]['critic_score'] / iterations
                     cell_graph.nodes[center_node]['num_bikes'] = cell_graph.nodes[center_node]['num_bikes'] / iterations
@@ -450,7 +454,7 @@ def validate_dqn(env: gym, agent: DQNAgent, episode: int, tbar: tqdm | tqdm_tele
         "rewards_per_timeslot": rewards_per_timeslot,
         "failures_per_timeslot": failures_per_timeslot,
         "total_trips": info["total_trips"],
-        "total_out_trips": info["total_out_trips"],
+        "total_invalid_movements": info["total_invalid_movements"],
         "action_per_step": action_per_step,
         "reward_tracking": reward_tracking,
         "deployed_bikes": deployed_bikes,
@@ -597,7 +601,9 @@ def main():
         # Train and validation loop
         best_validation_score = 1e4
         for episode in range(starting_episode, params["num_episodes"]):
-            # Train the agent for one episode
+            # if episode > 133:
+            #     enable_logging = True
+            # Train the agent for one episode, TRAIN_DQN
             if enable_telegram:
                 training_results = train_dqn(env, agent, params["batch_size"], episode)
                 tbar.set_description(f"Run {run_id} cuda {args.cuda_device}. Epis {episode}")
@@ -615,27 +621,31 @@ def main():
                     pickle.dump(value, f)
 
             total_trips = training_results['total_trips']
-            total_out_trips = training_results['total_out_trips']
+            total_invalid_movements = training_results['total_invalid_movements']
             total_train_failures = sum(training_results['failures_per_timeslot'])
             mean_train_failures = total_train_failures / params["total_timeslots"]
 
             logger.info(
-                f"Episode {episode}: Mean Failures = {mean_train_failures:.2f}, Total Failures = {total_train_failures}/{total_trips}, Out trips = {total_out_trips}"
+                f"Episode {episode}: Mean Failures = {mean_train_failures:.2f}, Total Failures = {total_train_failures}/{total_trips}, Invalid movements = {total_invalid_movements}"
             )
 
             # Save checkpoint if the training and validation score is better
-            if episode%10 == 0 and (agent.epsilon < 0.2 or mean_train_failures < 15):               
-                validation_results = validate_dqn(env, agent, episode, tbar)
+            if episode%10 == 0 and (agent.epsilon < 0.15 or mean_train_failures < 10): 
+                enable_val_logging = enable_logging 
+                if episode > 125: 
+                    enable_val_logging = True
+                # validate the training with a greedy validation, VALIDATE_DQN             
+                validation_results = validate_dqn(env, agent, episode, tbar, enable_val_logging)
 
                 total_trips = training_results['total_trips']
-                total_out_trips = training_results['total_out_trips']
+                total_invalid_movements = training_results['total_invalid_movements']
                 val_failures_per_timeslot = validation_results['failures_per_timeslot']
                 mean_val_failures_per_timeslot = sum(val_failures_per_timeslot) / params["total_timeslots"]
                 total_val_failures = sum(val_failures_per_timeslot)
 
                 logger.info(
                     f"Episode {episode}: Mean Validation Failures = {mean_val_failures_per_timeslot:.2f}, "
-                    f"Total Validation Failures = {total_val_failures}/{total_trips}, Out trips = {total_out_trips}, "
+                    f"Total Validation Failures = {total_val_failures}/{total_trips}, Invalid movements = {total_invalid_movements}, "
                     f"Best Validation Failures = {best_validation_score}"
                 )
 
@@ -673,11 +683,11 @@ def main():
         tbar.close()
     except Exception as e:
         if enable_telegram:
-            send_telegram_message(f"An error occurred during training: {e}", BOT_TOKEN, CHAT_ID)
+            send_telegram_message(f"An error occurred during training {run_id}: {e}", BOT_TOKEN, CHAT_ID)
         raise e
     except KeyboardInterrupt:
         if enable_telegram:
-            send_telegram_message("Training interrupted by user.", BOT_TOKEN, CHAT_ID)
+            send_telegram_message(f"Training {run_id} interrupted by user.", BOT_TOKEN, CHAT_ID)
         print("\nTraining interrupted by user.")
         return
 

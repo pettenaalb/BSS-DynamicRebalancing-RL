@@ -160,6 +160,7 @@ def train_dqn(env: gym, agent: DQNAgent, batch_size: int, episode: int, tbar = N
         q_values = agent.get_q_values(single_state).squeeze(0)
         print(f"The agent suggest action {agent_action}")
         print(f"Q values of policy net are: {q_values}")
+
         # Select an action using the agent
         try:
             action = int(input("Choose truck Action.value : "))
@@ -197,11 +198,11 @@ def train_dqn(env: gym, agent: DQNAgent, batch_size: int, episode: int, tbar = N
         next_q_values = agent.get_q_values(single_next_state).squeeze(0)
         target_q_value = next_q_values[agent_next_actions].item()
 
-        discount = params["gamma"]*info['steps']
+        discount = params["gamma"] ** info['steps']
         bellman_q_target = reward + discount * target_q_value
 
         print(f"Q(S, a)= {policy_q_value}, Q(S', a')= {target_q_value}, Steps = {info['steps']}")
-        print(f"Discount = gamma * steps = {discount}")
+        print(f"Discount = gamma ** steps = {discount}")
         print(f"bellman_q_target = reward + discount * target_q_values = {bellman_q_target}")
 
 
@@ -211,9 +212,13 @@ def train_dqn(env: gym, agent: DQNAgent, batch_size: int, episode: int, tbar = N
 
         # Print informations about the next state
         print("-------------------------------------------------------------------")
-        print(f"State: Sys_sat= {agent_state[0]} | Criticals = {agent_state[1]}"
-            f" | day= {ohe2num(agent_state[2:9])} | hour= {ohe2num(agent_state[9:33])}"
-            f" | prevous_act= {ohe2num(agent_state[33:41])} | cell position= {ohe2cell(agent_state[41:68])} | borders= {agent_state[68:72]}")
+        print(f"State: Load= {agent_state[0]}"
+              f" | is_surplus= {agent_state[1]}"
+              f" | is_empty= {agent_state[2]}"
+              f" | Criticals = {agent_state[3]}"
+            # f" | day= {ohe2num(agent_state[2:9])} | hour= {ohe2num(agent_state[9:33])}"
+            f" | prevous_act= {ohe2num(agent_state[4:12])} | cell position= {ohe2cell(agent_state[12:39])} | borders= {agent_state[66:70]}"
+            f" | critical cells = {agent_state[39:66]}")
         # print(info['cells_subgraph'])
 
         if timeslot_terminated:
@@ -233,7 +238,7 @@ def train_dqn(env: gym, agent: DQNAgent, batch_size: int, episode: int, tbar = N
             center_node = cell.get_center_node()
             if center_node in cell_graph:
                 cell_graph.nodes[center_node]['critic_score'] += env_cells_subgraph.nodes[center_node]['critic_score']
-                cell_graph.nodes[center_node]['num_bikes'] += env_cells_subgraph.nodes[center_node]['total_bikes']*params["maximum_number_of_bikes"]
+                cell_graph.nodes[center_node]['num_bikes'] += env_cells_subgraph.nodes[center_node]['bikes']*params["maximum_number_of_bikes"]
             else:
                 raise ValueError(f"Node {center_node} not found in the subgraph.")
 
