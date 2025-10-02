@@ -76,9 +76,10 @@ class Logger:
         if self.is_logging:
             self.logger.info(f'State S_{step} - Time: {time}')
 
-    def log_truck(self, truck: "Truck"):
+    def log_truck(self, truck: "Truck", depot_bikes: int):
         if self.is_logging:
-            self.logger.info(f"TRUCK in CELL: {truck.cell.get_id()} (center_node = {truck.cell.get_center_node()}, cell_bikes = {truck.cell.get_total_bikes()}, critic_score = {truck.cell.get_critic_score()}) - POSITION: {truck.position} - LOAD: {truck.current_load} bikes")
+            self.logger.info(f"TRUCK in CELL: {truck.cell.get_id()} (center_node = {truck.cell.get_center_node()}, cell_bikes = {truck.cell.get_total_bikes()}, critic_score = {truck.cell.get_critic_score()})"
+                             f" - POSITION: {truck.position} - LOAD: {truck.current_load}-{depot_bikes}")
 
     def log_no_available_bikes(self, start_station: "Station", end_station: "Station"):
         if self.is_logging:

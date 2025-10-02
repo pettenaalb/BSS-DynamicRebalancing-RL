@@ -27,6 +27,8 @@ from torch.nn import functional as F
 data_path = "data/"
 results_path = "results/"
 run_id = 999
+printing = False
+benchmark_mode = True
 
 # if GPU is to be used
 device = torch.device(
@@ -122,7 +124,7 @@ def train_dqn(env: gym, agent: DQNAgent, batch_size: int, episode: int, tbar = N
         'truck_cell',
         'critic_score',
         'eligibility_score',
-        'low_battery_bikes',
+        'bikes',
     ]
 
     agent_state, info = env.reset(options=options)
@@ -145,7 +147,8 @@ def train_dqn(env: gym, agent: DQNAgent, batch_size: int, episode: int, tbar = N
 
     iterations = 0
     while not_done:
-        print(state.x)
+        if printing:
+            print(state.x)
         # Prepare the state for the agent
         single_state = Data(
             x=state.x.to(device),
@@ -155,23 +158,28 @@ def train_dqn(env: gym, agent: DQNAgent, batch_size: int, episode: int, tbar = N
             batch=torch.zeros(state.x.size(0), dtype=torch.long).to(device),
         )
 
-        # What would have done the agent at this point
-        agent_action = agent.select_action(single_state, greedy=True)
-        q_values = agent.get_q_values(single_state).squeeze(0)
-        print(f"The agent suggest action {agent_action}")
-        print(f"Q values of policy net are: {q_values}")
+        if printing:
+            # What would have done the agent at this point
+            agent_action = agent.select_action(single_state, greedy=True)
+            q_values = agent.get_q_values(single_state).squeeze(0)
+            print(f"The agent suggest action {agent_action}")
+            print(f"Q values of policy net are: {q_values}")
 
         # Select an action using the agent
-        try:
-            action = int(input("Choose truck Action.value : "))
-        except ValueError:
-            print("Invalid input! Please enter a valid integer.")
+        if benchmark_mode:
+            action = 0
+        else:
+            try:
+                action = int(input("Choose truck Action.value : "))
+            except ValueError:
+                print("Invalid input! Please enter a valid integer.")
 
         # Step the environment with the chosen action
         agent_state, reward, done, timeslot_terminated, info = env.step(action)
 
         # print the consequences
-        print(f"Reward given = {reward}")
+        if printing:
+            print(f"Reward given = {reward}")
 
 
         # Update state with new information
@@ -180,54 +188,56 @@ def train_dqn(env: gym, agent: DQNAgent, batch_size: int, episode: int, tbar = N
         next_state.agent_state = agent_state
         state.steps = info['steps']
 
-        # Store the transition in the replay buffer
-        agent.replay_buffer.push(state, action, reward, next_state, done)
+        if not benchmark_mode:
+            # Store the transition in the replay buffer
+            agent.replay_buffer.push(state, action, reward, next_state, done)
 
-        # Agent train step simulaiton
-        # Prepare the next state for the agent
-        single_next_state = Data(
-            x=next_state.x.to(device),
-            edge_index=next_state.edge_index.to(device),
-            edge_attr=next_state.edge_attr.to(device),
-            agent_state=torch.tensor(next_state.agent_state, dtype=torch.float32).unsqueeze(dim=0).to(device),
-            batch=torch.zeros(next_state.x.size(0), dtype=torch.long).to(device),
-        )
+            # Agent train step simulaiton
+            # Prepare the next state for the agent
+            single_next_state = Data(
+                x=next_state.x.to(device),
+                edge_index=next_state.edge_index.to(device),
+                edge_attr=next_state.edge_attr.to(device),
+                agent_state=torch.tensor(next_state.agent_state, dtype=torch.float32).unsqueeze(dim=0).to(device),
+                batch=torch.zeros(next_state.x.size(0), dtype=torch.long).to(device),
+            )
 
-        policy_q_value = q_values[action].item()
-        agent_next_actions = agent.select_action(single_next_state, greedy=True)
-        next_q_values = agent.get_q_values(single_next_state).squeeze(0)
-        target_q_value = next_q_values[agent_next_actions].item()
+            policy_q_value = q_values[action].item()
+            agent_next_actions = agent.select_action(single_next_state, greedy=True)
+            next_q_values = agent.get_q_values(single_next_state).squeeze(0)
+            target_q_value = next_q_values[agent_next_actions].item()
 
-        discount = params["gamma"] ** info['steps']
-        bellman_q_target = reward + discount * target_q_value
+            discount = params["gamma"] ** info['steps']
+            bellman_q_target = reward + discount * target_q_value
 
-        print(f"Q(S, a)= {policy_q_value}, Q(S', a')= {target_q_value}, Steps = {info['steps']}")
-        print(f"Discount = gamma ** steps = {discount}")
-        print(f"bellman_q_target = reward + discount * target_q_values = {bellman_q_target}")
-
-
-        # Train the agent with a batch from the replay buffer
-        _ = agent.train_step(batch_size)
+            print(f"Q(S, a)= {policy_q_value}, Q(S', a')= {target_q_value}, Steps = {info['steps']}")
+            print(f"Discount = gamma ** steps = {discount}")
+            print(f"bellman_q_target = reward + discount * target_q_values = {bellman_q_target}")
 
 
-        # Print informations about the next state
-        print("-------------------------------------------------------------------")
-        print(f"State: Load= {agent_state[0]}"
-              f" | is_surplus= {agent_state[1]}"
-              f" | is_empty= {agent_state[2]}"
-              f" | Criticals = {agent_state[3]}"
-            # f" | day= {ohe2num(agent_state[2:9])} | hour= {ohe2num(agent_state[9:33])}"
-            f" | prevous_act= {ohe2num(agent_state[4:12])} | cell position= {ohe2cell(agent_state[12:39])} | borders= {agent_state[66:70]}"
-            f" | critical cells = {agent_state[39:66]}")
-        # print(info['cells_subgraph'])
+            # Train the agent with a batch from the replay buffer
+            _ = agent.train_step(batch_size)
 
-        if timeslot_terminated:
-            print("\n########### TIMESLOT TERMINATED ###############\n")
-        if done:
-            print("\n########### EPISODE IS DONE ###################\n")
+        if printing:
+            # Print informations about the next state
+            print("-------------------------------------------------------------------")
+            print(f"State: Load= {agent_state[0]}"
+                f" | is_surplus= {agent_state[1]}"
+                f" | is_empty= {agent_state[2]}"
+                f" | Criticals = {agent_state[3]}"
+                # f" | day= {ohe2num(agent_state[2:9])} | hour= {ohe2num(agent_state[9:33])}"
+                f" | prevous_act= {ohe2num(agent_state[4:12])} | cell position= {ohe2cell(agent_state[12:39])} | borders= {agent_state[66:70]}"
+                f" | critical cells = {agent_state[39:66]}")
+            # print(info['cells_subgraph'])
 
-        # Update the state
-        state = next_state
+            if timeslot_terminated:
+                print("\n########### TIMESLOT TERMINATED ###############\n")
+            if done:
+                print("\n########### EPISODE IS DONE ###################\n")
+
+        if not benchmark_mode:
+            # Update the state
+            state = next_state
 
         total_failures += sum(info['failures'])
 
@@ -238,7 +248,7 @@ def train_dqn(env: gym, agent: DQNAgent, batch_size: int, episode: int, tbar = N
             center_node = cell.get_center_node()
             if center_node in cell_graph:
                 cell_graph.nodes[center_node]['critic_score'] += env_cells_subgraph.nodes[center_node]['critic_score']
-                cell_graph.nodes[center_node]['num_bikes'] += env_cells_subgraph.nodes[center_node]['bikes']*params["maximum_number_of_bikes"]
+                cell_graph.nodes[center_node]['num_bikes'] += env_cells_subgraph.nodes[center_node]['bikes']#*params["maximum_number_of_bikes"]
             else:
                 raise ValueError(f"Node {center_node} not found in the subgraph.")
 

@@ -201,4 +201,7 @@ class Cell:
         Parameters:
         eligibility_decay (float): Rate of the decay
         """
-        self.eligibility_score *= eligibility_decay
+        if  self.eligibility_score < 0.001:
+            self.eligibility_score = 0.0
+        else:
+            self.eligibility_score *= eligibility_decay

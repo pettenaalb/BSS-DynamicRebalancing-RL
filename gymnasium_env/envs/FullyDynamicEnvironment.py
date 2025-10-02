@@ -125,6 +125,7 @@ class FullyDynamicEnv(gym.Env):
         self.system_bikes, self.outside_system_bikes = None, None
         self.depot, self.depot_node = None, None
         self.maximum_number_of_bikes = 3500
+        self.min_bikes_per_cell = 1
         self.stations = None
         self.truck = None
         self.event_buffer = None
@@ -160,7 +161,7 @@ class FullyDynamicEnv(gym.Env):
         self.total_visits = 1
         self.total_failures = 0
         self.total_trips = 0
-        self.total_invalid_movements = 0
+        self.total_invalid_actions = 0
 
 
 
@@ -179,11 +180,12 @@ class FullyDynamicEnv(gym.Env):
 
         # Bike options
         self.maximum_number_of_bikes = options.get('maximum_number_of_bikes', self.maximum_number_of_bikes) if options else self.maximum_number_of_bikes
+        self.min_bikes_per_cell = options.get('min_bikes_per_cell',self.min_bikes_per_cell) if options else self.min_bikes_per_cell
         depot_id = options.get('depot_id', 491) if options else 491
 
         # Truck options
         cell_id_list = list(self.cells.keys())
-        truck_cell_id = np.random.choice(cell_id_list)
+        truck_cell_id = options.get('initial_cell', 491) if options else np.random.choice(cell_id_list)
         max_truck_load = options.get('max_truck_load', 30) if options else 30
 
         # Discount factor option
@@ -213,7 +215,7 @@ class FullyDynamicEnv(gym.Env):
         self.total_visits = 1
         self.total_failures = 0
         self.total_trips = 0
-        self.total_invalid_movements = 0
+        self.total_invalid_actions = 0
 
         self.event_buffer = None
         self.next_event_buffer = None
@@ -400,7 +402,7 @@ class FullyDynamicEnv(gym.Env):
         self._update_critic_scores()
 
         # Log truck state
-        self.logger.log_truck(self.truck)
+        self.logger.log_truck(self.truck,len(self.depot))
 
         # Compute the outputs
         reward = self._get_reward(action, old_eligibility_score,  old_critic_score, old_global_critic_score)
@@ -408,8 +410,7 @@ class FullyDynamicEnv(gym.Env):
         self._update_graph()
 
         # Log the reward and observations
-        self.logger.log(message=f"--> Reward = {reward}, System bikes = {len(self.system_bikes)}, Depot bikes = {len(self.depot)}\n"
-                                f" Critics= -0{observation[39:48]}9-11{observation[48:55]}19-25{observation[55:66]}36-\n")
+        self.logger.log(message=f"--> Reward = {reward}, System bikes = {len(self.system_bikes)}, Invalid_actions = {self.total_invalid_actions}, Total faiulres = {self.total_failures}\n")
 
         info = {
             'cells_subgraph': self.cell_subgraph,
@@ -424,14 +425,14 @@ class FullyDynamicEnv(gym.Env):
             'truck_neighbor_cells': truck_cell.get_adjacent_cells(),
             'truck_load': self.truck.get_load(),
             'total_trips': self.total_trips,
-            'total_invalid_movements':self.total_invalid_movements,
+            'total_invalid':self.total_invalid_actions,
         }
 
         # Save and Reset some variables
         if not self.invalid_action:
             self.last_move_action = action
-        elif action in {Actions.UP.value, Actions.DOWN.value, Actions.LEFT.value, Actions.RIGHT.value}:
-            self.total_invalid_movements += 1
+        else:
+            self.total_invalid_actions += 1
         self.last_cell_border_type = sum(self._get_borders()) 
 
         terminated = False
@@ -671,6 +672,10 @@ class FullyDynamicEnv(gym.Env):
             dtype=np.float16
         )
 
+        self.logger.log(message= f" Critics= 0-{ohe_cell_critic[0:4]}|5-{ohe_cell_critic[4:9]}|11-{ohe_cell_critic[9:13]}|"
+                                f"17-{ohe_cell_critic[13:16]}|25-{ohe_cell_critic[16:20]}|"
+                                f"30-{ohe_cell_critic[20:24]}|36-{ohe_cell_critic[24:27]}-38")
+
         # Encode borders flags
         truck_adiacent_cells = self.truck.get_cell().get_adjacent_cells()
         ohe_borders = self._get_borders()
@@ -702,7 +707,9 @@ class FullyDynamicEnv(gym.Env):
         # Compute expected departures per cell
         # ----------------------------
         expected_departures_per_cell = {}
-        expected_missing_bikes_per_cell = {}
+        expected_max_departure = {}
+        # expected_min_bikes_per_cell = {}
+        expected_after_arrival = {}
         for event in self.event_buffer:
             if event.time > self.env_time + 3600 * 3:
                 break
@@ -721,10 +728,17 @@ class FullyDynamicEnv(gym.Env):
             # Now CHECK if the balance goes negative
             # short_term_prevision = available - expected
             if 'cell' in locals():
-                short_term_prevision = cell.get_total_bikes() - expected_departures_per_cell[cell_id]
-                if short_term_prevision < 0:
-                    previous_min = expected_missing_bikes_per_cell.get(cell_id, 0)
-                    expected_missing_bikes_per_cell[cell_id] = min(previous_min, short_term_prevision)
+                previous_max = expected_max_departure.get(cell_id, 0)
+                expected_max_departure[cell_id] = max(previous_max, expected_departures_per_cell[cell_id])
+                expected_after_arrival[cell_id] = expected_max_departure[cell_id] - expected_departures_per_cell[cell_id]
+
+                # short_term_prevision = cell.get_total_bikes() - expected_departures_per_cell[cell_id]
+                # previous_min = expected_min_bikes_per_cell.get(cell_id, 0)
+                # if short_term_prevision < previous_min:
+                #     expected_min_bikes_per_cell[cell_id] = min(previous_min, short_term_prevision)
+                #     expected_arrival_surge[cell_id] = 0
+                # else : 
+                #     expected_after_arrival[cell_id] = short_term_prevision - expected_min_bikes_per_cell[cell_id] 
 
         # ----------------------------
         # Update critic scores and compute a penalty for critical zones
@@ -733,29 +747,38 @@ class FullyDynamicEnv(gym.Env):
         expected = 0
         for cell_id, cell in self.cells.items():
             critic_score = 0.0
-            if cell_id in expected_missing_bikes_per_cell:
-                # expected = -expected_missing_bikes_per_cell[cell_id]
-                critic_score = 1.0
+            available = cell.get_total_bikes()
+            expected = expected_max_departure.get(cell_id, 0) + self.min_bikes_per_cell
+            aft_arrivals = expected_after_arrival.get(cell_id, 0)
+            if expected > 0:
+                critic_score = -1 + np.exp( (1 + 0.2* aft_arrivals) * (1 - (available/expected)) ) # -1 + e^[ (1 - 0.2a)*(x-b)/x ]
             else:
-                if cell_id in expected_departures_per_cell:
-                    expected = expected_departures_per_cell[cell_id]
-                if expected < 1:
-                    expected = 1
-                available = cell.get_total_bikes()
-                if expected > 0:
-                    # critic_score = max(0.0, 1.0 - (available / expected))
-                    critic_score = (expected - available) / (expected + available)
-                elif available <= 0:
-                    critic_score = 1.0
-                # cell.surplus_score = available - expected
+                critic_score = -available
+
+            # if cell_id in expected_min_bikes_per_cell:
+            #     # expected = -expected_min_bikes_per_cell[cell_id]
+            #     critic_score = 1.0
+            # else:
+            #     if cell_id in expected_departures_per_cell:
+            #         expected = expected_departures_per_cell[cell_id]
+            #     if expected < 1:
+            #         expected = 1
+            #     available = cell.get_total_bikes()
+            #     if expected > 0:
+            #         # critic_score = max(0.0, 1.0 - (available / expected))
+            #         critic_score = (expected - available) / (expected + available)
+            #     elif available <= 0:
+            #         critic_score = 1.0
+            #     # cell.surplus_score = available - expected
+
             cell.set_critic_score(critic_score)
             cell.set_surplus_bikes(surplus_threshold = 0.67 )
 
             # Test with signed binary critic score
             if critic_score > 0:
                 cell.set_critic_score(1.0)
-            elif cell.get_surplus_bikes() > 0:
-                cell.set_critic_score(-1.0)
+            # elif cell.get_surplus_bikes() > 0:
+            #     cell.set_critic_score(-1.0)
             ##
 
             if critic_score > 0.0:
@@ -769,7 +792,7 @@ class FullyDynamicEnv(gym.Env):
             if cell.eligibility_score > 0.3:
                 cell.eligibility_score -= 0.2
 
-        self.logger.warning(message=f" ---------> {self.truck.get_cell().get_id()} has been rebalanced. Now all eligibility scores are 0.0 ###################################")
+        self.logger.warning(message=f" ---------> {self.truck.get_cell().get_id()} has been rebalanced. All eligibility scores adjusted ###################################")
         self.truck.get_cell().eligibility_score = 1.0
 
     def _get_reward(self, action: int, old_eligibility_score: float, old_critic_score: float, old_global_critic_score) -> float:
@@ -785,9 +808,9 @@ class FullyDynamicEnv(gym.Env):
         # ----------------------------
         loop_detected = _detect_self_loops((action, self.last_move_action))
         was_critical = old_critic_score > 0.0
-        is_surplus = old_critic_score <= -0.67
+        was_surplus = old_critic_score <= -0.67
         is_critical = self.truck.get_cell().get_critic_score() > 0.0
-        # is_surplus = self.truck.get_cell().get_surplus_bikes() > 0.0
+        # was_surplus = self.truck.get_cell().get_surplus_bikes() > 0.0
 
         # ----------------------------
         # Reward composition
@@ -824,7 +847,7 @@ class FullyDynamicEnv(gym.Env):
         # Drop Reward
         # ----------------------------
         if action == Actions.DROP_BIKE.value:
-            drop_reward = 0.1
+            # drop_reward = 0.1
             if was_critical and not is_critical: # If the truck manages to rebalance the cell -> Big reward and (optional) reset all eligibility to 0.0
                 drop_reward = 2.0
                 # update metrics and reset all eligibility to 0.0
@@ -832,7 +855,7 @@ class FullyDynamicEnv(gym.Env):
                 self._reset_eligibility_scores()
             elif was_critical :
                 drop_reward = 1.0
-            elif is_surplus:
+            elif was_surplus:
                 drop_reward = -0.5
 
         # ----------------------------
@@ -844,7 +867,7 @@ class FullyDynamicEnv(gym.Env):
                 pick_up_reward = -0.5
             elif is_critical and not was_critical:  # If the truck manages to debalance the cell -> Big penalty
                 pick_up_reward = -2.0
-            elif is_surplus and not loop_detected:
+            elif was_surplus and not loop_detected:
                 pick_up_reward = 0.2
         
         # ----------------------------
@@ -873,10 +896,10 @@ class FullyDynamicEnv(gym.Env):
                 eligibility_penalty = -0.2 
                 eligibility_penalty += 0.1*self.last_cell_border_type       # Help the truck to exit border cells
                 # self.logger.log(message=f"Last Border type {self.last_cell_border_type}")
+            elif old_eligibility_score < 0.2 :
+                eligibility_penalty += 0.2
             if self.truck.get_load() == 0:
                 eligibility_penalty -= 0.1
-            elif self.truck.get_cell().eligibility_score < 0.2 :
-                eligibility_penalty += 0.1
 
         # ----------------------------
         # Stay penalty

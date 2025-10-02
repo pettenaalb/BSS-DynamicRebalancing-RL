@@ -214,7 +214,7 @@ def train_dqn(env: gym, agent: DQNAgent, batch_size: int, episode: int, tbar = N
             center_node = cell.get_center_node()
             if center_node in cell_graph:
                 cell_graph.nodes[center_node]['critic_score'] += env_cells_subgraph.nodes[center_node]['critic_score']
-                cell_graph.nodes[center_node]['num_bikes'] += env_cells_subgraph.nodes[center_node]['bikes']*params["maximum_number_of_bikes"]
+                cell_graph.nodes[center_node]['num_bikes'] += env_cells_subgraph.nodes[center_node]['bikes']#*params["maximum_number_of_bikes"]
             else:
                 raise ValueError(f"Node {center_node} not found in the subgraph.")
 
@@ -281,7 +281,7 @@ def train_dqn(env: gym, agent: DQNAgent, batch_size: int, episode: int, tbar = N
         "rewards_per_timeslot": rewards_per_timeslot,
         "failures_per_timeslot": failures_per_timeslot,
         "total_trips": info["total_trips"],
-        "total_invalid_movements": info["total_invalid_movements"],
+        "total_invalid": info["total_invalid"],
         "q_values_per_timeslot": q_values_per_timeslot,
         "action_per_step": action_per_step,
         "losses": losses,
@@ -321,7 +321,7 @@ def validate_dqn(env: gym, agent: DQNAgent, episode: int, tbar: tqdm | tqdm_tele
         'truck_cell',
         'critic_score',
         'eligibility_score',
-        'low_battery_bikes',
+        'bikes',
     ]
 
     agent_state, info = env.reset(options=options)
@@ -406,7 +406,7 @@ def validate_dqn(env: gym, agent: DQNAgent, episode: int, tbar: tqdm | tqdm_tele
             center_node = cell.get_center_node()
             if center_node in cell_graph:
                 cell_graph.nodes[center_node]['critic_score'] += env_cells_subgraph.nodes[center_node]['critic_score']
-                cell_graph.nodes[center_node]['num_bikes'] += env_cells_subgraph.nodes[center_node]['bikes']*params["maximum_number_of_bikes"]
+                cell_graph.nodes[center_node]['num_bikes'] += env_cells_subgraph.nodes[center_node]['bikes']#*params["maximum_number_of_bikes"]
             else:
                 raise ValueError(f"Node {center_node} not found in the subgraph.")
 
@@ -454,7 +454,7 @@ def validate_dqn(env: gym, agent: DQNAgent, episode: int, tbar: tqdm | tqdm_tele
         "rewards_per_timeslot": rewards_per_timeslot,
         "failures_per_timeslot": failures_per_timeslot,
         "total_trips": info["total_trips"],
-        "total_invalid_movements": info["total_invalid_movements"],
+        "total_invalid": info["total_invalid"],
         "action_per_step": action_per_step,
         "reward_tracking": reward_tracking,
         "deployed_bikes": deployed_bikes,
@@ -621,12 +621,12 @@ def main():
                     pickle.dump(value, f)
 
             total_trips = training_results['total_trips']
-            total_invalid_movements = training_results['total_invalid_movements']
+            total_invalid = training_results['total_invalid']
             total_train_failures = sum(training_results['failures_per_timeslot'])
             mean_train_failures = total_train_failures / params["total_timeslots"]
 
             logger.info(
-                f"Episode {episode}: Mean Failures = {mean_train_failures:.2f}, Total Failures = {total_train_failures}/{total_trips}, Invalid movements = {total_invalid_movements}"
+                f"Episode {episode}: Mean Failures = {mean_train_failures:.2f}, Total Failures = {total_train_failures}/{total_trips}, Invalid Actions = {total_invalid}"
             )
 
             # Save checkpoint if the training and validation score is better
@@ -638,19 +638,20 @@ def main():
                 validation_results = validate_dqn(env, agent, episode, tbar, enable_val_logging)
 
                 total_trips = training_results['total_trips']
-                total_invalid_movements = training_results['total_invalid_movements']
+                total_invalid = training_results['total_invalid']
                 val_failures_per_timeslot = validation_results['failures_per_timeslot']
                 mean_val_failures_per_timeslot = sum(val_failures_per_timeslot) / params["total_timeslots"]
                 total_val_failures = sum(val_failures_per_timeslot)
 
                 logger.info(
                     f"Episode {episode}: Mean Validation Failures = {mean_val_failures_per_timeslot:.2f}, "
-                    f"Total Validation Failures = {total_val_failures}/{total_trips}, Invalid movements = {total_invalid_movements}, "
+                    f"Total Validation Failures = {total_val_failures}/{total_trips}, Invalid Actions = {total_invalid}, "
                     f"Best Validation Failures = {best_validation_score}"
                 )
 
-                if total_val_failures < best_validation_score:
-                    best_validation_score = total_val_failures
+                if total_val_failures < best_validation_score or episode > 125:
+                    if total_val_failures < best_validation_score:
+                        best_validation_score = total_val_failures
 
                     # Save validation result lists
                     ep_results_path = validation_results_path + 'data/' + str(episode).zfill(2) + '/'
