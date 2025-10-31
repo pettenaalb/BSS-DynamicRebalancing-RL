@@ -68,9 +68,12 @@ class Logger:
             invalid = 'INVALID' if invalid else ''
             self.logger.info(f'ACTION: {action} on cell {cell_id} {invalid} --> Time to complete: {t}s - Steps needed: {int(math.ceil(t / 30))}')
 
-    def log_ending_action(self, time: str):
+    def log_ending_action(self,invalid: bool , time: str):
         if self.is_logging:
-            self.logger.info(f'Action completed successfully - Time: {time}')
+            if invalid:
+                self.logger.info(f'### ACTION IS INVALID ### - Time: {time}')
+            else:
+                self.logger.info(f'Action completed successfully - Time: {time}')
 
     def log_state(self, step: int, time: str):
         if self.is_logging:

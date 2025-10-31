@@ -384,6 +384,7 @@ class FullyDynamicEnv(gym.Env):
 
         # Log the ending action
         self.logger.log_ending_action(
+            self.invalid_action,
             time=convert_seconds_to_hours_minutes((self.timeslot * 3 + 1) * 3600 + self.env_time)
         )
 
