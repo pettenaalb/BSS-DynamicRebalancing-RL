@@ -117,7 +117,7 @@ def train_dqn(env: gym, agent: DQNAgent, batch_size: int, episode: int, tbar = N
         'discount_factor': params["gamma"],
         'logging': enable_logging,
         'depot_id': 18,         # 491 back
-        'initial_cell': 18,     # 185 back
+        # 'initial_cell': 18,     # 185 back
         'reward_params': reward_params,
     }
 

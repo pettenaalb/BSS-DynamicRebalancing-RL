@@ -185,7 +185,7 @@ class FullyDynamicEnv(gym.Env):
 
         # Truck options
         cell_id_list = list(self.cells.keys())
-        truck_cell_id = options.get('initial_cell', 491) if options else np.random.choice(cell_id_list)
+        truck_cell_id = options.get('initial_cell', np.random.choice(cell_id_list)) if options else np.random.choice(cell_id_list)
         max_truck_load = options.get('max_truck_load', 30) if options else 30
 
         # Discount factor option
