@@ -281,6 +281,8 @@ def train_dqn(env: gym, agent: DQNAgent, batch_size: int, episode: int, tbar = N
                 center_node = cell.get_center_node()
                 if center_node in cell_graph:
                     cell_graph.nodes[center_node]['visits'] = env_cells_subgraph.nodes[center_node]['visits']
+                    cell_graph.nodes[center_node]['operations'] = env_cells_subgraph.nodes[center_node]['operations']
+                    cell_graph.nodes[center_node]['rebalanced'] = env_cells_subgraph.nodes[center_node]['rebalanced']
                     cell_graph.nodes[center_node]['failures'] = env_cells_subgraph.nodes[center_node]['failures']
                     cell_graph.nodes[center_node]['critic_score'] = cell_graph.nodes[center_node]['critic_score'] / iterations
                     cell_graph.nodes[center_node]['num_bikes'] = cell_graph.nodes[center_node]['num_bikes'] / iterations

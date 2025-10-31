@@ -22,6 +22,7 @@ class Cell:
         total_bikes (int): Number of Bike objects in the cell.
         request_rate (float): Rate of bike requests from the cell. Default is 0.0.
         visits (int): Number of time the truck has visited the cell (specific increment function is not defined here)
+        operations (int): Number of time the truck has perform operations in the cell (specific increment function is not defined here)
         failures (int): Number of total failures occurred in this cell during the episode.
         critic_score (float): Score representing the rate between bike requested and available bikes (specific function is not defined here)
         is_critical (boolean): True if critic_score is greater of 0.0, False otherwise.
@@ -37,6 +38,7 @@ class Cell:
         self.total_bikes = 0
         self.request_rate = 0
         self.visits = 0
+        self.operations = 0
         self.failures = 0
         self.total_rebalanced = 0
         self.critic_score = 0
@@ -45,7 +47,7 @@ class Cell:
         self.eligibility_score = 0
 
     def __str__(self):
-        return f"Cell {self.id}: Bikes: {self.total_bikes}, Critic Score: {self.critic_score}, Visits: {self.visits}"
+        return f"Cell {self.id}: Bikes: {self.total_bikes}, Critic Score: {self.critic_score}, Ops: {self.operations}"
 
     def set_center_node(self, graph: nx.MultiDiGraph):
         center_coords = self.boundary.centroid.coords[0]
@@ -84,6 +86,7 @@ class Cell:
         self.total_bikes = 0
         self.request_rate = 0
         self.visits = 0
+        self.operations = 0
         self.failures = 0
         self.total_rebalanced = 0
         self.critic_score = 0
@@ -112,6 +115,9 @@ class Cell:
 
     def set_visits(self, visits: int):
         self.visits = visits
+
+    def set_ops(self, ops: int):
+        self.operations = ops
 
     def set_critic_score(self, critic_score: float):
         """
@@ -168,6 +174,9 @@ class Cell:
 
     def get_visits(self) -> int:
         return self.visits
+
+    def get_ops(self) -> int:
+        return self.operations
 
     def get_failures(self) -> int:
         return self.failures

@@ -105,6 +105,7 @@ def train_dqn(env: gym, agent: DQNAgent, batch_size: int, episode: int, tbar = N
     q_values_per_timeslot = []
     action_per_step = []
     losses = []
+    global_criticals = []
     reward_tracking = [[] for _ in range(len(Actions))]
     epsilon_per_timeslot = []
     deployed_bikes = []
@@ -137,6 +138,7 @@ def train_dqn(env: gym, agent: DQNAgent, batch_size: int, episode: int, tbar = N
     distance_matrix = info['distance_matrix']
     custom_features = {
         'visits': 0,
+        'operations': 0,
         'rebalanced': 0,
         'failures': 0,
         'critic_score': 0.0,
@@ -203,6 +205,7 @@ def train_dqn(env: gym, agent: DQNAgent, batch_size: int, episode: int, tbar = N
         action_per_step.append(action)
         reward_tracking[action].append(reward)
         losses.append(loss)
+        global_criticals.append(info['global_critic_score'])
 
         total_reward += reward
         total_failures += sum(info['failures'])
@@ -264,6 +267,7 @@ def train_dqn(env: gym, agent: DQNAgent, batch_size: int, episode: int, tbar = N
                 center_node = cell.get_center_node()
                 if center_node in cell_graph:
                     cell_graph.nodes[center_node]['visits'] = env_cells_subgraph.nodes[center_node]['visits']
+                    cell_graph.nodes[center_node]['operations'] = env_cells_subgraph.nodes[center_node]['operations']
                     cell_graph.nodes[center_node]['rebalanced'] = env_cells_subgraph.nodes[center_node]['rebalanced']
                     cell_graph.nodes[center_node]['failures'] = env_cells_subgraph.nodes[center_node]['failures']
                     cell_graph.nodes[center_node]['critic_score'] = cell_graph.nodes[center_node]['critic_score'] / iterations
@@ -284,6 +288,7 @@ def train_dqn(env: gym, agent: DQNAgent, batch_size: int, episode: int, tbar = N
         "total_invalid": info["total_invalid"],
         "q_values_per_timeslot": q_values_per_timeslot,
         "action_per_step": action_per_step,
+        "global_criticals": global_criticals,
         "losses": losses,
         "reward_tracking": reward_tracking,
         "epsilon_per_timeslot": epsilon_per_timeslot,
@@ -303,6 +308,7 @@ def validate_dqn(env: gym, agent: DQNAgent, episode: int, tbar: tqdm | tqdm_tele
     failures_per_timeslot = []
     total_failures = 0
     action_per_step = []
+    global_criticals = []
     reward_tracking = [[] for _ in range(len(Actions))]
     deployed_bikes = []
 
@@ -334,6 +340,7 @@ def validate_dqn(env: gym, agent: DQNAgent, episode: int, tbar: tqdm | tqdm_tele
     distance_matrix = info['distance_matrix']
     custom_features = {
         'visits': 0,
+        'operations': 0,
         'rebalanced': 0,
         'failures': 0,
         'critic_score': 0.0,
@@ -394,6 +401,7 @@ def validate_dqn(env: gym, agent: DQNAgent, episode: int, tbar: tqdm | tqdm_tele
 
         # Update the metrics
         action_per_step.append(action)
+        global_criticals.append(info['global_critic_score'])
         reward_tracking[action].append(reward)
 
         total_reward += reward
@@ -436,6 +444,7 @@ def validate_dqn(env: gym, agent: DQNAgent, episode: int, tbar: tqdm | tqdm_tele
                 center_node = cell.get_center_node()
                 if center_node in cell_graph:
                     cell_graph.nodes[center_node]['visits'] = env_cells_subgraph.nodes[center_node]['visits']
+                    cell_graph.nodes[center_node]['operations'] = env_cells_subgraph.nodes[center_node]['operations']
                     cell_graph.nodes[center_node]['rebalanced'] = env_cells_subgraph.nodes[center_node]['rebalanced']
                     cell_graph.nodes[center_node]['failures'] = env_cells_subgraph.nodes[center_node]['failures']
                     cell_graph.nodes[center_node]['critic_score'] = cell_graph.nodes[center_node]['critic_score'] / iterations
@@ -456,6 +465,7 @@ def validate_dqn(env: gym, agent: DQNAgent, episode: int, tbar: tqdm | tqdm_tele
         "total_trips": info["total_trips"],
         "total_invalid": info["total_invalid"],
         "action_per_step": action_per_step,
+        "global_criticals": global_criticals,
         "reward_tracking": reward_tracking,
         "deployed_bikes": deployed_bikes,
         "cell_subgraph": cell_graph,

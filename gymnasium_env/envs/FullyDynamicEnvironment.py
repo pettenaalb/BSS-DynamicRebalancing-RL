@@ -394,7 +394,8 @@ class FullyDynamicEnv(gym.Env):
         self.total_failures += sum(failures)
 
         # Update the last visited cells
-        # if action in {Actions.UP.value, Actions.DOWN.value, Actions.LEFT.value, Actions.RIGHT.value} and not self.invalid_action:
+        if action in {Actions.DROP_BIKE.value, Actions.PICK_UP_BIKE.value, Actions.CHARGE_BIKE.value} and not self.invalid_action:
+            truck_cell.set_ops(truck_cell.get_ops() + 1)
         truck_cell.set_visits(truck_cell.get_visits() + 1)
         self.total_visits += 1
 
@@ -426,6 +427,7 @@ class FullyDynamicEnv(gym.Env):
             'truck_load': self.truck.get_load(),
             'total_trips': self.total_trips,
             'total_invalid':self.total_invalid_actions,
+            'global_critic_score':self.global_critic_score
         }
 
         # Save and Reset some variables
@@ -984,6 +986,7 @@ class FullyDynamicEnv(gym.Env):
                 self.cell_subgraph.nodes[center_node]['bikes'] = cell_bikes
                 self.cell_subgraph.nodes[center_node]['critic_score'] = cell.get_critic_score()
                 self.cell_subgraph.nodes[center_node]['visits'] = cell.get_visits()
+                self.cell_subgraph.nodes[center_node]['operations'] = cell.get_ops()
                 self.cell_subgraph.nodes[center_node]['eligibility_score'] = cell.eligibility_score
             else:
                 raise ValueError(f"Node {center_node} not found in the subgraph.")
