@@ -154,6 +154,70 @@ def process_validation_results(base_path: str):
     plot_data_online(action_bins, idx=4, xlabel='Action', ylabel='Frequency', show_histogram=True,
                      bin_labels=action_bin_labels, save_path=base_path + 'plots/action_bins.png')
 
+
+def process_benchmark_results(base_path: str):
+    """
+    Loads all .pkl files in a folder and generates corresponding plots.
+
+    Parameters
+    ----------
+    base_path : str
+        Path to the folder containing .pkl files.
+    idx : int, optional
+        Index passed to plot_data_online (default is 1).
+    xlabel : str, optional
+        Label for the x-axis (default is 'Time Slot').
+    ylabel : str, optional
+        Label for the y-axis (default is 'Data').
+    """
+    idx=1
+    xlabel='Time Slot'
+    ylabels = {
+        'rebalance_time.pkl': 'Rebalance Time (seconds)',
+        'total_failures.pkl': 'Failures',
+    }
+    default_ylabel='Data'
+
+    # Ensure the path exists
+    if not os.path.exists(base_path):
+        print(f"Folder not found: {base_path}")
+        return
+
+    # Loop through all .pkl files in the directory
+    for filename in os.listdir(base_path):
+        if filename.endswith('.pkl'):
+            filepath = os.path.join(base_path, filename)
+
+            # Load pickle data
+            try:
+                with open(filepath, 'rb') as f:
+                    data = pickle.load(f)
+            except Exception as e:
+                print(f"Error loading {filename}: {e}")
+                continue
+
+            
+            # Determine y-axis label
+            ylabel = ylabels.get(filename, default_ylabel) if ylabels else default_ylabel
+
+            # Create output path for plot
+            plot_name = os.path.splitext(filename)[0] + '.png'
+            plot_path = os.path.join(base_path, plot_name)
+
+            # Call your plotting function
+            try:
+                plot_data_online(
+                    data,
+                    idx=idx,
+                    xlabel=xlabel,
+                    ylabel=ylabel,
+                    save_path=plot_path
+                )
+                print(f"Saved plot: {plot_path}")
+            except Exception as e:
+                print(f"Error plotting {filename}: {e}")
+
+
 # ----------------------------------------------------------------------------------------------------------------------
 
 def main():
@@ -164,9 +228,11 @@ def main():
         base_path = 'results/validation_1'
         process_validation_results(base_path)
     elif MODE == 'benchmark':
-        with open('benchmarks/results/rebalance_time.pkl', 'rb') as f:
-            data = pickle.load(f)
-            plot_data_online(data, idx=1, xlabel='Time Slot', ylabel='Data')
+        base_path = 'benchmarks/results'
+        process_benchmark_results(base_path)
+        # with open('benchmarks/results/rebalance_time.pkl', 'rb') as f:
+        #     data = pickle.load(f)
+        #     plot_data_online(data, idx=1, xlabel='Time Slot', ylabel='Data', save_path=os.path.join(base_path, 'rebalance_times.png'))
     else:
         raise ValueError("Invalid mode. Choose 'train', 'validate' or 'benchmark'.")
     
