@@ -692,6 +692,7 @@ class FullyDynamicEnv(gym.Env):
             # np.array([1 if len(self.system_bikes) >= self.maximum_number_of_bikes else 0], dtype=np.float32),       # sys bikes flag
             # np.array([1 if self.truck.get_cell().get_critic_score() > 0.0 else 0], dtype=np.float32),               # truck_cell is critical flag
             np.array([1.0 if self.truck.get_cell().get_surplus_bikes() > 0 else 0.0], dtype=np.float16),                # truck_cell is surplus flag
+            # np.array([self.total_failures]),                                                                    # total failures of the episode
             np.array([1.0 if self.truck.get_cell().get_total_bikes() == 0 else 0.0], dtype=np.float16),                 # truck_cell empty flag
             np.array([(self.global_critic_score)], dtype=np.float16),                                               # global critic flag
             ohe_previous_move_action,
@@ -850,7 +851,7 @@ class FullyDynamicEnv(gym.Env):
         # Drop Reward
         # ----------------------------
         if action == Actions.DROP_BIKE.value:
-            # drop_reward = 0.1
+            drop_reward = 0.01
             if was_critical and not is_critical: # If the truck manages to rebalance the cell -> Big reward and (optional) reset all eligibility to 0.0
                 drop_reward = 2.0
                 # update metrics and reset all eligibility to 0.0
@@ -885,8 +886,8 @@ class FullyDynamicEnv(gym.Env):
             else:                                   # usefull charge -> good reward
                 if was_critical:
                     bike_charge_reward = 0.5
-                # else:
-                #     bike_charge_reward = 0.1
+                else:
+                    bike_charge_reward = 0.3
 
         # ----------------------------
         # Eligibility and Border penalties
@@ -912,7 +913,7 @@ class FullyDynamicEnv(gym.Env):
             if was_critical:
                 stay_penalty = -1.0
             elif old_global_critic_score <= 0.0:
-                stay_penalty = 0.2
+                stay_penalty = 0.3
                 loop_penalty = 0.0
 
         
@@ -920,7 +921,7 @@ class FullyDynamicEnv(gym.Env):
         # Combine all reward components with their weights
         # ----------------------------
         reward = (
-            0.0  # Base reward
+            -0.1  # Base reward
             + drop_reward
             + pick_up_reward
             + bike_charge_reward
