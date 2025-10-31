@@ -35,7 +35,8 @@ device = torch.device(
 )
 print("Device available: " + device.__getattribute__("type"))
 # SEED SETTING (Some setting are put after the generation of the enviroment)
-seed = 31
+seed = 43
+print(seed)
 random.seed(seed)
 np.random.seed(seed)
 torch.manual_seed(seed)
@@ -62,13 +63,13 @@ params = {
     "gamma": 0.95,                                  # Discount factor
     "epsilon_start": 1.0,                           # Starting exploration rate
     "epsilon_delta": 0.05,                          # Epsilon decay rate
-    "epsilon_end": 0.00,                            # Minimum exploration rate
+    "epsilon_end": 0.01,                            # Minimum exploration rate
     "epsilon_decay": 1e-5,                          # Epsilon decay constant
     "exploration_time": 0.6,                        # Fraction of total training time for exploration
     "lr": 1e-4,                                     # Learning rate
     "total_timeslots": 56,                          # Total number of time slots in one episode (1 month)
     "maximum_number_of_bikes": 250,                 # Maximum number of bikes in the system
-    "results_path": results_path,                     # Path to save results
+    "results_path": results_path,                   # Path to save results
     "soft_update": True,                            # Use soft update for target network
     "tau": 0.005,                                   # Tau parameter for soft update
 }
@@ -640,9 +641,9 @@ def main():
             )
 
             # Save checkpoint if the training and validation score is better
-            if episode%10 == 0 and (agent.epsilon < 0.15 or mean_train_failures < 10): 
+            if (episode%10 == 0 and (agent.epsilon < 0.15 or mean_train_failures < 10)) or episode == params["num_episodes"]: 
                 enable_val_logging = enable_logging 
-                if episode > 125: 
+                if episode > params["num_episodes"]*0.9: 
                     enable_val_logging = True
                 # validate the training with a greedy validation, VALIDATE_DQN             
                 validation_results = validate_dqn(env, agent, episode, tbar, enable_val_logging)
@@ -726,7 +727,7 @@ if __name__ == '__main__':
     parser.add_argument('--enable_telegram', action='store_true', help='Enable Telegram notifications.')
     parser.add_argument('--data_path', type=str, default=data_path, help='Path to the data folder.')
     parser.add_argument('--results_path', type=str, default=results_path, help='Path to the results folder.')
-    parser.add_argument('--cuda_device', type=int, default=1, help='CUDA device to use.')
+    parser.add_argument('--cuda_device', type=int, default=0, help='CUDA device to use.')
     parser.add_argument('--enable_logging', action='store_true', help='Enable logging.')
     parser.add_argument('--enable_checkpoint', action='store_true', help='Enable checkpointing.')
     parser.add_argument('--restore_from_checkpoint', action='store_true', help='Restore from checkpoint.')
