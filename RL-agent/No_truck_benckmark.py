@@ -34,7 +34,7 @@ device = torch.device(
 )
 print("Device available: " + device.__getattribute__("type"))
 # SEED SETTING (Some setting are put after the generation of the enviroment)
-seed = 31
+seed = 43
 random.seed(seed)
 np.random.seed(seed)
 torch.manual_seed(seed)
@@ -54,7 +54,7 @@ torch.backends.cudnn.benchmark = False
 # torch.geometric.seed(seed) 
 
 params = {
-    "num_episodes": 50,                             # Total number of test episodes
+    "num_episodes": 21,                             # Total number of test episodes
     "total_timeslots": 56,                          # Total number of time slots in one episode (1 month)
     "maximum_number_of_bikes": 250,                 # Maximum number of bikes in the system
     "results_path": results_path,                   # Path to save results
@@ -197,6 +197,9 @@ def train_dqn(env: gym, episode: int, tbar = None) -> dict:
                 center_node = cell.get_center_node()
                 if center_node in cell_graph:
                     cell_graph.nodes[center_node]['visits'] = env_cells_subgraph.nodes[center_node]['visits']
+                    cell_graph.nodes[center_node]['operations'] = env_cells_subgraph.nodes[center_node]['operations']
+                    cell_graph.nodes[center_node]['rebalanced'] = env_cells_subgraph.nodes[center_node]['rebalanced']
+                    cell_graph.nodes[center_node]['failures'] = env_cells_subgraph.nodes[center_node]['failures']
                     cell_graph.nodes[center_node]['critic_score'] = cell_graph.nodes[center_node]['critic_score'] / iterations
                     cell_graph.nodes[center_node]['num_bikes'] = cell_graph.nodes[center_node]['num_bikes'] / iterations
                 else:
@@ -212,7 +215,7 @@ def train_dqn(env: gym, episode: int, tbar = None) -> dict:
         "rewards_per_timeslot": rewards_per_timeslot,
         "failures_per_timeslot": failures_per_timeslot,
         "total_trips": info["total_trips"],
-        "total_out_trips": info["total_out_trips"],
+        # "total_out_trips": info["total_out_trips"],
         "q_values_per_timeslot": 0,
         "action_per_step": action_per_step,
         "losses": 0,
@@ -315,7 +318,7 @@ def main():
                     pickle.dump(value, f)
 
             total_trips = test_results['total_trips']
-            total_out_trips = test_results['total_out_trips']
+            # total_out_trips = test_results['total_out_trips']
             total_train_failures = sum(test_results['failures_per_timeslot'])
             mean_train_failures = total_train_failures / params["total_timeslots"]
 
