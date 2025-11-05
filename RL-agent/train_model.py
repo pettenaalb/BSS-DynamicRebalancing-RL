@@ -56,7 +56,7 @@ torch.backends.cudnn.benchmark = False
 # torch.geometric.seed(seed) 
 
 params = {
-    "num_episodes": 200,                            # Total number of training episodes
+    "num_episodes": 140,                            # Total number of training episodes
     "batch_size": 64,                               # Batch size for replay buffer sampling
     "replay_buffer_capacity": int(1e5),             # Capacity of replay buffer: 0.1 million transitions
     # "input_dimentions": 72,

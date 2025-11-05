@@ -9,9 +9,9 @@ from utils import load_results, get_episode_options, create_plot, action_bin_lab
 
 # insert here the training runs to evaluate
 # phases = [55,541,542,543,544,545,546,557]
-phases = [54,540,53,530,531,52,51,509,508,507,506,502,501,50]
-validation_paths = True
-tests = [0,10,11]
+phases = [1]
+validation_paths = False
+tests = []
 port = 8050
 image_height = 900  # Image height in pixels
 image_width = 1200
