@@ -6,7 +6,7 @@ import pickle
 import pandas as pd
 import osmnx as ox
 
-from utils import *
+from .utils import *
 from tqdm import tqdm
 
 params = {
