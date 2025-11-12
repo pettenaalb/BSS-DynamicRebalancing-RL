@@ -86,9 +86,30 @@ def count_specific_day(year: int, month: int, day_name: str) -> int:
 
     return count
 
+def save_node_coordinates(graph: nx.MultiDiGraph, path: str):
+    """
+    Save node IDs and their coordinates to a text file.
+
+    Parameters:
+        - graph: The OSMnx graph.
+        - path: Output directory including filename (e.g., 'data/nodes.txt').
+    """
+    filename = path + "node_coordinates.txt"   # fixed file name
+
+    sorted_nodes = sorted(graph.nodes(data=True), key=lambda x: x[0])
+    with open(filename, 'w') as f:
+        f.write("NodeID, Latitude, Longitude\n")
+        for node_id, data in sorted_nodes:
+            lat = data.get('y', None)
+            lon = data.get('x', None)
+            f.write(f"{node_id}, {lat}, {lon}\n")
+
+    print(f"Node coordinate list saved to: {path}")
+
+
 # ----------------------------------------------------------------------------------------------------------------------
 
-def plot_graph(graph: nx.MultiDiGraph, path: str = None):
+def plot_graph(graph: nx.MultiDiGraph, highlight: list = None, path: str = None):
     """
     Plot the OSMnx graph with nodes colored based on total request rates.
 
@@ -108,9 +129,21 @@ def plot_graph(graph: nx.MultiDiGraph, path: str = None):
     nodes.plot(ax=ax, markersize=15, color='#4169E1', alpha=1, zorder=2)
 
     # Plot specific node
-    # node = 64
-    # node_coords = (graph.nodes[node]['y'], graph.nodes[node]['x'])
-    # ax.plot(node_coords[1], node_coords[0], marker='o', color='red', markersize=4, label=f"Node {node}")
+    if isinstance(highlight, list):
+        for node in highlight:
+            if node in graph.nodes:
+                node_coords = (graph.nodes[node]['y'], graph.nodes[node]['x'])
+                ax.plot(node_coords[1], node_coords[0], marker='X', color='magenta', markersize=18, label=f"Node {node}")
+            else:
+                print(f"## MARKER FAILED: could not mark specific node {node}. The node was removed from the graph.")
+
+    # ----------- Add Node Labels -----------
+    for node_id, node_data in graph.nodes(data=True):
+        x = node_data['x']
+        y = node_data['y']
+        ax.text(x, y, str(node_id),
+                fontsize=6, color='black', ha='center', va='center', zorder=3)
+    # --------------------------------------
 
     plt.axis('off')
     plt.savefig(path + 'graph.svg', dpi=300, bbox_inches='tight', pad_inches=0.1)
@@ -230,7 +263,7 @@ def plot_graph_with_grid(graph, cell_dict, plot_center_nodes=False, plot_number_
                     if adjacent_center_node != 0:
                         adj_coords = graph.nodes[adjacent_center_node]['x'], graph.nodes[adjacent_center_node]['y']
                         ax.plot([node_coords[0], adj_coords[0]], [node_coords[1], adj_coords[1]], color='yellow',
-                                linewidth=1.5, alpha=0.8)
+                                linewidth=1.5, alpha=0.2)
 
         if plot_number_cells:
             center_coords = cell.boundary.centroid.coords[0]

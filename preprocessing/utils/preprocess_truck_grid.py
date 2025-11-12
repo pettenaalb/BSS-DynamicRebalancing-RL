@@ -47,6 +47,15 @@ def divide_graph_into_cells(graph: nx.MultiDiGraph, cell_size: int) -> dict[int,
     nodes = ox.graph_to_gdfs(graph, edges=False)
     min_x, min_y, max_x, max_y = nodes.total_bounds
 
+    # coordinates shift and map scale
+    vertical = -0.0019
+    orizzontal = +0.0005
+    scale = 0.0001
+    min_x = min_x + orizzontal - scale
+    max_x = max_x + orizzontal + scale
+    min_y = min_y + vertical - scale
+    max_y = max_y + vertical + scale
+
     # Conversion factors
     lat_deg_to_meter: float = 111320  # 1 degree latitude = 111320 meters
     lat_lon_to_meter: float = 111320 * abs(np.cos(np.radians(np.mean([min_y, max_y]))))

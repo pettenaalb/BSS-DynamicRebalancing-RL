@@ -6,17 +6,18 @@ import networkx as nx
 from geopy.distance import geodesic
 
 from tqdm import tqdm
-from .utils import count_specific_day, connect_disconnected_neighbors, plot_graph
+from .utils import count_specific_day, connect_disconnected_neighbors, plot_graph, save_node_coordinates
 
 params = {
     'place': ["Cambridge, Massachusetts, USA"],
     'network_type': 'bike',
-
-    'data_path': "../data/",
+    'force_new_map': True,
+    'data_path': "data/",
     'graph_file': "utils/cambridge_network.graphml",
     'year': 2022,
     'month': [9, 10],
-    'nodes_to_remove': [(42.365455, -71.14254)],
+    'nodes_to_remove': [330,482,54,256,36,324],
+    'nodes_to_hilight': [],
 
     'day_of_week': ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"],
 }
@@ -24,7 +25,7 @@ params = {
 # ----------------------------------------------------------------------------------------------------------------------
 
 def initialize_graph(places: list[str], network_type: str, graph_path: str = None, simplify_network: bool = False,
-                     remove_isolated_nodes: bool = False, nodes_to_remove: list[tuple] = None, bbox = None) -> nx.MultiDiGraph:
+                     remove_isolated_nodes: bool = False, nodes_to_remove: list[tuple] = None, bbox = None, forced: bool = False) -> nx.MultiDiGraph:
     """
     Initialize the graph representing the road network.
 
@@ -38,7 +39,7 @@ def initialize_graph(places: list[str], network_type: str, graph_path: str = Non
     Returns:
         - nx.MultiDiGraph: The graph representing the road network.
     """
-    if os.path.isfile(graph_path):
+    if os.path.isfile(graph_path) and not forced:
         # Load the network data if the file already exists
         print("Network file already exists. Loading the network data... ")
         graph = ox.load_graphml(graph_path)
@@ -82,8 +83,15 @@ def initialize_graph(places: list[str], network_type: str, graph_path: str = Non
         # Remove specified nodes
         if nodes_to_remove is not None:
             for node in nodes_to_remove:
-                nearest_node = ox.distance.nearest_nodes(graph, X=node[1], Y=node[0])
-                graph.remove_node(nearest_node)
+                # Case 1: Node is passed as an ID (int or str)
+                if node in graph.nodes:
+                    graph.remove_node(node)
+                # Case 2: Node is passed as coordinates (tuple)
+                elif isinstance(node, tuple) and len(node) == 2:
+                    nearest_node = ox.distance.nearest_nodes(graph, X=node[1], Y=node[0])
+                    graph.remove_node(nearest_node)
+                else:
+                    print(f"Warning: Cannot interpret node identifier: {node}")
 
         ox.save_graphml(graph, graph_path)
         print("Network data downloaded and saved successfully.")
@@ -272,9 +280,9 @@ def main():
     half_side = 350  # in meters
 
     # Compute the boundaries
-    south = 42.3523
+    south = 42.3530 # 42.3523
     north = 42.3679
-    west = -71.1046
+    west = -71.1166 # -71.1046
     east = -71.0883
 
     # Bounding box
@@ -283,9 +291,10 @@ def main():
     # <-- END OF SECTION -->
 
     graph = initialize_graph(params['place'], params['network_type'], params['data_path'] + params['graph_file'],
-                             remove_isolated_nodes=True, simplify_network=True, nodes_to_remove=params['nodes_to_remove'])
+                             remove_isolated_nodes=True, simplify_network=True, nodes_to_remove=params['nodes_to_remove'], bbox=bbox, forced=force_new_map)
 
-    # plot_graph(graph, path=params['data_path'])
+    plot_graph(graph, highlight=params['nodes_to_hilight'], path=params['data_path'])
+    save_node_coordinates(graph, path=params['data_path'])
     # raise Exception("Graph plotted")
 
     print(f'\nProcessing data for year {params["year"]} and month {params["month"]}...')
@@ -339,9 +348,11 @@ def main():
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Preprocess the data for the RL agent.")
-    parser.add_argument('--data_path', type=str, default="../data_new/", help="Path to the data directory.")
+    parser.add_argument('--data_path', type=str, default="data/", help="Path to the data directory.")
+    parser.add_argument('--force_new_map', action='store_true', help='Forces the generation of a new map.')
 
     args = parser.parse_args()
+    force_new_map = args.force_new_map
     if args.data_path:
         params['data_path'] = args.data_path
 

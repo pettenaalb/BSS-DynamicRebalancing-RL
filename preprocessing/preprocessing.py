@@ -6,7 +6,7 @@ import pickle
 import pandas as pd
 import osmnx as ox
 
-from .utils import *
+from utils import *
 from tqdm import tqdm
 
 params = {
@@ -22,7 +22,8 @@ params = {
 
     'year': 2022,
     'month': [9, 10],
-    'nodes_to_remove': [(42.365455, -71.14254)],
+    'nodes_to_remove': [330,482,54,256,36,324],
+    'nodes_to_hilight': [],
 
     'day_of_week': ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"],
 }
@@ -60,6 +61,9 @@ def main():
     graph = initialize_graph(params['place'], params['network_type'], params['data_path'] + params['graph_file'],
                              remove_isolated_nodes=True, simplify_network=True,
                              nodes_to_remove=params['nodes_to_remove'], bbox=bbox)
+    
+    plot_graph(graph, highlight=params['nodes_to_hilight'], path=params['data_path'])
+    save_node_coordinates(graph, path=params['data_path'])
 
     print(f'\nProcessing data for year {params["year"]} and month {params["month"]}...')
     trip_df = pd.DataFrame()

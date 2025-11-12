@@ -5,7 +5,7 @@ import networkx as nx
 import pickle
 
 from tqdm import tqdm
-from .utils import nodes_within_radius
+from utils import nodes_within_radius
 
 def initialize_graph(graph_path: str = None) -> nx.MultiDiGraph:
     if os.path.isfile(graph_path):
@@ -37,7 +37,7 @@ def main(data_path: str):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Preprocess the nodes dictionary')
-    parser.add_argument('--data_path', type=str, default='../data/', help='Path to the data folder')
+    parser.add_argument('--data_path', type=str, default='data/', help='Path to the data folder')
 
     args = parser.parse_args()
     data_path = args.data_path
