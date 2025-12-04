@@ -27,8 +27,17 @@ from torch.nn import functional as F
 data_path = "data/"
 results_path = "results/"
 run_id = 999
-printing = False
-benchmark_mode = True
+printing = True                 # If True it prints information on terminal
+benchmark_mode = False          # If True it always performs "STAY" simulating a no rebalancing benchmark. ( the rebalance happens every Monday morning anyway. )
+# num_rebalancing_events = 0       # If > 0 it performs a static rebalance every # hours. Please insert a number that is a dividend of 24, (1,2,3,4,6,8,12,24) 
+#                                 # Benchmark mode has to be True.
+
+# rebalancing_hours = []
+# if benchmark_mode and num_rebalancing_events > 0:
+#     from gymnasium_env.simulator.truck_simulator import tsp_rebalancing
+#     # Set rebalancing hours
+#     rebalancing_hours = [(i+3)%24 for i in range(0, 24, 24 // num_rebalancing_events)]
+#     rebalancing_hours = sorted(rebalancing_hours)
 
 # if GPU is to be used
 device = torch.device(
@@ -60,7 +69,7 @@ torch.backends.cudnn.benchmark = False
 params = {
     "num_episodes": 5,                              # Total number of test episodes
     "total_timeslots": 56,                          # Total number of time slots in one episode (1 month)
-    "maximum_number_of_bikes": 250,                 # Maximum number of bikes in the system
+    "maximum_number_of_bikes": 300,                 # Maximum number of bikes in the system
     "results_path": results_path,                   # Path to save results
     "batch_size": 64,                               # Batch size for replay buffer sampling
     "replay_buffer_capacity": int(1e5),             # Capacity of replay buffer: 0.1 million transitions
@@ -222,6 +231,7 @@ def train_dqn(env: gym, agent: DQNAgent, batch_size: int, episode: int, tbar = N
             _ = agent.train_step(batch_size)
 
         if printing:
+            num_of_cells = int((len(agent_state) - 16) / 2)
             # Print informations about the next state
             print("-------------------------------------------------------------------")
             print(f"State: Load= {agent_state[0]}"
@@ -229,8 +239,9 @@ def train_dqn(env: gym, agent: DQNAgent, batch_size: int, episode: int, tbar = N
                 f" | is_empty= {agent_state[2]}"
                 f" | Criticals = {agent_state[3]}"
                 # f" | day= {ohe2num(agent_state[2:9])} | hour= {ohe2num(agent_state[9:33])}"
-                f" | prevous_act= {ohe2num(agent_state[4:12])} | cell position= {ohe2cell(agent_state[12:39])} | borders= {agent_state[66:70]}"
-                f" | critical cells = {agent_state[39:66]}")
+                f" | prevous_act= {ohe2num(agent_state[4:12])} | borders= {agent_state[-4:]}\n"
+                f" | cell position= {agent_state[12:(num_of_cells+12)]}\n"
+                f" | critical cells = {agent_state[(num_of_cells+12):-4]}")
             # print(info['cells_subgraph'])
 
             if timeslot_terminated:
@@ -260,11 +271,15 @@ def train_dqn(env: gym, agent: DQNAgent, batch_size: int, episode: int, tbar = N
 
             # Record metrics for the current time slot
             failures_per_timeslot.append(total_failures)
-            epsilon_per_timeslot.append(0)
+            epsilon_per_timeslot.append(agent.epsilon)
             deployed_bikes.append(info['number_of_system_bikes'])
 
+            if agent.epsilon <= 0.05:
+                agent.epsilon = 0.05
+            elif agent.epsilon > 0.05:
+                agent.update_epsilon()
+
             # Reset time slot metrics
-            total_reward = 0
             total_failures = 0
             timeslot = 0 if timeslot == 7 else timeslot + 1
 
@@ -305,6 +320,7 @@ def train_dqn(env: gym, agent: DQNAgent, batch_size: int, episode: int, tbar = N
         "q_values_per_timeslot": 0,
         "action_per_step": action_per_step,
         "losses": 0,
+        "total_invalid": 0,
         "reward_tracking": reward_tracking,
         "epsilon_per_timeslot": epsilon_per_timeslot,
         "deployed_bikes": deployed_bikes,
@@ -355,6 +371,7 @@ def main():
     print(f"Device in use: {device}\n")
 
     # Print parameters
+    params["epsilon_decay"] = ((params["exploration_time"] * params["num_episodes"] * params["total_timeslots"])**2) / np.log(10)
     print(f"{params}\n")
 
 
@@ -406,10 +423,10 @@ def main():
 
     # Restore from checkpoint
     starting_episode = 0
-    if restore_from_checkpoint:
-        main_variables = restore_checkpoint(agent, replay_buffer)
-        starting_episode = main_variables['episode'] + 1
-        print(f"Restored from checkpoint. Resuming training from episode {starting_episode}.")
+    # if restore_from_checkpoint:
+    #     main_variables = restore_checkpoint(agent, replay_buffer)
+    #     starting_episode = main_variables['episode'] + 1
+    #     print(f"Restored from checkpoint. Resuming training from episode {starting_episode}.")
 
     # Train the agent using the test loop
     try:
@@ -491,7 +508,7 @@ if __name__ == '__main__':
     parser.add_argument('--enable_telegram', action='store_true', help='Enable Telegram notifications.')
     parser.add_argument('--data_path', type=str, default=data_path, help='Path to the data folder.')
     parser.add_argument('--results_path', type=str, default=results_path, help='Path to the results folder.')
-    parser.add_argument('--cuda_device', type=int, default=1, help='CUDA device to use.')
+    parser.add_argument('--cuda_device', type=int, default=0, help='CUDA device to use.')
     parser.add_argument('--enable_logging', action='store_true', help='Enable logging.')
     parser.add_argument('--restore_from_checkpoint', action='store_true', help='Restore from checkpoint.')
     parser.add_argument('--num_episodes', type=int, default=params['num_episodes'], help='Number of episodes to train.')
