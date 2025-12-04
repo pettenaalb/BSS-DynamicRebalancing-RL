@@ -79,6 +79,7 @@ def departure_handler(trip: Trip, station_dict: dict, nearby_nodes_dict: dict[st
         return trip, next_bike_id
 
     # Here starting station is inside the system
+    start_station.get_cell().add_departure()
     # Check if there are any bikes available at the starting station
     if start_station.get_number_of_bikes() > 0:
         bike = start_station.unlock_bike()

@@ -157,7 +157,7 @@ class DQNv2(nn.Module):
         # ------------------------------------------------------------------------------
         self.agent_fc = nn.Sequential(
             # MODIFY THE FIRST PARAMETER wrt THE DIMENTION OF THE TRUCK OBSERVATION SPACE
-            nn.Linear(72, 256),
+            nn.Linear(110, 256),
 
             nn.ReLU(),
             nn.Linear(256, 256),

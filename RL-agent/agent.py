@@ -95,7 +95,7 @@ class DQNAgent:
         self.steps_done += steps_in_action
 
         if delta_epsilon is None:
-            self.epsilon = self.epsilon_min + (self.epsilon_max - self.epsilon_min) * np.exp(-1.0 * self.steps_done / self.epsilon_decay)
+            self.epsilon = self.epsilon_min + (self.epsilon_max - self.epsilon_min) * np.exp(-1.0 * (self.steps_done**2) / self.epsilon_decay)
         else:
             self.epsilon = max(self.epsilon - delta_epsilon, self.epsilon_min)
 

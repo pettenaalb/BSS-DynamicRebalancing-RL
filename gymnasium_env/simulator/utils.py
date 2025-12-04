@@ -324,6 +324,7 @@ def initialize_cells_subgraph(cells: dict[int, "Cell"], nodes_dict: dict[int, tu
         "bike_load": 0.0,
         "si": 0.0,
         "critic_score": 0.0,
+        "failure_rates": 0.0
     }
 
     # Use provided features or fall back to defaults

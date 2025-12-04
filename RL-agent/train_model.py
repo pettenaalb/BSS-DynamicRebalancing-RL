@@ -68,7 +68,7 @@ params = {
     "exploration_time": 0.6,                        # Fraction of total training time for exploration
     "lr": 1e-4,                                     # Learning rate
     "total_timeslots": 56,                          # Total number of time slots in one episode (1 month)
-    "maximum_number_of_bikes": 250,                 # Maximum number of bikes in the system
+    "maximum_number_of_bikes": 300,                 # Maximum number of bikes in the system
     "results_path": results_path,                   # Path to save results
     "soft_update": True,                            # Use soft update for target network
     "tau": 0.005,                                   # Tau parameter for soft update
@@ -90,6 +90,7 @@ CHAT_ID = '671757146'                                           # Alberto Petten
 enable_checkpoint = False
 restore_from_checkpoint = False
 enable_logging = False
+one_validation = False
 
 formatter = logging.Formatter('%(asctime)s %(levelname)s %(message)s')
 
@@ -142,6 +143,7 @@ def train_dqn(env: gym, agent: DQNAgent, batch_size: int, episode: int, tbar = N
         'operations': 0,
         'rebalanced': 0,
         'failures': 0,
+        'failure_rates': 0.0,
         'critic_score': 0.0,
         'num_bikes': 0.0,
     } # to see new custom feature on the results, remember to add them in the webserver
@@ -228,11 +230,8 @@ def train_dqn(env: gym, agent: DQNAgent, batch_size: int, episode: int, tbar = N
             # Update target network periodically
             if timeslots_completed % 8 == 0:
                 agent.update_target_network()
-            if agent.epsilon <= 0.05:
-                agent.epsilon = 0.05
-            elif agent.epsilon > 0.05:
-                agent.update_epsilon()
-                # agent.epsilon = 1 - episode*0.01
+            agent.update_epsilon()
+            # agent.epsilon = 1 - episode*0.01
 
             # Get Q-values for the current state
             with torch.no_grad():
@@ -271,6 +270,7 @@ def train_dqn(env: gym, agent: DQNAgent, batch_size: int, episode: int, tbar = N
                     cell_graph.nodes[center_node]['operations'] = env_cells_subgraph.nodes[center_node]['operations']
                     cell_graph.nodes[center_node]['rebalanced'] = env_cells_subgraph.nodes[center_node]['rebalanced']
                     cell_graph.nodes[center_node]['failures'] = env_cells_subgraph.nodes[center_node]['failures']
+                    cell_graph.nodes[center_node]['failure_rates'] = env_cells_subgraph.nodes[center_node]['failure_rates']
                     cell_graph.nodes[center_node]['critic_score'] = cell_graph.nodes[center_node]['critic_score'] / iterations
                     cell_graph.nodes[center_node]['num_bikes'] = cell_graph.nodes[center_node]['num_bikes'] / iterations
                 else:
@@ -344,6 +344,7 @@ def validate_dqn(env: gym, agent: DQNAgent, episode: int, tbar: tqdm | tqdm_tele
         'operations': 0,
         'rebalanced': 0,
         'failures': 0,
+        'failure_rates': 0.0,
         'critic_score': 0.0,
         'num_bikes': 0.0,
     }
@@ -385,8 +386,7 @@ def validate_dqn(env: gym, agent: DQNAgent, episode: int, tbar: tqdm | tqdm_tele
 
         # Select an action using the agent
         agent.epsilon = 0.05
-        action = agent.select_action(single_state, epsilon_greedy=True)
-        # action = agent.select_action(single_state, greedy=True, avoid_action=avoid_actions)
+        action = agent.select_action(single_state, epsilon_greedy=True)#, avoid_action=avoid_actions)
 
         # Step the environment with the chosen action
         agent_state, reward, done, timeslot_terminated, info = env.step(action)
@@ -448,6 +448,7 @@ def validate_dqn(env: gym, agent: DQNAgent, episode: int, tbar: tqdm | tqdm_tele
                     cell_graph.nodes[center_node]['operations'] = env_cells_subgraph.nodes[center_node]['operations']
                     cell_graph.nodes[center_node]['rebalanced'] = env_cells_subgraph.nodes[center_node]['rebalanced']
                     cell_graph.nodes[center_node]['failures'] = env_cells_subgraph.nodes[center_node]['failures']
+                    cell_graph.nodes[center_node]['failure_rates'] = env_cells_subgraph.nodes[center_node]['failure_rates']
                     cell_graph.nodes[center_node]['critic_score'] = cell_graph.nodes[center_node]['critic_score'] / iterations
                     cell_graph.nodes[center_node]['num_bikes'] = cell_graph.nodes[center_node]['num_bikes'] / iterations
                 else:
@@ -524,9 +525,11 @@ def main():
     print(f"Device in use: {device}\n")
 
     # At 60% of the total timeslots (60% of the training) the epsilon should be 0.1
-    params["epsilon_decay"] = (params["exploration_time"] * params["num_episodes"] * params["total_timeslots"]) / np.log(10)
+    params["epsilon_decay"] = ((params["exploration_time"] * params["num_episodes"] * params["total_timeslots"])**2) / np.log(10)
     print(f"{params}\n")
     print(f"{reward_params}\n")
+    if one_validation:
+        print("one_validation = True")
 
     # Create results path
     training_results_path = str(results_path + 'training_' + str(run_id) + '/')
@@ -641,7 +644,7 @@ def main():
             )
 
             # Save checkpoint if the training and validation score is better
-            if (episode%10 == 0 and (agent.epsilon < 0.15 or mean_train_failures < 10)) or episode == params["num_episodes"]: 
+            if (episode%10 == 0 and (agent.epsilon < 0.15 or mean_train_failures < 10) and not one_validation) or episode == (params["num_episodes"]-1): 
                 enable_val_logging = enable_logging 
                 if episode > params["num_episodes"]*0.9: 
                     enable_val_logging = True
@@ -731,7 +734,9 @@ if __name__ == '__main__':
     parser.add_argument('--enable_logging', action='store_true', help='Enable logging.')
     parser.add_argument('--enable_checkpoint', action='store_true', help='Enable checkpointing.')
     parser.add_argument('--restore_from_checkpoint', action='store_true', help='Restore from checkpoint.')
+    parser.add_argument('--one_validation', action='store_true', help='Performs only one validation at the end of the training.')
     parser.add_argument('--num_episodes', type=int, default=params['num_episodes'], help='Number of episodes to train.')
+    parser.add_argument('--num_bikes', type=int, default=params['maximum_number_of_bikes'], help='Number of bikes of the system.')
     parser.add_argument('--run_id', type=int, default=run_id, help='Run ID for the experiment.')
     parser.add_argument('--exploration_time', type=float, default=params['exploration_time'], help='Number of episodes to explore.')
 
@@ -744,7 +749,9 @@ if __name__ == '__main__':
     enable_logging = args.enable_logging
     enable_checkpoint = args.enable_checkpoint
     restore_from_checkpoint = args.restore_from_checkpoint
+    one_validation = args.one_validation
     params["num_episodes"] = args.num_episodes
+    params["maximum_number_of_bikes"] = args.num_bikes
     run_id = args.run_id
     params["exploration_time"] = args.exploration_time
 

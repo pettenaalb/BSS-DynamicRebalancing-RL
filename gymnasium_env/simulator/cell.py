@@ -39,6 +39,7 @@ class Cell:
         self.request_rate = 0
         self.visits = 0
         self.operations = 0
+        self.total_departures = 0
         self.failures = 0
         self.total_rebalanced = 0
         self.critic_score = 0
@@ -87,6 +88,7 @@ class Cell:
         self.request_rate = 0
         self.visits = 0
         self.operations = 0
+        self.total_departures = 0
         self.failures = 0
         self.total_rebalanced = 0
         self.critic_score = 0
@@ -177,6 +179,9 @@ class Cell:
 
     def get_ops(self) -> int:
         return self.operations
+    
+    def get_total_departures(self) -> int:
+        return self.total_departures
 
     def get_failures(self) -> int:
         return self.failures
@@ -189,6 +194,14 @@ class Cell:
 
     def get_surplus_bikes(self) -> float:
         return self.surplus_bikes
+    
+    def add_departure(self, d: int = 1):
+        """
+        This function adds a number of departures to the departure counter of the cell
+        Parameters:
+        d (int): Number of departures to add (default 1)
+        """
+        self.total_departures += d
 
     def add_failure(self, f: int = 1):
         """

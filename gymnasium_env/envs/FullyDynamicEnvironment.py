@@ -3,7 +3,7 @@ import pickle
 import threading
 # import random
 import bisect
-import torch
+# import torch
 
 import gymnasium as gym
 import numpy as np
@@ -274,6 +274,7 @@ class FullyDynamicEnv(gym.Env):
             'visits': 0,
             'eligibility_score': 0.0,
             'low_battery_bikes': 0.0,
+            'failure_rates': 0.0
         }
         self.cell_subgraph = initialize_cells_subgraph(self.cells, self.nodes_dict, self.distance_matrix, custom_features)
 
@@ -395,8 +396,11 @@ class FullyDynamicEnv(gym.Env):
         self.total_failures += sum(failures)
 
         # Update the last visited cells
-        if action in {Actions.DROP_BIKE.value, Actions.PICK_UP_BIKE.value, Actions.CHARGE_BIKE.value} and not self.invalid_action:
-            truck_cell.set_ops(truck_cell.get_ops() + 1)
+        if not self.invalid_action:
+            if action in {Actions.PICK_UP_BIKE.value}:
+                truck_cell.set_ops(truck_cell.get_ops() + 1)
+            elif action in  {Actions.DROP_BIKE.value} :
+                truck_cell.set_ops(truck_cell.get_ops() - 1)
         truck_cell.set_visits(truck_cell.get_visits() + 1)
         self.total_visits += 1
 
@@ -984,6 +988,7 @@ class FullyDynamicEnv(gym.Env):
                 # TURN OFF THIS TO DISABLE BATTERY CHARGE
                 # self.cell_subgraph.nodes[center_node]['low_battery_bikes'] = low_battery_bikes
                 self.cell_subgraph.nodes[center_node]['rebalanced'] = cell.get_total_rebalanced()
+                self.cell_subgraph.nodes[center_node]['failure_rates'] = cell.get_failures() / cell.get_total_departures() if cell.get_total_departures() !=0 else 0
                 self.cell_subgraph.nodes[center_node]['failures'] = cell.get_failures()
                 self.cell_subgraph.nodes[center_node]['bikes'] = cell_bikes
                 self.cell_subgraph.nodes[center_node]['critic_score'] = cell.get_critic_score()
