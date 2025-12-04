@@ -183,7 +183,6 @@ def train_dqn(env: gym, agent: DQNAgent, batch_size: int, episode: int, tbar = N
         #     avoid_actions.append(Actions.RIGHT.value)
 
         # Select an action using the agent
-        # action = agent.select_action(single_state, avoid_action=avoid_actions)
         action = agent.select_action(single_state, epsilon_greedy=True)#, avoid_action=avoid_actions)
 
         # Step the environment with the chosen action
@@ -366,23 +365,7 @@ def validate_dqn(env: gym, agent: DQNAgent, episode: int, tbar: tqdm | tqdm_tele
         )
 
         # CENSORING
-        # Remove actions that are not allowed
-        # avoid_actions = []
-
-        # Avoid moving in directions where the truck cannot move
-        # truck_adjacent_cells = info['truck_neighbor_cells']
-
-        # if truck_adjacent_cells['down'] is None:
-        #     avoid_actions.append(Actions.DOWN.value)
-
-        # if truck_adjacent_cells['up'] is None:
-        #     avoid_actions.append(Actions.UP.value)
-
-        # if truck_adjacent_cells['left'] is None:
-        #     avoid_actions.append(Actions.LEFT.value)
-
-        # if truck_adjacent_cells['right'] is None:
-        #     avoid_actions.append(Actions.RIGHT.value)
+        # avoid_actions = _censor_actions(truck_adjacent_cells = info['truck_neighbor_cells'])
 
         # Select an action using the agent
         agent.epsilon = 0.05
@@ -474,6 +457,28 @@ def validate_dqn(env: gym, agent: DQNAgent, episode: int, tbar: tqdm | tqdm_tele
     }
 
     return results
+
+def _censor_actions(truck_adjacent_cells):
+    """
+        CENSORING
+        Remove actions that are not allowed to avoid moving in directions where the truck cannot move.
+    """
+
+    avoid_actions = []
+    
+    if truck_adjacent_cells['down'] is None:
+        avoid_actions.append(Actions.DOWN.value)
+
+    if truck_adjacent_cells['up'] is None:
+        avoid_actions.append(Actions.UP.value)
+
+    if truck_adjacent_cells['left'] is None:
+        avoid_actions.append(Actions.LEFT.value)
+
+    if truck_adjacent_cells['right'] is None:
+        avoid_actions.append(Actions.RIGHT.value)
+    
+    return avoid_actions
 
 
 # ----------------------------------------------------------------------------------------------------------------------
