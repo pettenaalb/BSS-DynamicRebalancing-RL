@@ -263,7 +263,7 @@ def plot_graph_with_grid(graph, cell_dict, plot_center_nodes=False, plot_number_
                     if adjacent_center_node != 0:
                         adj_coords = graph.nodes[adjacent_center_node]['x'], graph.nodes[adjacent_center_node]['y']
                         ax.plot([node_coords[0], adj_coords[0]], [node_coords[1], adj_coords[1]], color='yellow',
-                                linewidth=1.5, alpha=0.2)
+                                linewidth=1.5, alpha=0.8)
 
         if plot_number_cells:
             center_coords = cell.boundary.centroid.coords[0]
@@ -272,7 +272,7 @@ def plot_graph_with_grid(graph, cell_dict, plot_center_nodes=False, plot_number_
 
     # Configure plot appearance
     plt.axis('off')
-    plt.savefig('data/grid.png', dpi=300, bbox_inches='tight', pad_inches=0.1)
+    plt.savefig('data/grid.svg', dpi=300, bbox_inches='tight', pad_inches=0.1)
     # plt.show()
 
 # ----------------------------------------------------------------------------------------------------------------------
