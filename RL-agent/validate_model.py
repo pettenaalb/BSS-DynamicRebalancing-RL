@@ -1,80 +1,82 @@
-import os
+import os, shutil
 import pickle
-import torch
 import argparse
-
+import warnings
+import torch
 import gymnasium_env.register_env
-
 import gymnasium as gym
 import numpy as np
+import logging
 
-from tqdm.contrib.telegram import tqdm as tqdm_telegram
 from tqdm import tqdm
 from agent import DQNAgent
-from utils import convert_graph_to_data, convert_seconds_to_hours_minutes, send_telegram_message, Actions
+from utils import convert_graph_to_data, convert_seconds_to_hours_minutes, Actions
 from torch_geometric.data import Data
+from gymnasium_env.simulator.utils import initialize_cells_subgraph
+from replay_memory import ReplayBuffer
 
 # ----------------------------------------------------------------------------------------------------------------------
 
-data_path = "../data/"
+# Default paths
+data_path = "data/"
+results_path = "results/"
+model_path = None  # Will be set via command line
 
-env = gym.make('gymnasium_env/BostonCity-v0', data_path=data_path)
-action_size = env.action_space.n
-
-# if GPU is to be used
+# Device configuration
 device = torch.device(
     "cuda" if torch.cuda.is_available() else
-    # "mps" if torch.backends.mps.is_available() else
+    "mps" if torch.backends.mps.is_available() else
     "cpu"
 )
+print(f"Device available: {device.type}")
 
-# set seed
-seed = 31
-env.unwrapped.seed(seed)
+# Seed for reproducibility
+seed = 8
 np.random.seed(seed)
 torch.manual_seed(seed)
+torch.cuda.manual_seed(seed)
+torch.cuda.manual_seed_all(seed)
+os.environ['PYTHONHASHSEED'] = str(seed)
+torch.backends.cudnn.deterministic = True
+torch.backends.cudnn.benchmark = False
 
+# Validation parameters
 params = {
-    "num_episodes": 1,                  # Total number of training episodes
-    "total_timeslots": 224,             # Total number of time slots in one month (28 days)
-    "maximum_number_of_bikes": 3500,    # Maximum number of bikes in the system
-    "gamma": 0.99,                      # Discount factor for future rewards
+    "num_episodes": 10,     # Total number of episodes (10 default)
+    "total_timeslots": 56,  # Total number of time slots (1 week = 7 days * 8 timeslots)
+    "maximum_number_of_bikes": 300,  # Maximum number of bikes in the system
+    "gamma": 0.95,  # Discount factor (needed for environment)
 }
 
-days2num = {'monday': 0, 'tuesday': 1, 'wednesday': 2, 'thursday': 3, 'friday': 4, 'saturday': 5, 'sunday': 6}
+reward_params = {
+    'W_ZERO_BIKES': 1.0,
+    'W_CRITICAL_ZONES': 1.0,
+    'W_DROP_PICKUP': 0.9,
+    'W_MOVEMENT': 0.7,
+    'W_CHARGE_BIKE': 0.9,
+    'W_STAY': 0.7,
+}
 
-enable_telegram = False
-BOT_TOKEN = '7911945908:AAHkp-x7at3fIadrlmahcTB1G6_ni2awbt4'
-CHAT_ID = '16830298'
+enable_logging = False
+enable_print = False
+formatter = logging.Formatter('%(asctime)s %(levelname)s %(message)s')
+
 
 # ----------------------------------------------------------------------------------------------------------------------
 
-def validate_dueling_dqn(agent: DQNAgent) -> tuple[list, list]:
+def validate_agent(env: gym, agent: DQNAgent, episode: int, epsilon: float = 0.05) -> dict:
     """
-    Trains a Dueling Deep Q-Network agent using experience replay.
+    Run a validation episode with a trained agent.
 
-    Parameters:
-        - agent (DQNAgent): The Dueling DQN agent to train.
-        - num_episodes (int): The number of episodes to train the agent.
-        - batch_size (int): The batch size for training the agent.
+    Args:
+        env: Gymnasium environment
+        agent: Trained DQN agent
+        episode: validation episode
+        epsilon: Epsilon value for epsilon-greedy policy (default: 0.05 for near-greedy)
 
     Returns:
-        - rewards_per_timeslot (list): The rewards obtained per time slot during training.
-        - failures_per_timeslot (list): The failures per time slot during training.
+        Dictionary containing validation metrics
     """
-
-    # Reset environment and agent state
-    options ={
-        'total_timeslots': params["total_timeslots"],
-        'maximum_number_of_bikes': params["maximum_number_of_bikes"],
-        'discount_factor': params["gamma"],
-    }
-    agent_state, info = env.reset(options=options)
-
-    state = convert_graph_to_data(info['cells_subgraph'])
-    state.agent_state = np.concatenate([info['agent_position'], agent_state])
-    state.steps = info['steps']
-
     # Initialize episode metrics
     timeslot = 0
     timeslots_completed = 0
@@ -83,29 +85,63 @@ def validate_dueling_dqn(agent: DQNAgent) -> tuple[list, list]:
     failures_per_timeslot = []
     total_failures = 0
     action_per_step = []
-    truck_path = []
+    global_criticals = []
+    reward_tracking = [[] for _ in range(len(Actions))]
+    deployed_bikes = []
+
+    # Reset environment
+    options = {
+        'total_timeslots': params["total_timeslots"],
+        'maximum_number_of_bikes': params["maximum_number_of_bikes"],
+        'discount_factor': params["gamma"],
+        'logging': enable_logging,
+        'depot_id': 18,
+        # 'initial_cell': 18,
+        'reward_params': reward_params,
+    }
+
+    node_features = [
+        'truck_cell',
+        'critic_score',
+        'eligibility_score',
+        'bikes',
+    ]
+
+    agent_state, info = env.reset(options=options)
+
+    state = convert_graph_to_data(info['cells_subgraph'], node_features=node_features)
+    state.agent_state = agent_state
+    state.steps = info['steps']
+    cell_dict = info['cell_dict']
+    nodes_dict = info['nodes_dict']
+    distance_matrix = info['distance_matrix']
+
+    custom_features = {
+        'visits': 0,
+        'operations': 0,
+        'rebalanced': 0,
+        'failures': 0,
+        'critic_score': 0.0,
+        'num_bikes': 0.0,
+        'failure_rates': 0.0,
+    }
+    cell_graph = initialize_cells_subgraph(cell_dict, nodes_dict, distance_matrix, custom_features)
 
     not_done = True
+    iterations = 0
 
-    # Progress bar for the episode
-    if enable_telegram:
-        tbar = tqdm_telegram(
-            range(params["total_timeslots"]),
-            desc="Validating Year 1, Week 1, Monday at 01:00:00",
-            position=0,
-            leave=True,
-            dynamic_ncols=True,
-            token=BOT_TOKEN,
-            chat_id=CHAT_ID
-        )
-    else:
-        tbar = tqdm(
-            range(params["total_timeslots"]),
-            desc="Validating Year 1, Week 1, Monday at 01:00:00",
-            position=0,
-            leave=True,
-            dynamic_ncols=True
-        )
+    # Save original epsilon and set validation epsilon
+    original_epsilon = agent.epsilon
+    agent.epsilon = epsilon
+
+    # Progress bar
+    tbar = tqdm(
+        total=params["total_timeslots"],
+        desc="Validation starting",
+        position=1,
+        leave=True,
+        dynamic_ncols=True
+    )
 
     while not_done:
         # Prepare the state for the agent
@@ -117,121 +153,309 @@ def validate_dueling_dqn(agent: DQNAgent) -> tuple[list, list]:
             batch=torch.zeros(state.x.size(0), dtype=torch.long).to(device),
         )
 
-        # Select an action using the agent
-        avoid_action = None
+        # Select action using epsilon-greedy policy
+        action = agent.select_action(single_state, epsilon_greedy=True)
 
-        if info['number_of_system_bikes'] > params["maximum_number_of_bikes"] - 50:
-            avoid_action = Actions.DROP_BIKE.value
-
-        if info['number_of_system_bikes'] < 50:
-            # Avoid picking up bikes if the system is almost empty
-            avoid_action = Actions.PICK_UP_BIKE.value
-
-        action = agent.select_action(single_state, avoid_action=avoid_action, greedy=True)
-        action_per_step.append((action, timeslots_completed))
-
-        # Step the environment with the chosen action
+        # Step the environment
         agent_state, reward, done, timeslot_terminated, info = env.step(action)
 
-        # Update state with new information
-        next_state = convert_graph_to_data(info['cells_subgraph'])
-        next_state.agent_state = np.concatenate([info['agent_position'], agent_state])
+        # Update state
+        env_cells_subgraph = info['cells_subgraph']
+        next_state = convert_graph_to_data(env_cells_subgraph, node_features=node_features)
+        next_state.agent_state = agent_state
+        next_state.steps = info['steps']
 
-        # Update the state and metrics
         state = next_state
+
+        # Update metrics
+        action_per_step.append(action)
+        global_criticals.append(info['global_critic_score'])
+        reward_tracking[action].append(reward)
+
         total_reward += reward
         total_failures += sum(info['failures'])
-        truck_path.append((info['path'], timeslots_completed))
 
-        # Check if the episode is complete
+        # Check if episode is complete
         not_done = not done
+
+        # Update cell graph
+        for cell_id, cell in cell_dict.items():
+            center_node = cell.get_center_node()
+            if center_node in cell_graph:
+                cell_graph.nodes[center_node]['critic_score'] += env_cells_subgraph.nodes[center_node]['critic_score']
+                cell_graph.nodes[center_node]['num_bikes'] += env_cells_subgraph.nodes[center_node]['bikes']
+            else:
+                raise ValueError(f"Node {center_node} not found in the subgraph.")
 
         if timeslot_terminated:
             timeslots_completed += 1
 
             # Record metrics for the current time slot
-            rewards_per_timeslot.append((total_reward/360, timeslots_completed-1))
-            failures_per_timeslot.append((total_failures, timeslots_completed-1))
-
-            # Log progress
-            time_elapsed = info['time']
-            day = info['day']
-            week = info['week'] % 52
-            year = info['year']
-            tbar.set_description(f"Year {year + 1}, Week {week}, {day.capitalize()} at {convert_seconds_to_hours_minutes(time_elapsed)}")
+            rewards_per_timeslot.append(total_reward / 360)
+            failures_per_timeslot.append(total_failures)
+            deployed_bikes.append(info['number_of_system_bikes'])
 
             # Reset time slot metrics
             total_reward = 0
             total_failures = 0
-            truck_path = []
             timeslot = 0 if timeslot == 7 else timeslot + 1
 
-            # Save result lists
-            results_path = '../results/validation/data/'
-            with open(results_path + 'rewards_per_timeslot.pkl', 'wb') as f:
-                pickle.dump(rewards_per_timeslot, f)
-            with open(results_path + 'failures_per_timeslot.pkl', 'wb') as f:
-                pickle.dump(failures_per_timeslot, f)
-            with open(results_path + 'action_per_step.pkl', 'wb') as f:
-                pickle.dump(action_per_step, f)
-
             # Update progress bar
+            tbar.set_description(f"Validation {episode}, {info['day'].capitalize()} "
+                                 f"at {convert_seconds_to_hours_minutes(info['time'])}")
+            tbar.set_postfix({'eps': agent.epsilon, 'failures': sum(failures_per_timeslot)})
             tbar.update(1)
+
+        iterations += 1
+
+        if done:
+            # Finalize cell graph statistics
+            for cell_id, cell in cell_dict.items():
+                center_node = cell.get_center_node()
+                if center_node in cell_graph:
+                    cell_graph.nodes[center_node]['visits'] = env_cells_subgraph.nodes[center_node]['visits']
+                    cell_graph.nodes[center_node]['operations'] = env_cells_subgraph.nodes[center_node]['operations']
+                    cell_graph.nodes[center_node]['rebalanced'] = env_cells_subgraph.nodes[center_node]['rebalanced']
+                    cell_graph.nodes[center_node]['failures'] = env_cells_subgraph.nodes[center_node]['failures']
+                    cell_graph.nodes[center_node]['failure_rates'] = env_cells_subgraph.nodes[center_node]['failure_rates']
+                    cell_graph.nodes[center_node]['critic_score'] = cell_graph.nodes[center_node]['critic_score'] / iterations
+                    cell_graph.nodes[center_node]['num_bikes'] = cell_graph.nodes[center_node]['num_bikes'] / iterations
+                else:
+                    raise ValueError(f"Node {center_node} not found in the subgraph.")
+
+        # Clean up
+        del single_state
 
     tbar.close()
     env.close()
+    torch.cuda.empty_cache()
 
-    return rewards_per_timeslot, failures_per_timeslot
+    # Restore original epsilon
+    agent.epsilon = original_epsilon
+
+    # Compile results
+    results = {
+        "rewards_per_timeslot": rewards_per_timeslot,
+        "failures_per_timeslot": failures_per_timeslot,
+        "total_trips": info["total_trips"],
+        "total_invalid": info["total_invalid"],
+        "total_low_battery_bikes": info["total_low_battery_bikes"],
+        "action_per_step": action_per_step,
+        "global_criticals": global_criticals,
+        "reward_tracking": reward_tracking,
+        "deployed_bikes": deployed_bikes,
+        "cell_subgraph": cell_graph,
+    }
+
+    return results
+
+def setup_logger(name, log_file, level=logging.INFO):
+    """To setup as many loggers as you want"""
+
+    handler = logging.FileHandler(log_file)
+    handler.setFormatter(formatter)
+
+    logger = logging.getLogger(name)
+    logger.setLevel(level)
+    logger.addHandler(handler)
+
+    return logger
+
 
 # ----------------------------------------------------------------------------------------------------------------------
 
 def main():
+    warnings.filterwarnings("ignore")
     print(f"Device in use: {device}\n")
+    print(f"Validation parameters: {params}\n")
+    print(f"Reward parameters: {reward_params}\n")
+    
 
-    results_path = '../results/validation/data'
-    if not os.path.exists(results_path):
-        os.makedirs(results_path)
-        print(f"Directory '{results_path}' created.")
+    # Create validation results path
+    validation_results_path = os.path.join(results_path)#, 'validation_standalone/')
+    # Remove existing results
+    if os.path.exists(validation_results_path) or os.path.exists(validation_results_path):
+        print(f"⚠️  WARNING : The results folders already exist. Data will be overwritten with new results.")
+        try:
+            proceed = str(input("Are you sure you want to continue? (y/n) "))
+        except ValueError:
+            print("Invalid input! Please enter 'y' or 'n'.")
+        
+        if proceed == "y" or proceed == "Y" or proceed == "yes" :
+            shutil.rmtree(validation_results_path)
+        else:
+            raise Exception("Change the 'run_ID' or the 'results_path'.")
+    if not os.path.exists(validation_results_path):
+        os.makedirs(validation_results_path)
+        print(f"Created validation results directory: {validation_results_path}")
 
-    # Initialize the DQN agent
-    agent = DQNAgent(
-        num_actions=env.action_space.n,
-        device=device,
-    )
-    agent.load_model('../data/trained_models/DuelingDQN.pt')
+    # Set up logger
+    logger = setup_logger('validation_standalone_logger', validation_results_path + 'training.log', level=logging.INFO)
+    logger.info(f"Training started with the following parameters: {params}")
+    logger.info(f"Model in: {model_path}")
 
-    # Train the agent using the training loop
-    try:
-        validate_dueling_dqn(agent)
-    except Exception as e:
-        if enable_telegram:
-            send_telegram_message(f"An error occurred during validation: {e}", BOT_TOKEN, CHAT_ID)
-        raise e
-    except KeyboardInterrupt:
-        if enable_telegram:
-            send_telegram_message("Validation interrupted by user.", BOT_TOKEN, CHAT_ID)
-        print("\nValidation interrupted by user.")
-        return
+    # Load the trained model
+    if not os.path.exists(model_path):
+        raise FileNotFoundError(f"Model file not found: {model_path}")
 
-    # Print the rewards after training
-    print("Validation completed.")
+    tbar_main = tqdm(
+                range(params["num_episodes"]),
+                desc="Validation of agent is starting ... ... ... ...",
+                initial=0,
+                position=0,
+                leave=True,
+                dynamic_ncols=True
+            )
+
+    episode = 0
+    for episode in range(params["num_episodes"]):
+        # change the seed
+        seed = np.random.randint(low=0, high=100)  # integers from 0 to 99
+        tbar_main.set_description(f"Validating agent. Episode {episode}")
+        tbar_main.set_postfix({'Seed': seed})
+
+        # Create the environment
+        env = gym.make('gymnasium_env/FullyDynamicEnv-v0', data_path=data_path, results_path=validation_results_path)
+        env.unwrapped.seed(seed)
+        env.action_space.seed(seed)
+        env.observation_space.seed(seed)
+
+        # Initialize the DQN agent (with dummy replay buffer)
+        dummy_replay_buffer = ReplayBuffer(1000)  # Small buffer, won't be used
+
+        agent = DQNAgent(
+            replay_buffer=dummy_replay_buffer,
+            num_actions=env.action_space.n,
+            gamma=params["gamma"],
+            epsilon_start=0.05,
+            epsilon_end=0.05,
+            epsilon_decay=1.0,
+            lr=1e-4,
+            device=device,
+            tau=0.005,
+            soft_update=True,
+        )
+        if enable_print :
+            print(f"Loading trained model from: {model_path}")
+        agent.load_model(model_path)
+        if enable_print:
+            print("Model loaded successfully!\n")
+
+        # Run validation
+        try:
+            if enable_print:
+                print("Starting validation episode...")
+            validation_results = validate_agent(env, agent, episode, epsilon=args.epsilon)
+
+            # Calculate statistics
+            total_trips = validation_results['total_trips']
+            total_invalid = validation_results['total_invalid']
+            total_failures = sum(validation_results['failures_per_timeslot'])
+            mean_failures = total_failures / params["total_timeslots"]
+            mean_reward = np.mean(validation_results['rewards_per_timeslot'])
+
+            printer = (
+                "\n" + "=" * 80 + "\n"
+                f"VALIDATION {episode} RESULTS (seed = {seed})\n"
+                + "=" * 80 + "\n"
+                f"Total trips: {total_trips}\n"
+                f"Total failures: {total_failures}\n"
+                f"Mean failures per timeslot: {mean_failures:.2f}\n"
+                f"Invalid actions: {total_invalid}\n"
+                f"Mean reward per timeslot: {mean_reward:.4f}\n"
+                f"Failure rate: {(total_failures / total_trips) * 100:.2f}%\n"
+                + "=" * 80
+            )
+            if enable_print:
+                print(printer)
+            logger.info(printer)
+
+
+
+            # Save validation results
+            results_data_path = os.path.join(validation_results_path, 'data/', str(episode).zfill(2) + '/')
+            if not os.path.exists(results_data_path):
+                os.makedirs(results_data_path)
+
+            for key, value in validation_results.items():
+                with open(os.path.join(results_data_path, f'{key}.pkl'), 'wb') as f:
+                    pickle.dump(value, f)
+
+            if enable_print:
+                print(f"\nValidation results saved to: {results_data_path}")
+
+            # Save summary statistics
+            summary = {
+                'total_trips': total_trips,
+                'total_failures': total_failures,
+                'mean_failures': mean_failures,
+                'total_invalid': total_invalid,
+                'mean_reward': mean_reward,
+                'failure_rate': (total_failures / total_trips) * 100,
+                'failures_per_timeslot': validation_results['failures_per_timeslot'],
+                'rewards_per_timeslot': validation_results['rewards_per_timeslot'],
+            }
+
+            with open(os.path.join(validation_results_path, 'summary.pkl'), 'wb') as f:
+                pickle.dump(summary, f)
+
+            if enable_print:
+                print(f"Validation {episode} completed successfully!")
+
+        except Exception as e:
+            print(f"An error occurred during validation: {e}")
+            raise e
+        except KeyboardInterrupt:
+            print("\nValidation interrupted by user.")
+            return
+        tbar_main.update(1)
+    tbar_main.close()
+        
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='Validate the trained model.')
-    parser.add_argument('--enable_telegram', action='store_true', help='Enable Telegram notifications.')
-    parser.add_argument('--data_path', type=str, default='../data/', help='Path to the data directory.')
-    parser.add_argument('--cuda_device', type=int, default=0, help='CUDA device to use.')
+    parser = argparse.ArgumentParser(description='Validate a trained Dueling DQN agent.')
+    parser.add_argument('--model_path', type=str, required=True,
+                        help='Path to the trained model file (trained_agent.pt)')
+    parser.add_argument('--data_path', type=str, default=data_path,
+                        help='Path to the data folder.')
+    parser.add_argument('--results_path', type=str, default=results_path,
+                        help='Path to save validation results.')
+    parser.add_argument('--cuda_device', type=int, default=0,
+                        help='CUDA device to use.')
+    parser.add_argument('--enable_logging', action='store_true',
+                        help='Enable logging.')
+    parser.add_argument('--enable_print', action='store_true',
+                        help='Enable print on terminal.')
+    parser.add_argument('--epsilon', type=float, default=0.05,
+                        help='Epsilon value for epsilon-greedy policy (default: 0.05)')
+    parser.add_argument('--total_timeslots', type=int, default=params['total_timeslots'],
+                        help='Total number of timeslots for validation (default: 56 = 1 week)')
+    parser.add_argument('--num_episodes', type=int, default=params['num_episodes'],
+                        help='Total number of episodes for validation (default: 10)')
 
     args = parser.parse_args()
 
-    if args.enable_telegram:
-        enable_telegram = True
+    # Assign variables
+    model_path = args.model_path
+    data_path = args.data_path
+    results_path = args.results_path
+    enable_logging = args.enable_logging
+    enable_print = args.enable_print
+    params["total_timeslots"] = args.total_timeslots
 
-    if args.data_path:
-        data_path = args.data_path
+    # Validate paths
+    if not os.path.exists(data_path):
+        raise FileNotFoundError(f"Data path does not exist: {data_path}")
 
-    if args.cuda_device and torch.cuda.is_available():
+    # Set up device
+    # os.environ["CUDA_VISIBLE_DEVICES"] = str(args.cuda_device)
+
+    if torch.cuda.is_available():
         device = torch.device(f"cuda:{args.cuda_device}")
+    elif torch.backends.mps.is_available():
+        device = torch.device("mps")
+    else:
+        device = torch.device("cpu")
 
     main()
