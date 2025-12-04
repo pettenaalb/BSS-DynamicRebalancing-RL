@@ -541,10 +541,18 @@ def main():
     validation_results_path = str(results_path + 'validation_' + str(run_id) + '/')
 
     # Remove existing results
-    if os.path.exists(training_results_path):
-        shutil.rmtree(training_results_path)
-    if os.path.exists(validation_results_path):
-        shutil.rmtree(validation_results_path)
+    if os.path.exists(training_results_path) or os.path.exists(validation_results_path):
+        print(f"⚠️  WARNING : The results folders for run {run_id} already exist. Data will be overwritten with new results.")
+        try:
+            proceed = str(input("Are you sure you want to continue? (y/n) "))
+        except ValueError:
+            print("Invalid input! Please enter 'y' or 'n'.")
+        
+        if proceed == "y" or proceed == "Y" or proceed == "yes" :
+            shutil.rmtree(training_results_path)
+            shutil.rmtree(validation_results_path)
+        else:
+            raise Exception("Change the 'run_ID' or the 'results_path'.")
 
     if not os.path.exists(training_results_path):
         os.makedirs(training_results_path)

@@ -358,8 +358,19 @@ def main():
     test_results_path = str(results_path + 'test_' + str(run_id) + '/')
 
     # Remove existing results
-    if os.path.exists(test_results_path):
+    if run_id == 999:
         shutil.rmtree(test_results_path)
+    if os.path.exists(test_results_path):
+        print("⚠️  WARNING : The results folders already exist. Data will be overwritten with new results.")
+        try:
+            proceed = str(input("Are you sure you want to continue? (y/n) "))
+        except ValueError:
+            print("Invalid input! Please enter 'y' or 'n'.")
+        
+        if proceed == "y" or proceed == "Y" or proceed == "yes" :
+            shutil.rmtree(test_results_path)
+        else:
+            raise Exception("Change the 'run_ID' or the 'results_path'.")
 
     if not os.path.exists(test_results_path):
         os.makedirs(test_results_path)
