@@ -8,14 +8,15 @@ from dash.dependencies import Input, Output
 from utils import load_results, get_episode_options, create_plot, action_bin_labels, generate_osmnx_graph, initialize_graph, compare_failures_across_trainings, compute_mean_failures, easy_3_line_plotter, compute_mean_invalid
 
 # insert here the training runs to evaluate
-# phases = [55,541,542,543,544,545,546,557]
-phases = [1]
-validation_paths = False
-tests = []
+phases = [14,12,9]
+validation_paths = True
+tests = [1]
+standalone = [200,250,275,300,375,400,"300_new"]
 port = 8050
 image_height = 900  # Image height in pixels
-image_width = 1200
+image_width = 1600
 image_scale = 3
+image_format = 'svg'
 
 # show the total failures during each episode instead of each timeslot
 sum_episode_data = True
@@ -36,13 +37,11 @@ for n in tests :
     label = f"Test {n}"
     folder = f"test_{n}"
     TRAINING_PATHS.update({label: os.path.join(BASE_PATH, folder, "data")})
+for n in standalone :
+    label = f"Val Standalone r{n}"
+    folder = f"validation_standalone_r{n}"
+    TRAINING_PATHS.update({label: os.path.join(BASE_PATH, folder, "data")})
 
-# "Training Phase 3": os.path.join(BASE_PATH, "training_3", "data"),
-# "Training Phase 3": os.path.join(BASE_PATH, "training_3", "data"),
-# "Training Phase 4": os.path.join(BASE_PATH, "training_4", "data"),
-# "Validation Phase 2": os.path.join(BASE_PATH, "validation_2", "data"),
-# "Validation Phase 3": os.path.join(BASE_PATH, "validation_3", "data"),
-# "Validation Phase 4": os.path.join(BASE_PATH, "validation_4", "data"),
 
 
 # Import external stylesheets (Google Fonts)
@@ -80,7 +79,7 @@ app.layout = html.Div([
                     style={'border': '1px solid #d3d3d3', 'padding': '10px'},
                     config={
                         'toImageButtonOptions': {
-                            'format': 'png',
+                            'format': image_format,
                             'filename': 'failures_comparison_plot',
                             'height': image_height,
                             'width': image_width,
@@ -102,7 +101,7 @@ app.layout = html.Div([
                     style={'border': '1px solid #d3d3d3', 'padding': '10px'},
                     config={
                         'toImageButtonOptions': {
-                            'format': 'png',
+                            'format': image_format,
                             'filename': 'failures_week_average_plot',
                             'height': image_height,
                             'width': image_width,
@@ -136,7 +135,7 @@ app.layout = html.Div([
                     style={'border': '1px solid #d3d3d3', 'padding': '10px'},
                     config={
                         'toImageButtonOptions': {
-                            'format': 'svg',  # Available formats: 'svg', 'png', 'jpeg', 'webp'
+                            'format': image_format,  # Available formats: 'svg', 'png', 'jpeg', 'webp'
                             'filename': 'rewards_plot',
                             'height': image_height,   # Image height in pixels
                             'width': image_width,     # Image width in pixels
@@ -158,7 +157,7 @@ app.layout = html.Div([
                     style={'border': '1px solid #d3d3d3', 'padding': '10px'},
                     config={
                         'toImageButtonOptions': {
-                            'format': 'svg',  # Available formats: 'svg', 'png', 'jpeg', 'webp'
+                            'format': image_format,
                             'filename': 'reward_tracking_plot',
                             'height': image_height,   # Image height in pixels
                             'width': image_width,     # Image width in pixels
@@ -186,7 +185,7 @@ app.layout = html.Div([
                     style={'border': '1px solid #d3d3d3', 'padding': '10px'},
                     config={
                         'toImageButtonOptions': {
-                            'format': 'svg',  # Available formats: 'svg', 'png', 'jpeg', 'webp'
+                            'format': image_format,
                             'filename': 'failures_plot',
                             'height': image_height,   # Image height in pixels
                             'width': image_width,     # Image width in pixels
@@ -208,7 +207,7 @@ app.layout = html.Div([
                     style={'border': '1px solid #d3d3d3', 'padding': '10px'},
                     config={
                         'toImageButtonOptions': {
-                            'format': 'svg',  # Available formats: 'svg', 'png', 'jpeg', 'webp'
+                            'format': image_format,
                             'filename': 'q_values_plot',
                             'height': image_height,   # Image height in pixels
                             'width': image_width,     # Image width in pixels
@@ -230,7 +229,7 @@ app.layout = html.Div([
                     style={'border': '1px solid #d3d3d3', 'padding': '10px'},
                     config={
                         'toImageButtonOptions': {
-                            'format': 'svg',  # Available formats: 'svg', 'png', 'jpeg', 'webp'
+                            'format': image_format,
                             'filename': 'deployed_bikes_plot',
                             'height': image_height,   # Image height in pixels
                             'width': image_width,     # Image width in pixels
@@ -252,7 +251,7 @@ app.layout = html.Div([
                     style={'border': '1px solid #d3d3d3', 'padding': '10px'},
                     config={
                         'toImageButtonOptions': {
-                            'format': 'svg',  # Available formats: 'svg', 'png', 'jpeg', 'webp'
+                            'format': image_format,
                             'filename': 'actions_plot',
                             'height': image_height,   # Image height in pixels
                             'width': image_width,     # Image width in pixels
@@ -274,7 +273,7 @@ app.layout = html.Div([
                     style={'border': '1px solid #d3d3d3', 'padding': '10px', 'margin-bottom': '20px'},
                     config={
                         'toImageButtonOptions': {
-                            'format': 'svg',  # Available formats: 'svg', 'png', 'jpeg', 'webp'
+                            'format': image_format,
                             'filename': 'reward_per_action_plot',
                             'height': image_height,   # Image height in pixels
                             'width': image_width,     # Image width in pixels
@@ -286,7 +285,7 @@ app.layout = html.Div([
                     style={'border': '1px solid #d3d3d3', 'padding': '10px', 'margin-bottom': '20px'},
                     config={
                         'toImageButtonOptions': {
-                            'format': 'svg',  # Available formats: 'svg', 'png', 'jpeg', 'webp'
+                            'format': image_format,
                             'filename': 'epsilon_plot',
                             'height': image_height,   # Image height in pixels
                             'width': image_width,     # Image width in pixels
@@ -298,31 +297,31 @@ app.layout = html.Div([
                     style={'border': '1px solid #d3d3d3', 'padding': '10px', 'margin-bottom': '20px'},
                     config={
                         'toImageButtonOptions': {
-                            'format': 'svg',  # Available formats: 'svg', 'png', 'jpeg', 'webp'
+                            'format': image_format,
                             'filename': 'loss_plot',
                             'height': image_height,   # Image height in pixels
                             'width': image_width,     # Image width in pixels
                             'scale': image_scale      # Multiply resolution (e.g., for high-DPI)
                         }
                     }),
-                # dcc.Graph(
-                #     id="failures-baseline-plot",
-                #     style={'border': '1px solid #d3d3d3', 'padding': '10px', 'margin-bottom': '20px'},
-                #     config={
-                #         'toImageButtonOptions': {
-                #             'format': 'svg',  # Available formats: 'svg', 'png', 'jpeg', 'webp'
-                #             'filename': 'failures_baseline_plot',
-                #             'height': image_height,   # Image height in pixels
-                #             'width': image_width,     # Image width in pixels
-                #             'scale': image_scale      # Multiply resolution (e.g., for high-DPI)
-                #         }
-                #     }),
+                dcc.Graph(
+                    id="failures-baseline-plot",
+                    style={'border': '1px solid #d3d3d3', 'padding': '10px', 'margin-bottom': '20px'},
+                    config={
+                        'toImageButtonOptions': {
+                            'format': image_format,
+                            'filename': 'failures_baseline_plot',
+                            'height': image_height,   # Image height in pixels
+                            'width': image_width,     # Image width in pixels
+                            'scale': image_scale      # Multiply resolution (e.g., for high-DPI)
+                        }
+                    }),
                 dcc.Graph(
                     id="invalid-actions-plot",
                     style={'border': '1px solid #d3d3d3', 'padding': '10px'},
                     config={
                         'toImageButtonOptions': {
-                            'format': 'svg',  # Available formats: 'svg', 'png', 'jpeg', 'webp'
+                            'format': image_format,
                             'filename': 'invalid_actions_plot',
                             'height': image_height,   # Image height in pixels
                             'width': image_width,     # Image width in pixels
@@ -341,6 +340,7 @@ app.layout = html.Div([
                              {"label": "Operations", "value":"operations"},
                              {"label": "Rebalance counter", "value": "rebalanced"},
                              {"label": "Failures", "value": "failures"},
+                             {"label": "Failure rates", "value": "failure_rates"},
                              {"label": "Critic Score", "value": "critic_score"},
                              {"label": "Num of bikes", "value": "num_bikes"}],
                     value="visits",
@@ -382,7 +382,12 @@ def update_episode_dropdown(training_path, n_intervals):
 )
 def update_reward_plot(n_intervals, n_clicks, training_path, episode_folder):
     rewards = load_results(training_path, episode_folder, metric="rewards_per_timeslot")
+    rewards = [x * 100 for x in rewards]
     fig = create_plot(rewards, "Rewards per timeslot", "Reward", "Timeslot", cumulative=True)
+
+    # add failures line
+    # failures = load_results(training_path, episode_folder, metric="failures_per_timeslot")
+    # add_line(fig, failures, "failures")
 
     # --- Change x-axis ticks from timeslots → days ---
     timeslots_per_day = 56*10
@@ -413,7 +418,7 @@ def update_reward_plot(n_intervals, n_clicks, training_path, episode_folder):
 def update_failure_plot(n_intervals, n_clicks, training_path, episode_folder):
     failures = load_results(training_path, episode_folder, metric="failures_per_timeslot", sum_episode_data=sum_episode_data)
     fig = create_plot(failures, "Failures per timeslot", "Failures", "Timeslot",
-                       cumulative=True, failures_plot=True)
+                       cumulative=False, failures_plot=True)
     
     if not sum_episode_data:
         # --- Change x-axis ticks from timeslots → days ---
@@ -447,21 +452,41 @@ def update_failure_plot(n_intervals, n_clicks, training_path, episode_folder):
 )
 def update_failures_comparison(n_clicks):
     # Manually choose which trainings to compare
+    training_paths = [
+        "results/training_4/data",
+        "results/training_5/data",
+        "results/training_9/data",
+        # "results/training_8/data",
+        # "results/training_7/data",
+        "results/training_6/data",
+        "results/training_11/data",
+        "results/training_10/data",
+        "results/training_14/data",
+        #"results/training_91/data",
+        #"results/training_92/data",
+        #"results/training_12/data",
+    ]
+    labels = [
+            "500 bikes",
+            "400 Bikes",
+            "375 Bikes",
+            #   "350 Bikes",
+            #   "325 Bikes",
+            "300 Bikes",
+            "275 Bikes",
+            "250 Bikes",
+            "200 Bikes",
+            #"run 91",
+            #"run 92",
+            #"run 12"
+    ]
+
     # training_paths = [
     #     "results/training_54/data",
-    #     "results/training_551/data",
-    #     "results/training_55/data",
-    #     "results/training_552/data",
-    #     "results/training_553/data"
+    #     "results/training_530/data",
+    #     "results/training_531/data"
     # ]
-    # labels = ["250 bikes","225 Bikes","200 Bikes","185 Bikes","150 Bikes"]
-
-    training_paths = [
-        "results/training_54/data",
-        "results/training_530/data",
-        "results/training_531/data"
-    ]
-    labels = ["140 episodes","100 episodes","52 episodes"]
+    # labels = ["140 episodes","100 episodes","52 episodes"]
 
     fig = compare_failures_across_trainings(training_paths, labels)
 
@@ -473,26 +498,23 @@ def update_failures_comparison(n_clicks):
 )
 def update_mean_failures_plot(n_clicks):
     training_paths = [
-        # "results/training_553/data",
-        "results/training_542/data",
-        "results/training_543/data",
-        "results/training_544/data",
-        "results/training_545/data",
-        "results/training_546/data",
-        "results/training_557/data",
+        "results/validation_standalone_r200/data",
+        # "results/training_91/data",
+        # "results/training_92/data",
+        # "results/training_12/data",
     ]
     test_paths = [
-        "results/test_10/data"
+        "results/test_1/data"
     ]
-    bench_path = [
-        "results"
+    static_path = [
+        "results/static_200"
     ]
     mean_failures = compute_mean_failures(training_paths)
     mean_failures_notruck = compute_mean_failures(test_paths)
-    mean_failures_bench = compute_mean_failures(bench_path, bench=True)
+    mean_failures_bench = compute_mean_failures(static_path, bench=True)
 
     # fig = create_plot(mean_failures, "Invalid actions", "Average # of Inv. actions", "Episode", cumulative=False, failures_plot=True)
-    fig = easy_3_line_plotter(mean_failures, mean_failures_bench)#, mean_failures_notruck)
+    fig = easy_3_line_plotter(mean_failures, mean_failures_bench, mean_failures_notruck)
 
     return fig
 
@@ -572,7 +594,11 @@ def update_q_value_plot(n_intervals, n_clicks, training_path, episode_folder):
      Input("update-btn-plots", "n_clicks")]
 )
 def update_epsilon_loss(n_intervals, training_path, n_clicks):
-    loss = load_results(training_path, metric="losses")
+    try:
+        loss = load_results(training_path, metric="losses")
+    except FileNotFoundError:
+        loss = np.zeros(100)
+
     try:
         epsilon = load_results(training_path, metric="epsilon_per_timeslot")
         epsilon_plot = create_plot(epsilon, "Epsilon over time", "Epsilon", "Timeslot", cumulative=False)
@@ -596,7 +622,7 @@ def update_epsilon_loss(n_intervals, training_path, n_clicks):
 
     except FileNotFoundError:
         epsilon_plot = None
-    total_invalid = load_results(training_path, metric="total_invalid")
+    total_invalid = load_results(training_path, metric="total_low_battery_bikes")
     last_episode_folder = get_episode_options(training_path)[-1]
     last_episode_reward_tracking = load_results(training_path, last_episode_folder['value'], metric="reward_tracking")
 
@@ -649,46 +675,46 @@ def update_action_plot(n_intervals, n_clicks, training_path, episode_folder):
 
     return fig
 
-# @app.callback(
-#     Output("failures-baseline-plot", "figure"),
-#     [Input("interval-component", "n_intervals"),
-#      Input("update-btn-plots", "n_clicks")]
-# )
+@app.callback(
+    Output("failures-baseline-plot", "figure"),
+    [Input("interval-component", "n_intervals"),
+     Input("update-btn-plots", "n_clicks")]
+)
 
-# def update_failures_baseline_plot(interval, n_clicks):
-#     with open(os.path.join('benchmarks/results/total_failures.pkl'), 'rb') as f:
-#         failures = pickle.load(f)
-#     fig = create_plot(failures, "Failures", "Failures", "Timeslot", cumulative=True,
-#                        failures_plot=True)
+def update_failures_baseline_plot(interval, n_clicks):
+    with open(os.path.join('results/static_350/total_failures.pkl'), 'rb') as f:
+        failures = pickle.load(f)
+    fig = create_plot(failures, "Failures", "Failures", "Timeslot", cumulative=True,
+                       failures_plot=True)
 
-#     # --- Map timeslots to weekdays using your dictionary ---
-#     timeslots_per_day = 8
-#     num_timeslots = len(failures)
+    # --- Map timeslots to weekdays using your dictionary ---
+    timeslots_per_day = 8
+    num_timeslots = len(failures)
     
 
-#     # Positions for each full day
-#     tick_positions = list(range(0, num_timeslots, timeslots_per_day))
+    # Positions for each full day
+    tick_positions = list(range(0, num_timeslots, timeslots_per_day))
 
-#     # Choose starting weekday (0 = monday)
-#     start_day_index = 0
+    # Choose starting weekday (0 = monday)
+    start_day_index = 0
 
-#     # Create repeating weekday labels
-#     tick_labels = [
-#         num2days[(start_day_index + (i // timeslots_per_day)) % 7]
-#         for i in tick_positions
-#     ]
+    # Create repeating weekday labels
+    tick_labels = [
+        num2days[(start_day_index + (i // timeslots_per_day)) % 7]
+        for i in tick_positions
+    ]
 
-#     # Update layout
-#     fig.update_layout(
-#         xaxis=dict(
-#             tickmode="array",
-#             tickvals=tick_positions,
-#             ticktext=tick_labels,
-#             title="Day"
-#         )
-#     )
+    # Update layout
+    fig.update_layout(
+        xaxis=dict(
+            tickmode="array",
+            tickvals=tick_positions,
+            ticktext=tick_labels,
+            title="Day"
+        )
+    )
 
-#     return fig
+    return fig
 
 @app.callback(
     Output("reward-tracking-plot", "figure"),
@@ -724,19 +750,24 @@ def update_osmnx_graph(training_path, metric, episode_folder, n_clicks):
     cell_values = {}
     total_visits = 0
     total_ops = 0
+    total_failures = 0
     for _, node in nodes.iterrows():
         cell_values[node['cell_id']] = node[metric]
         total_visits += node['visits']
-        # total_ops += node['operations']
+        total_ops += node['operations']
+        total_failures += node['failures']
 
     if metric == "visits":
         for cell_id in cell_values.keys():
             cell_values[cell_id] = cell_values[cell_id] / total_visits
-    # elif metric == "operations":
-    #     for cell_id in cell_values.keys():
-    #         cell_values[cell_id] = cell_values[cell_id] / total_ops
+    elif metric == "operations":
+        for cell_id in cell_values.keys():
+            cell_values[cell_id] = cell_values[cell_id] / total_ops
+    elif metric == "failures":
+        for cell_id in cell_values.keys():
+            cell_values[cell_id] = cell_values[cell_id] / total_failures
 
-    return generate_osmnx_graph(graph, cells, cell_values)#, percentage=(metric == "visits" or metric == "critic_score"))
+    return generate_osmnx_graph(graph, cells, cell_values, metric, percentage=(metric == "visits", metric == "failure_rates"))
 
 
 # Run the Dash app

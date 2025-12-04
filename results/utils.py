@@ -31,10 +31,35 @@ num2days = {0: 'MON', 1: 'TUE', 2: 'WED', 3: 'THU', 4: 'FRI', 5: 'SAT', 6: 'SUN'
 action_bin_labels = ['STAY', 'UP', 'DOWN', 'LEFT', 'RIGHT', 'DROP_BIKE', 'PICK_UP_BIKE', 'CHARGE_BIKE']
 
 # plot fonts sizes 
-title_size=50
-label_size=40
-tick_size=29
-legend_size=35
+title_size=30 #30,50
+label_size=20 #20,40
+tick_size=16 #16,29
+legend_size=10  #16,35
+x_legend=0.76  # Horizontal position (0 = left, 1 = right)
+y_legend=0.87  # Vertical position (0 = bottom, 1 = top)
+
+Bss_template = dict(
+    layout=go.Layout(
+            title=dict(font=dict(size=title_size)),
+            yaxis=dict(title=dict(font=dict(size=label_size)),
+                       tickfont=dict(size=tick_size)),
+            xaxis=dict(title=dict(font=dict(size=label_size)),
+                       tickfont=dict(size=tick_size)),
+            font=dict(size=tick_size),
+            margin=dict(
+                l=120,  # increase until labels no longer overlap
+            ),
+            plot_bgcolor="white",
+            paper_bgcolor="white",
+            legend=dict(
+                x=x_legend,  # Horizontal position (0 = left, 1 = right)
+                y=y_legend,  # Vertical position (0 = bottom, 1 = top)
+                bgcolor='rgba(255, 255, 255, 1)',
+                bordercolor='black',
+                borderwidth=1
+            )
+    )
+)
 
 # set up matplotlib
 is_ipython = 'inline' in matplotlib.get_backend()
@@ -222,7 +247,7 @@ def load_results(training_path, episode_folder="all", metric="rewards_per_timesl
         results = []
         if metric == "reward_tracking":
             results = [[] for _ in action_bin_labels]
-        episode_folders = get_episode_options(training_path)[1:]  # Exclude "All Timeslots" option
+        episode_folders = get_episode_options(training_path)[0:]  # Exclude "All Timeslots" option
         for folder in [opt['value'] for opt in episode_folders]:
             r = load_results(training_path, folder, metric)
             if metric != "reward_tracking":
@@ -240,6 +265,8 @@ def load_results(training_path, episode_folder="all", metric="rewards_per_timesl
     elif episode_folder == "last":
         ef = get_episode_options(training_path)[-1]
         episode_folder = ef['value']
+    # elif episode_folder == "all_graphs":
+
 
     timeslot_path = os.path.join(training_path, episode_folder)
     if not os.path.exists(timeslot_path):
@@ -314,12 +341,15 @@ def create_plot(data, title, y_axis_label, x_axis_label,
         fig = go.Figure()
         fig.add_trace(go.Bar(x=action_bin_labels, y=data))
         fig.update_layout(
+            template=Bss_template,
             title=dict(text=title, font=dict(size=title_size)),
             yaxis=dict(title=dict(text=y_axis_label, font=dict(size=label_size)),
                        tickfont=dict(size=tick_size)),
             xaxis=dict(title=dict(text=x_axis_label, font=dict(size=label_size)),
                        tickfont=dict(size=tick_size)),
             font=dict(size=tick_size),
+            plot_bgcolor="white",
+            paper_bgcolor="white",
             legend=dict(
                 x=0.9,  # Horizontal position (0 = left, 1 = right)
                 y=0.9,  # Vertical position (0 = bottom, 1 = top)
@@ -354,15 +384,18 @@ def create_plot(data, title, y_axis_label, x_axis_label,
 
         # Update layout with fonts and legend configuration
         fig.update_layout(
+            template=Bss_template,
             title=dict(text=title, font=dict(size=title_size)),
             yaxis=dict(title=dict(text=y_axis_label, font=dict(size=label_size)),
                        tickfont=dict(size=tick_size)),
             xaxis=dict(title=dict(text=x_axis_label, font=dict(size=label_size)),
                        tickfont=dict(size=tick_size)),
             font=dict(size=tick_size),
+            plot_bgcolor="white",
+            paper_bgcolor="white",
             legend=dict(
-                x=0.84,  # Horizontal position (0 = left, 1 = right)
-                y=0.97,  # Vertical position (0 = bottom, 1 = top)
+                x=x_legend,  # Horizontal position (0 = left, 1 = right)
+                y=y_legend,  # Vertical position (0 = bottom, 1 = top)
                 bgcolor='rgba(255, 255, 255, 1)',
                 bordercolor='black',
                 borderwidth=1
@@ -372,7 +405,7 @@ def create_plot(data, title, y_axis_label, x_axis_label,
     return fig
 
 
-def generate_osmnx_graph(graph: nx.MultiDiGraph, cell_dict: dict, cell_values: dict, percentage: bool = False):
+def generate_osmnx_graph(graph: nx.MultiDiGraph, cell_dict: dict, cell_values: dict, metric: str, percentage: bool = False):
     # Extract nodes and edges in WGS84 coordinates (lon, lat)
     nodes, edges = ox.graph_to_gdfs(graph, nodes=True, edges=True)
 
@@ -384,9 +417,18 @@ def generate_osmnx_graph(graph: nx.MultiDiGraph, cell_dict: dict, cell_values: d
     min_value = min(0, *cell_values.values()) if cell_values else 0
     max_value = max(0.1, *cell_values.values()) if cell_values else 1
     # Choose colormap based on sign of values
-    if min_value < 0 :
+    if metric == "critic_score" :
         cmap = cm.get_cmap("coolwarm")  # diverging colormap
         norm = mcolors.TwoSlopeNorm(vcenter=0, vmin=min_value, vmax=max_value)  # Normalize colors based on frequency range
+    elif metric == "operations":
+        cmap = cm.get_cmap("BrBG")  # diverging colormap
+        norm = mcolors.TwoSlopeNorm(vcenter=0, vmin=min_value, vmax=max_value)  # Normalize colors based on frequency range
+    elif metric == "rebalanced":
+        cmap = cm.get_cmap("Greens")  # diverging colormap
+        norm = mcolors.Normalize(vmin=min_value, vmax=max_value)  # Normalize colors based on frequency range
+    # elif metric == "failure_rates":
+    #     cmap = cm.get_cmap("copper")  # diverging colormap
+    #     norm = mcolors.Normalize(vmin=min_value, vmax=max_value)  # Normalize colors based on frequency range
     else:
         cmap = cm.get_cmap("viridis")  # Choose colormap (e.g., 'hot', 'viridis', 'coolwarm')
         norm = mcolors.Normalize(vmin=min_value, vmax=max_value)  # Normalize colors based on frequency range
@@ -490,7 +532,7 @@ def compare_failures_across_trainings(training_paths, training_labels=None):
     # )
 
 
-    fig.update_layout(
+    fig.update_layout(template=Bss_template,
         title=dict(
             text="Total Failures per Episode Across Trainings",
             font=dict(size=title_size, family="Poppins, sans-serif")
@@ -502,14 +544,6 @@ def compare_failures_across_trainings(training_paths, training_labels=None):
         yaxis=dict(
             title=dict(text="Total Failures", font=dict(size=label_size)),
             tickfont=dict(size=tick_size)
-        ),
-        legend=dict(
-            x=0.7,
-            y=0.9,
-            bgcolor='rgba(255,255,255,0.5)',
-            bordercolor='black',
-            borderwidth=1,
-            font=dict(size=legend_size)
         )
     )
 
@@ -672,31 +706,26 @@ def easy_3_line_plotter(line1,line2,line3=None):
     ]
 
     # Update layout
-    fig.update_layout(
-        xaxis=dict(
-            tickmode="array",
-            tickvals=tick_positions,
-            ticktext=tick_labels,
-            title=dict(text="Day", font=dict(size=label_size))
-        )
-    )
-
-    fig.update_layout(
+    fig.update_layout(template=Bss_template,
         title=dict(
             text="Comparison between aproaches",
             font=dict(size=title_size, family="Poppins, sans-serif")
         ),
         xaxis=dict(
-            title=dict(text="Day", font=dict(size=label_size)),
-            tickfont=dict(size=tick_size)
+            tickmode="array",
+            tickvals=tick_positions,
+            ticktext=tick_labels,
+            title=dict(text="Day", font=dict(size=label_size))
         ),
         yaxis=dict(
             title=dict(text="Average # of Failures", font=dict(size=label_size)),
             tickfont=dict(size=tick_size)
         ),
+        plot_bgcolor="white",
+        paper_bgcolor="white",
         legend=dict(
-            x=0.7,
-            y=0.9,
+            x=x_legend,
+            y=y_legend,
             bgcolor='rgba(255,255,255,0.5)',
             bordercolor='black',
             borderwidth=1,
