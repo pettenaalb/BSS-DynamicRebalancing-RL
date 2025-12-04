@@ -162,6 +162,8 @@ class FullyDynamicEnv(gym.Env):
         self.total_failures = 0
         self.total_trips = 0
         self.total_invalid_actions = 0
+        self.last_depleted_bikes = 0
+        self.total_low_battery_bikes = 0
 
 
 
@@ -216,6 +218,8 @@ class FullyDynamicEnv(gym.Env):
         self.total_failures = 0
         self.total_trips = 0
         self.total_invalid_actions = 0
+        self.last_depleted_bikes = 0
+        self.total_low_battery_bikes = 0
 
         self.event_buffer = None
         self.next_event_buffer = None
@@ -432,6 +436,7 @@ class FullyDynamicEnv(gym.Env):
             'truck_load': self.truck.get_load(),
             'total_trips': self.total_trips,
             'total_invalid':self.total_invalid_actions,
+            'total_low_battery_bikes':self.total_low_battery_bikes,
             'global_critic_score':self.global_critic_score
         }
 
@@ -955,6 +960,7 @@ class FullyDynamicEnv(gym.Env):
         Parameters:
             - subgraph (nx.Graph): The subgraph to update with regional metrics.
         """
+        depleted_bikes = 0
         for cell_id, cell in self.cells.items():
             center_node = cell.get_center_node()
 
@@ -979,6 +985,8 @@ class FullyDynamicEnv(gym.Env):
 
             # Low battery bikes
             low_battery_bikes = sum(1 for battery in battery_levels if battery <= 0.2)
+            if low_battery_bikes > 0:
+                depleted_bikes += low_battery_bikes
             low_battery_bikes /= len(battery_levels) if len(battery_levels) > 0 else 1
 
             # Update attributes in the subgraph
@@ -986,7 +994,7 @@ class FullyDynamicEnv(gym.Env):
                 self.cell_subgraph.nodes[center_node]['truck_cell'] = 1.0 if cell_id == self.truck.get_cell().get_id() else 0.0
                 # self.cell_subgraph.nodes[center_node]['surplus_score'] = cell.get_mismatch_score() / self.maximum_number_of_bikes
                 # TURN OFF THIS TO DISABLE BATTERY CHARGE
-                # self.cell_subgraph.nodes[center_node]['low_battery_bikes'] = low_battery_bikes
+                self.cell_subgraph.nodes[center_node]['low_battery_bikes'] = low_battery_bikes
                 self.cell_subgraph.nodes[center_node]['rebalanced'] = cell.get_total_rebalanced()
                 self.cell_subgraph.nodes[center_node]['failure_rates'] = cell.get_failures() / cell.get_total_departures() if cell.get_total_departures() !=0 else 0
                 self.cell_subgraph.nodes[center_node]['failures'] = cell.get_failures()
@@ -997,6 +1005,10 @@ class FullyDynamicEnv(gym.Env):
                 self.cell_subgraph.nodes[center_node]['eligibility_score'] = cell.eligibility_score
             else:
                 raise ValueError(f"Node {center_node} not found in the subgraph.")
+        
+        if depleted_bikes > self.last_depleted_bikes:
+            self.total_low_battery_bikes += 1
+        self.last_depleted_bikes = depleted_bikes
 
 
     def _get_truck_position(self) -> tuple[float, float]:

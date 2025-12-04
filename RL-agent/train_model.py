@@ -128,7 +128,11 @@ def train_dqn(env: gym, agent: DQNAgent, batch_size: int, episode: int, tbar = N
         'critic_score',
         'eligibility_score',
         'bikes',
+        # 'low_battery_bikes',
     ]
+    # If you want to include 'low_batery_bikes' values in the features of each node, or any other feature,
+    # remember to modify the input in the GAT of the VanillaDQN with the correct number of features inputted.
+    # Remember also to modify the validation function
 
     agent_state, info = env.reset(options=options)
 
@@ -286,6 +290,7 @@ def train_dqn(env: gym, agent: DQNAgent, batch_size: int, episode: int, tbar = N
         "failures_per_timeslot": failures_per_timeslot,
         "total_trips": info["total_trips"],
         "total_invalid": info["total_invalid"],
+        "total_low_battery_bikes": info["total_low_battery_bikes"],
         "q_values_per_timeslot": q_values_per_timeslot,
         "action_per_step": action_per_step,
         "global_criticals": global_criticals,
@@ -328,7 +333,11 @@ def validate_dqn(env: gym, agent: DQNAgent, episode: int, tbar: tqdm | tqdm_tele
         'critic_score',
         'eligibility_score',
         'bikes',
+        # 'low_battery_bikes',
     ]
+    # If you want to include 'low_batery_bikes' values in the features of each node, or any other feature,
+    # remember to modify the input in the GAT of the VanillaDQN with the correct number of features inputted.
+    # Remember also to modify the training function
 
     agent_state, info = env.reset(options=options)
 
@@ -449,6 +458,7 @@ def validate_dqn(env: gym, agent: DQNAgent, episode: int, tbar: tqdm | tqdm_tele
         "failures_per_timeslot": failures_per_timeslot,
         "total_trips": info["total_trips"],
         "total_invalid": info["total_invalid"],
+        "total_low_battery_bikes": info["total_low_battery_bikes"],
         "action_per_step": action_per_step,
         "global_criticals": global_criticals,
         "reward_tracking": reward_tracking,

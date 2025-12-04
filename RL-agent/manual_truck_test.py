@@ -125,7 +125,10 @@ def train_dqn(env: gym, agent: DQNAgent, batch_size: int, episode: int, tbar = N
         'critic_score',
         'eligibility_score',
         'bikes',
+        # 'low_battery_bikes',
     ]
+    # If you want to include 'low_batery_bikes' values in the features of each node, or any other feature,
+    # remember to modify the input in the GAT of the VanillaDQN with the correct number of features inputted.
 
     agent_state, info = env.reset(options=options)
 
@@ -298,6 +301,7 @@ def train_dqn(env: gym, agent: DQNAgent, batch_size: int, episode: int, tbar = N
     results = {
         "rewards_per_timeslot": rewards_per_timeslot,
         "failures_per_timeslot": failures_per_timeslot,
+        "total_low_battery_bikes": info["total_low_battery_bikes"],
         "q_values_per_timeslot": 0,
         "action_per_step": action_per_step,
         "losses": 0,
